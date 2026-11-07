@@ -16,11 +16,11 @@
     // if we want to install r packages using pak
     // more info: https://github.com/rocker-org/devcontainer-features/blob/main/src/r-packages/README.md
     "ghcr.io/rocker-org/devcontainer-features/apt-packages:1": {
-      "packages": "clang,clang-format,clang-tidy,cmake,doxygen,g++,gcc,libxt6,libxtst6,lldb,make,ninja-build,gdb,valgrind",
+      "packages": "g++,gcc,libxt6,libxtst6,make",
       "updatePackages": true
     },
     "ghcr.io/rocker-org/devcontainer-features/r-packages:1": {
-      "packages": "covr,dplyr,devtools,furrr,ggplot2,graphics,jsonlite,methods,Rcpp,RcppEigen,scales,snowfall,TMB,tibble,tidyr,usethis,yardstick",
+      "packages": "covr,dplyr,devtools,furrr,ggplot2,graphics,jsonlite,methods,RTMB,scales,snowfall,tibble,tidyr,usethis,yardstick",
       "installSystemRequirements": true
     },
     "ghcr.io/devcontainers/features/node:1": {
@@ -45,11 +45,7 @@
         // if we want liveshare.
         "ms-vsliveshare.vsliveshare",
         "streetsidesoftware.code-spell-checker",
-        "ms-vscode.cpptools",
-        "ms-vscode.cmake-tools",
         "GitHub.codespaces",
-        "bbenoist.Doxygen",
-        "matepek.vscode-catch2-text-adapter",
         "hbenl.vscode-test-explorer",
         "reditorsupport.r",
         "rdebugger.r-debugger",

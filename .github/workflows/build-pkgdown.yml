@@ -16,8 +16,6 @@ on:
       - 'pkgdown/**'
       - '.github/lychee.toml'
       - '.github/workflows/build-pkgdown.yml'
-      - 'CMakeLists.txt'
-      - 'src/**'
   push:
     branches:
       - main
