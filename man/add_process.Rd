@@ -27,7 +27,7 @@ forms.}
 per-year rows when there is a random term.}
 
 \item{sd, rho}{Starting value and estimation type of the process SD (on the
-natural scale) and AR1 correlation.}
+natural scale, > 0) and AR1 correlation (between -1 and 1).}
 }
 \value{
 The parameter tibble with the target's rows replaced and the

@@ -31,4 +31,17 @@ Each data set is drawn after a call to set.seed(), so the self-test
 changes the state of the random number generator for the rest of the
 session.
 }
+\examples{
+\dontrun{
+data("data_big")
+data_4_model <- FIMSFrame(data_big)
+fit <- setup_default_parameters(data = data_4_model) |>
+  initialize_fims(data = data_4_model) |>
+  fit_fims(optimize = TRUE)
+
+# Simulate and refit 5 data sets, then look at the relative errors
+self_test <- run_fims_self_test(fit, number_of_simulations = 5)
+summary(self_test[["relative_error_terminal_spawning_biomass"]])
+}
+}
 \keyword{diagnostics}

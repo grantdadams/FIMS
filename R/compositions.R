@@ -5,8 +5,10 @@
 #
 # Each function returns `proportion` (rows sum to 1, and this is what the
 # multinomial uses) and `expected`, reported as agecomp_expected and
-# lengthcomp_expected: proportions times the observed sample size when the
-# fleet has that data, otherwise the unscaled values.
+# lengthcomp_expected. When the fleet has that data, `expected` is the
+# proportions times the observed sample size in each year. Otherwise it is
+# the expected numbers at age for an age composition, and the expected
+# proportions at age converted to length for a length composition.
 #
 # Age-to-length keys and ageing-error matrices are either 1 matrix used in
 # every year or a list with 1 matrix per model year.

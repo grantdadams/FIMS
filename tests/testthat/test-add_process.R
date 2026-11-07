@@ -335,4 +335,123 @@ test_that("`add_process()` returns correct error messages when finding the targe
     ),
     regexp = "not indexed by year"
   )
+  #' @description Test that `add_process()` errors for a target with no rows in the module.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_M ~ 1 + (1 | year),
+      module_name = "Population"
+    ),
+    regexp = "There are no"
+  )
+})
+
+test_that("`add_process()` returns correct error messages for the formula", {
+  #' @description Test that `add_process()` errors for a formula with no target on the left.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "no\\s+target"
+  )
+  #' @description Test that `add_process()` errors for a formula with more than 1 random term.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ (1 | year) + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "2\\s+random\\s+terms"
+  )
+  #' @description Test that `add_process()` errors for a random term that is not written as `(1 | group)`.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (year | age),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "not\\s+understood"
+  )
+  #' @description Test that `add_process()` errors for a random term grouped by something other than year or age:year.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (1 | fleet),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "groups\\s+by"
+  )
+  #' @description Test that `add_process()` errors for an AR1 process by age and year, because AR1 is by year only.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + ar1(1 | age:year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "by\\s+year\\s+only"
+  )
+  #' @description Test that `add_process()` errors for `(1 | age:year)` on a target that does not vary by age.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (1 | age:year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "does\\s+not\\s+vary\\s+by\\s+age"
+  )
+})
+
+test_that("`add_process()` returns correct error messages for the sd and rho", {
+  #' @description Test that `add_process()` errors for a process sd of 0, which has no log.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      sd = list(value = 0, estimation_type = "fixed_effects")
+    ),
+    regexp = "must\\s+be\\s+1\\s+number\\s+>\\s+0"
+  )
+  #' @description Test that `add_process()` errors for a negative process sd.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      sd = list(value = -0.5, estimation_type = "fixed_effects")
+    ),
+    regexp = "must\\s+be\\s+1\\s+number\\s+>\\s+0"
+  )
+  #' @description Test that `add_process()` errors for a rho of 1, which has no logit.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      rho = list(value = 1, estimation_type = "fixed_effects")
+    ),
+    regexp = "between\\s+-1\\s+and\\s+1"
+  )
+  #' @description Test that `add_process()` errors for a rho below -1.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      rho = list(value = -1.5, estimation_type = "fixed_effects")
+    ),
+    regexp = "between\\s+-1\\s+and\\s+1"
+  )
 })
