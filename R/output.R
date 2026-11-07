@@ -110,6 +110,18 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
     estimated[is_logit] <- inv_logit(0, mean_length_old, estimated[is_logit])
   }
   parameter_table[["estimated"]] <- estimated
+  # Their standard errors go on the same scale, by the delta method. For
+  # x = log(theta), se(theta) = theta * se(x). For the logit L1 = L2 / (1 +
+  # exp(-x)), used only when L2 is constant, se(L1) = L1 * (1 - L1 / L2) *
+  # se(x). For a transform of 1 parameter this is what an sdreport of the
+  # natural-scale value gives.
+  uncertainty <- parameter_table[["uncertainty"]]
+  uncertainty[is_log] <- estimated[is_log] * uncertainty[is_log]
+  if (any(is_logit)) {
+    uncertainty[is_logit] <- estimated[is_logit] *
+      (1 - estimated[is_logit] / mean_length_old) * uncertainty[is_logit]
+  }
+  parameter_table[["uncertainty"]] <- uncertainty
   # A prior's or process's own parameters are named after their target
   # (log_q_prior_log_sd, log_q_log_sd), so each row says what it belongs to.
   parameter_table[["label"]] <- dplyr::if_else(
