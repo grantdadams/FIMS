@@ -173,7 +173,7 @@ ar1_process_lpdf <- function(x, mean, log_sd, logit_rho) {
   }
   deviation <- x - rep_len(as.vector(mean), length(x))
   standard_deviation <- exp(log_sd)
-  rho <- 2 / (1 + exp(-logit_rho)) - 1
+  rho <- inv_logit(-1, 1, logit_rho)
   n_years <- length(deviation)
   RTMB::dnorm(deviation[1], 0, standard_deviation / sqrt(1 - rho^2), log = TRUE) +
     sum(RTMB::dnorm(
@@ -210,7 +210,7 @@ iid_process_draw <- function(x, mean, log_sd) {
 ar1_process_draw <- function(x, mean, log_sd, logit_rho) {
   n_years <- length(x)
   standard_deviation <- exp(log_sd)
-  rho <- 2 / (1 + exp(-logit_rho)) - 1
+  rho <- inv_logit(-1, 1, logit_rho)
   deviation <- numeric(n_years)
   deviation[1] <- stats::rnorm(1, 0, standard_deviation / sqrt(1 - rho^2))
   for (year in seq_len(n_years)[-1]) {

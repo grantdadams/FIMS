@@ -84,7 +84,7 @@ von_bertalanffy_schnute_growth <- function(age,
   mean_length_young <- if (is.null(logit_mean_length_young)) {
     exp(log_mean_length_young)
   } else {
-    mean_length_old / (1 + exp(-logit_mean_length_young))
+    inv_logit(0, mean_length_old, logit_mean_length_young)
   }
   growth_coefficient <- exp(log_growth_coefficient)
   length_weight_a <- exp(log_length_weight_a)
@@ -108,7 +108,7 @@ von_bertalanffy_schnute_growth <- function(age,
       ad_max(ad_fabs(length_old - length_young), 1e-8)
     ad_max(sd_young + slope * (mean_length - length_young), 1e-8)
   } else {
-    correlation <- function(logit_corr) -1 + 2 / (1 + exp(-logit_corr))
+    correlation <- function(logit_corr) inv_logit(-1, 1, logit_corr)
     delta_method_length_sd(
       age, mean_length, mean_length_young, mean_length_old,
       growth_coefficient, reference_ages,

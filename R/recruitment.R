@@ -23,7 +23,7 @@
 beverton_holt_recruitment <- function(spawning_biomass, log_rzero,
                                       logit_steep, phi_0) {
   rzero <- exp(log_rzero)
-  steepness <- 0.2 + (1 - 0.2) / (1 + exp(-logit_steep))
+  steepness <- inv_logit(0.2, 1, logit_steep)
   (0.8 * rzero * steepness * spawning_biomass) /
     (0.2 * phi_0 * rzero * (1 - steepness) +
       spawning_biomass * (steepness - 0.2))
@@ -44,18 +44,27 @@ beverton_holt_recruitment <- function(spawning_biomass, log_rzero,
 #' @noRd
 spawning_biomass_per_recruit <- function(mortality_M, proportion_female,
                                          proportion_mature, weight_at_age) {
+  sum(numbers_per_recruit(mortality_M) * proportion_female *
+    proportion_mature * weight_at_age)
+}
+
+#' Unfished numbers at age per recruit
+#'
+#' Survival to each age from natural mortality alone. The plus group holds
+#' all older ages, the sum of a geometric series, so its survival is divided
+#' by 1 - exp(-M) at the oldest age.
+#'
+#' @param mortality_M Natural mortality at age, 1 value per age.
+#' @return Numbers at age per recruit.
+#' @noRd
+numbers_per_recruit <- function(mortality_M) {
   # RTMB: lets c(1, value) keep AD values that depend on parameters.
   "c" <- RTMB::ADoverload("c")
   n_ages <- length(mortality_M)
   survival_to_age <- c(1, exp(-cumsum(mortality_M[-n_ages])))
-  # The plus group holds all older ages, the sum of a geometric series.
-  plus_group_scale <- c(
-    rep(1, n_ages - 1),
-    1 / (1 - exp(-mortality_M[n_ages]))
-  )
-  numbers_per_recruit <- survival_to_age * plus_group_scale
-  sum(numbers_per_recruit * proportion_female * proportion_mature *
-    weight_at_age)
+  survival_to_age[n_ages] <- survival_to_age[n_ages] /
+    (1 - exp(-mortality_M[n_ages]))
+  survival_to_age
 }
 
 # Recruitment processes

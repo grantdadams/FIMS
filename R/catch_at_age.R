@@ -170,11 +170,8 @@ population_dynamics <- function(module_parameters, model_data, population_data,
       # First year: numbers at age are parameters. Unfished numbers are the
       # equilibrium age structure from R0 and first-year M.
       numbers_at_age[1, ] <- exp(module_parameters[["Population"]][["log_init_naa"]])
-      unfished_numbers_at_age[1, ] <- rzero * c(
-        1, exp(-cumsum(mortality_M[1, -n_ages]))
-      )
-      unfished_numbers_at_age[1, n_ages] <- unfished_numbers_at_age[1, n_ages] /
-        (1 - exp(-mortality_M[1, n_ages]))
+      unfished_numbers_at_age[1, ] <- rzero *
+        numbers_per_recruit(mortality_M[1, ])
     } else {
       # Recruits (youngest age) from last year's spawning biomass.
       recruitment_from_curve <- call_module(
