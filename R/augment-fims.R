@@ -60,10 +60,12 @@ augment.FIMSFit <- function(x, include_weights = TRUE, ...) {
 
   # Keep only rows that are data-fit rows: both observed and expected must be
   # present.  Parameter rows (fixed_effects, random_effects) that have no
-  # observed data counterpart are excluded.
+  # observed data counterpart are excluded. Missing observations (-999) are
+  # not data, so they are excluded too.
   fit_rows <- estimates |>
     dplyr::filter(
       !is.na(.data$observed),
+      .data$observed != -999,
       !is.na(.data$expected)
     )
 

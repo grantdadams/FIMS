@@ -180,7 +180,8 @@ tidy.FIMSFit <- function(
 #'   \item{`AIC`}{Akaike information criterion (marginal, fixed effects only).}
 #'   \item{`BIC`}{Bayesian information criterion (marginal, fixed effects only).}
 #'   \item{`nobs`}{Total number of data observations (rows with both an
-#'     observed and an expected value in [get_estimates()]).}
+#'     observed and an expected value in [get_estimates()]). Missing
+#'     observations (-999) are not counted.}
 #'   \item{`npar_fixed`}{Number of fixed-effect parameters.}
 #'   \item{`npar_random`}{Number of random-effect parameters.}
 #'   \item{`marginal_nll`}{Marginal negative log-likelihood
