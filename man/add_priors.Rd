@@ -21,7 +21,10 @@ The parameter tibble with the prior's 2 rows added.
 \code{log_q ~ normal(mean = log(0.5), sd = 0.2)}. The mean and sd are written as
 constant expected_mean and log_sd rows whose \code{target_label} is the
 parameter's name in the model. A prior on a parameter with 1 value per year
-or age applies to each value.
+or age applies to each value. Values that share 1 estimate, such as a time
+block, are scored once, so the prior's weight does not depend on how many
+years share the estimate. Constant values are scored too, which adds a
+constant to the objective but does not change the estimates.
 }
 \details{
 Any parameter can take a prior, named as the model names it:
