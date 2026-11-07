@@ -121,6 +121,14 @@ edges_from_lower_edges <- function(lower_edges, fleet) {
 #' @return The population bin edges.
 #' @noRd
 default_population_edges <- function(fleet_edges) {
+  if (length(fleet_edges) == 0) {
+    cli::cli_abort(c(
+      "x" = "Growth that models length needs length bins, but no fleet has
+      any.",
+      "i" = "Add {.val length_comp} or {.val length_bin} rows for at least 1
+      fleet, e.g., check with {.code dplyr::count(data, fleet, type)}."
+    ))
+  }
   narrowest_bin <- vapply(
     fleet_edges, function(bin_edges) min(diff(bin_edges)), numeric(1)
   )
@@ -139,9 +147,9 @@ default_population_edges <- function(fleet_edges) {
   lower <- min(vapply(fleet_edges, min, numeric(1)))
   fleet_upper <- max(vapply(fleet_edges, max, numeric(1)))
   tolerance <- 1e-12 * max(fleet_upper - lower, 1)
-  # The upper edge is built by adding 1 at a time. When the lower edge is not
-  # a whole number, this can differ from lower + n in the last digit, and the
-  # loop keeps the grid identical to the one earlier versions of FIMS built.
+  # The upper edge is built by adding 1 at a time, so the value compared with
+  # the top fleet edge is the value the grid ends on. When the lower edge is
+  # not a whole number, lower + n can differ from it in the last digit.
   upper <- lower
   n_regular_bins <- 0
   while (upper < fleet_upper - tolerance) {

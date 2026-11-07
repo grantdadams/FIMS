@@ -274,7 +274,7 @@ test_that("`add_process()` returns correct error messages", {
       module_name = "Fleet",
       fleet = "survey1"
     )
-  #' @description Test that `add_process()` errors for a target with a prior, whose rows would have the same names.
+  #' @description Test that `add_process()` errors for a target that already has a prior and points to priors on the process's parameters.
   expect_error(
     object = add_process(
       with_prior,

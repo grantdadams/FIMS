@@ -76,7 +76,7 @@ prior_densities <- function(parameter_table) {
 #' 1 density per process
 #'
 #' Target rows have `distribution_type` "process". Their hyperparameters are
-#' rows labelled expected_mean, log_sd and logit_rho with the target's label
+#' rows labeled expected_mean, log_sd and logit_rho with the target's label
 #' in `target_label`. The recruitment process rows from
 #' setup_default_parameters() have no target_label: their log_sd belongs to
 #' log_devs or log_r.
@@ -157,8 +157,9 @@ process_densities <- function(parameter_table) {
 
 #' Stop when a prior or process has no estimated values
 #'
-#' A density on values that are all fixed would only move its own sd, to 0
-#' for an estimated sd, where the objective is unbounded.
+#' With every value constant, the density informs only its own
+#' hyperparameters. When the values equal the mean, e.g., deviations fixed at
+#' 0, an estimated sd goes to 0 and the objective is unbounded.
 #' @noRd
 check_estimated_target <- function(rows, density_type, target) {
   if (all(rows[["estimation_type"]] == "constant")) {
@@ -170,11 +171,11 @@ check_estimated_target <- function(rows, density_type, target) {
   }
 }
 
-#' Use an estimated family parameter when the tibble has 1
+#' Use an estimated family parameter when the tibble has a row for it
 #'
-#' A data likelihood's parameters (e.g. log_sd) come from the data's
+#' A data likelihood's parameters (e.g., log_sd) come from the data's
 #' uncertainty column. A tibble row with module_name "Data", the fleet, and
-#' label "<data type>_<parameter>" (e.g. "index_log_sd") replaces it, so it
+#' label "<data type>_<parameter>" (e.g., "index_log_sd") replaces it, so it
 #' can be estimated.
 #'
 #' @param component 1 entry of `model_data$likelihoods`.

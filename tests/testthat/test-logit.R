@@ -37,7 +37,7 @@ test_that("`logit()` works with correct inputs", {
 
 ## Edge handling ----
 test_that("`logit()` returns correct outputs for edge cases", {
-  #' @description Test that `logit(0, 1L, 0.5)` returns 0 even if an integer is passed to the maximum value, i.e., `b` parameter.
+  #' @description Test that `logit(0, 1L, 0.5)` returns 0 when the upper bound `b` is an integer.
   expect_equal(
     object = logit(0, 1L, 0.5),
     expected = 0
@@ -63,7 +63,7 @@ test_that("`inv_logit()` works with correct inputs", {
     object = inv_logit(0, 1, 0.0),
     expected = 0.5
   )
-  #' @description Test that `inv_logit(0.2, 1.0, 0.3)`, which is relevant for the steepness transformation, returns -1.94591015.
+  #' @description Test that `inv_logit(0.2, 1.0, -1.94591015)`, which is relevant for the steepness transformation, returns 0.3.
   expect_equal(
     object = inv_logit(0.2, 1.0, -1.94591015),
     expected = 0.3
@@ -77,7 +77,7 @@ test_that("`inv_logit()` works with correct inputs", {
 
 ## Edge handling ----
 test_that("`inv_logit()` returns correct outputs for edge cases", {
-  #' @description Test that `inv_logit(0, 1L, 0.0)` returns 0.5 even if an integer is passed to the maximum value, i.e., `b` parameter.
+  #' @description Test that `inv_logit(0, 1L, 0.0)` returns 0.5 when the upper bound `b` is an integer.
   expect_equal(
     object = inv_logit(0, 1L, 0.0),
     expected = 0.5

@@ -1,7 +1,7 @@
 #' Bounded logit and inverse logit
 #'
 #' FIMS estimates parameters bounded between `a` and `b` on this logit scale,
-#' e.g. steepness between 0.2 and 1:
+#' e.g., steepness between 0.2 and 1:
 #'   logit(a, b, x) = log(x - a) - log(b - x),
 #'   inv_logit(a, b, logit_x) = a + (b - a) / (1 + exp(-logit_x)).
 #'

@@ -9,9 +9,9 @@
 
 #' Call a module function with its parameters
 #'
-#' @param functions A module lookup table, e.g. `selectivity_functions`.
-#' @param module_type The module type, e.g. "Logistic".
-#' @param ... Inputs that are not parameters, e.g. `age`.
+#' @param functions A module lookup table, e.g., `selectivity_functions`.
+#' @param module_type The module type, e.g., "Logistic".
+#' @param ... Inputs that are not parameters, e.g., `age`.
 #' @param parameters Named list of the module's parameters.
 #' @return What the module function returns.
 #' @noRd
@@ -65,13 +65,17 @@ evaluate_by_year <- function(functions, module_type, ages, parameters,
 #'
 #' @param value The parameter values.
 #' @param n_years Number of model years.
+#' @param name The parameter's flat name, e.g., "Fleet.survey1.log_q", for
+#'   the error message.
 #' @noRd
-per_year <- function(value, n_years) {
+per_year <- function(value, n_years, name) {
   value <- as.vector(value)
   if (!length(value) %in% c(1, n_years)) {
     cli::cli_abort(c(
-      "x" = "A parameter has {length(value)} value{?s}.",
-      "i" = "It needs 1 value, or 1 value per year ({n_years})."
+      "x" = "{.val {name}} has {length(value)} value{?s}.",
+      "i" = "It needs 1 value, or 1 value per year ({.val {n_years}}).",
+      "i" = "Count its rows with
+      {.code dplyr::count(parameters, module_name, fleet, label)}."
     ))
   }
   rep_len(value, n_years)

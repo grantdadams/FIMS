@@ -81,6 +81,19 @@ test_that("`add_priors()` works with correct inputs", {
   log_q_rows <- dplyr::filter(parameters_with_prior, label == "log_q")
   #' @description Test that `add_priors()` does not change the target's own rows.
   expect_true(is.na(log_q_rows[["distribution_type"]]))
+  prior_mean <- log(0.5)
+  #' @description Test that `add_priors()` finds variables in the prior, such as its mean, where the formula was written.
+  expect_equal(
+    object = small_parameters |>
+      add_priors(
+        log_q ~ normal(mean = prior_mean, sd = 0.2),
+        module_name = "Fleet",
+        fleet = "survey1"
+      ) |>
+      dplyr::filter(target_label %in% "log_q") |>
+      dplyr::pull(value),
+    expected = prior_rows[["value"]]
+  )
 })
 
 test_that("`add_priors()` scores each shared value once", {

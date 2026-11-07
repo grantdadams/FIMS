@@ -46,8 +46,6 @@ FIMS_dmultinom <- function(x, p) {
 #' @param random_effects A logical value indicating whether to include random
 #' effects in the model (`TRUE`) or skip it (`FALSE`). If `TRUE`, random effects
 #' will be included on recruitment in the model.
-#' @param map Not used. Values are held constant or shared through the
-#' `estimation_type` and `map_group` columns of `modified_parameters`.
 #'
 #' @return The `FIMSFit` object returned by `fit_fims()`.
 #' @examples
@@ -64,8 +62,7 @@ setup_and_run_FIMS_with_wrappers <- function(iter_id,
                                              em_input_list,
                                              estimation_mode = TRUE,
                                              random_effects = FALSE,
-                                             modified_parameters,
-                                             map = list()) {
+                                             modified_parameters) {
   # Load operating model data for the current iteration
   om_input <- om_input_list[[iter_id]]
   om_output <- om_output_list[[iter_id]]

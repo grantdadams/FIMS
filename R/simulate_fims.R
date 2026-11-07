@@ -1,13 +1,12 @@
 # Simulation from a fitted model, and a simulation self-test
 #
 # simulate_fims() draws new data from the model's predictions at the fitted
-# values, in plain R, as SPoRC's operating model does: each likelihood family
-# has a matching draw function (likelihood_families in R/distributions.R), and
-# the predictions come from model_predictions(), the same code the likelihood
-# uses. Random effects are either kept at their fitted values (simulation
-# conditional on them) or redrawn from their process densities first. The
-# simulated data come back in the FIMSFrame input format, ready for
-# FIMSFrame() and initialize_fims().
+# values, in plain R. Each likelihood family has a matching draw function
+# (likelihood_families in R/distributions.R), and the predictions come from
+# model_predictions(), the same code the likelihood uses. Random effects are
+# either kept at their fitted values (simulation conditional on them) or
+# redrawn from their process densities first. The simulated data come back in
+# the FIMSFrame input format, ready for FIMSFrame() and initialize_fims().
 #
 # Why not RTMB's obj$simulate(): it records a simulated observation only when
 # every element is drawn and a variable with the observation's name is on the
@@ -15,9 +14,8 @@
 # compositions are silently dropped. Writing the likelihoods around those
 # rules would cost readability.
 #
-# run_fims_self_test() follows OPAL's run_selftest() (opal
-# tests/testthat/helper-selftest.R): simulate, refit with the same parameter
-# tibble, and report convergence and relative errors.
+# run_fims_self_test() simulates data, refits with the same parameter tibble,
+# and reports convergence and relative errors.
 
 #' Simulate data sets from a fitted model
 #'
@@ -90,7 +88,7 @@ redraw_random_effects <- function(parameters, input) {
 
 #' New observations for every data set, from the model's predictions
 #'
-#' @return A list by data set name (e.g. "fleet1_catch"), each the shape of
+#' @return A list by data set name (e.g., "fleet1_catch"), each the shape of
 #'   that data set's observations.
 #' @noRd
 draw_observations <- function(model, model_data) {
@@ -168,7 +166,7 @@ write_simulated_data <- function(input, simulated) {
 #' @param random_effects "keep" or "redraw", as in simulate_fims().
 #' @param seed Seed for the data sets: data set i uses seed + i.
 #' @return A tibble with 1 row per data set: convergence (nlminb code 0
-#'   and maximum gradient at most 0.01, as in OPAL), and relative errors in
+#'   and maximum gradient at most 0.01), and relative errors in
 #'   terminal spawning biomass, terminal depletion, mean recruitment and the
 #'   largest relative error in spawning biomass over all years.
 #' @keywords diagnostics

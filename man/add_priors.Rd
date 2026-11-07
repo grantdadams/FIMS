@@ -37,4 +37,17 @@ the sd of a process on \code{log_q}, and the recruitment \code{log_sd} as \code{
 \code{index_log_sd}.
 }
 }
+\examples{
+\dontrun{
+parameters <- setup_default_parameters(FIMSFrame(data_big)) |>
+  dplyr::mutate(estimation_type = dplyr::if_else(
+    label == "logit_steep", "fixed_effects", estimation_type
+  ))
+# A normal prior on steepness, on the logit scale it is estimated on
+parameters |>
+  add_priors(logit_steep ~ normal(mean = logit(0.2, 1, 0.75), sd = 0.5),
+    module_name = "Recruitment"
+  )
+}
+}
 \keyword{setup_default_parameters}
