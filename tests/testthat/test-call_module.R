@@ -21,8 +21,7 @@ lookup_tables <- list(
   growth_modules = FIMS:::growth_modules,
   likelihood_families = FIMS:::likelihood_families,
   process_structures = FIMS:::process_structures,
-  recruitment_process_means = FIMS:::recruitment_process_means,
-  model_functions = FIMS:::model_functions
+  recruitment_process_means = FIMS:::recruitment_process_means
 )
 
 ## IO correctness ----
