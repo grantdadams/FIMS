@@ -61,18 +61,25 @@ model_predictions <- function(parameters, model_data) {
 #' @noRd
 density_inputs <- function(density_entry, parameters, population) {
   x <- parameters[[density_entry[["target"]]]]
+  density_mean <- switch(density_entry[["mean"]][["kind"]],
+    zero = 0,
+    parameter = parameters[[density_entry[["mean"]][["name"]]]],
+    derived = population[[density_entry[["mean"]][["name"]]]]
+  )
   # A prior scores the values in `positions` (prior_densities()): values
-  # that share 1 estimate once, and each constant value.
-  if (!is.null(density_entry[["positions"]])) {
-    x <- x[density_entry[["positions"]]]
+  # that share 1 estimate once, and each constant value. A mean with 1 value
+  # per target value is subset the same way, so each mean stays with its
+  # value.
+  positions <- density_entry[["positions"]]
+  if (!is.null(positions)) {
+    if (length(density_mean) == length(x)) {
+      density_mean <- density_mean[positions]
+    }
+    x <- x[positions]
   }
   list(
     x = x,
-    mean = switch(density_entry[["mean"]][["kind"]],
-      zero = 0,
-      parameter = parameters[[density_entry[["mean"]][["name"]]]],
-      derived = population[[density_entry[["mean"]][["name"]]]]
-    ),
+    mean = density_mean,
     hyperparameters = lapply(density_entry[["hyperparameters"]], function(name) {
       parameters[[name]]
     })
