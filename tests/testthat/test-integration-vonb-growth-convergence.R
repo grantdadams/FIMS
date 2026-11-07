@@ -844,7 +844,7 @@ test_that("fleet-specific length bins set the size of each fleet's age-to-length
 
   #' @description Test that the model maps fleet1's ages to 1 column per fleet1 length bin.
   expect_equal(ncol(fleet1_obj[["rebin_weights"]]), length(fleet1_lengths))
-  #' @description Test that the model maps survey1's ages to 1 column per survey1 length bin, fewer than fleet1's.
+  #' @description Test that the model maps survey1's ages to 1 column per survey1 length bin.
   expect_equal(
     ncol(fleet_short_obj[["rebin_weights"]]),
     length(fleet_short_lengths)

@@ -92,10 +92,10 @@ test_that("`ad_max()` returns correct outputs for edge cases", {
   )
   # The model guards denominators with ad_max(x, 1e-8). For x well above
   # 1e-8, the guard leaves x within C / (4 x).
-  #' @description Test that `ad_max(0.862, 1e-8)` changes 0.862 by less than C / (4 times 0.862), about 3e-6.
+  #' @description Test that `ad_max(1, 1e-8)` changes 1 by less than C / 4.
   expect_lt(
-    object = FIMS:::ad_max(0.862, 1e-8) - 0.862,
-    expected = smoothing_constant / (4 * 0.862)
+    object = FIMS:::ad_max(1, 1e-8) - 1,
+    expected = smoothing_constant / 4
   )
 })
 

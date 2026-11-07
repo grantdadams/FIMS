@@ -99,7 +99,7 @@ Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, 
 
 # Adding a process structure
 
-1. Write `<structure>_process_lpdf(x, mean, ...)` in `R/distributions.R`, returning 1 total, and a matching `<structure>_process_draw()`.
+1. Write `<structure>_process_lpdf(values, expected_mean, ...)` in `R/distributions.R`, returning 1 total, and a matching `<structure>_process_draw()` with the same arguments.
 2. Add 1 entry to `process_structures` at the bottom of `R/distributions.R`, keyed by its `re_structure` name.
 3. Add the term to `is_random_term()` and `parse_random_term()` in `R/processes.R`, so `add_process()` can write it.
 4. Test known values of `<structure>_process_lpdf()` in a file from `FIMS:::use_testthat_template()`, and fit a model with the structure added by `add_process()` through `initialize_fims()` and `fit_fims()`.

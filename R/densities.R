@@ -182,8 +182,9 @@ check_estimated_target <- function(rows, density_type, target) {
     cli::cli_abort(c(
       "x" = "The {density_type} on {.val {target}} has no estimated values.",
       "i" = "A {density_type} needs estimated values ({.val random_effects}
-      or {.val fixed_effects}). With every value constant, an estimated sd
-      can go to 0. Estimate the values or remove the {density_type}.",
+      or {.val fixed_effects}). On constant values it cannot inform the
+      estimates, and an estimated process sd can go to 0. Estimate the
+      values or remove the {density_type}.",
       "i" = "Check the estimation types with
       {.code dplyr::distinct(parameters, module_name, fleet, label,
       estimation_type)}."

@@ -152,12 +152,12 @@ test_that("augment() returns correct outputs for edge cases", {
   fit_missing <- fit_without_optimizing(data_missing)
   #' @description Test that generics::augment() leaves out missing observations (-999), so they do not count as data.
   expect_false(any(generics::augment(fit_missing)[[".truth"]] == -999))
-  #' @description Test that generics::augment() has 1 fewer row per age when the ages of 1 year are missing.
+  #' @description Test that generics::augment() has 1 fewer row per age when fleet1's age composition in year 2 is missing.
   expect_equal(
     object = nrow(generics::augment(fit_missing)),
     expected = nrow(generics::augment(fit_full)) - n_missing
   )
-  #' @description Test that generics::glance() counts 1 fewer observation per age when the ages of 1 year are missing.
+  #' @description Test that generics::glance() counts 1 fewer observation per age when fleet1's age composition in year 2 is missing.
   expect_equal(
     object = generics::glance(fit_missing)[["nobs"]],
     expected = generics::glance(fit_full)[["nobs"]] - n_missing

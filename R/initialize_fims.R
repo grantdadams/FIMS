@@ -273,7 +273,7 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
     cli::cli_abort(c(
       "x" = "VonBertalanffySchnute interpolation-based variability inputs are
       malformed: {.val {nrow(sd_rows)}} row{?s} with labels
-      {.val {sd_rows[['label']]}}.",
+      {.val {sd_rows[['label']]}} and ages {.val {sd_rows[['age']]}}.",
       "i" = "Give exactly 1 {.val length_at_age_sd_young} row and 1
       {.val length_at_age_sd_old} row, each with an {.var age} of NA. Their
       ages are the reference ages.",

@@ -30,8 +30,6 @@ above 1000.
 \item \code{condition_number}: the condition number of the Hessian is at or below
 1e5.
 }
-
-The checks are read from the fit rather than recomputed.
 }
 \examples{
 \dontrun{

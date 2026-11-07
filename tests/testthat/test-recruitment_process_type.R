@@ -30,7 +30,7 @@ test_that("`recruitment_process_type()` returns correct warning messages", {
     object = FIMS:::recruitment_process_type(
       c("log_rzero", "log_devs", "log_r")
     ),
-    regexp = "there can be only one"
+    regexp = "there can be only 1"
   )
   #' @description Test that `recruitment_process_type()` uses log_devs when both log_devs and log_r are given.
   expect_equal(

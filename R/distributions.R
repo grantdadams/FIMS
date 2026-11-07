@@ -33,7 +33,9 @@ check_density_lengths <- function(n_observations, ...) {
       "x" = "{.val {names(lengths)[is_wrong]}} {?has/have}
       {.val {lengths[is_wrong]}} value{?s} for {.val {n_observations}}
       observation{?s}.",
-      "i" = "Expected values and sds need 1 value, or 1 per observation."
+      "i" = "Expected values and sds need 1 value, or 1 per observation.",
+      "i" = "Count the data rows by fleet, type and year with
+      {.code dplyr::count(get_data(data), fleet, type, timing)}."
     ))
   }
   invisible(n_observations)
@@ -189,7 +191,8 @@ iid_process_lpdf <- function(values, expected_mean, log_sd) {
 #' sd / sqrt(1 - rho^2)). With rho = 0 this is the iid process.
 #'
 #' @inheritParams iid_process_lpdf
-#' @param logit_rho The correlation on the logit scale bounded by -1 and 1.
+#' @param logit_rho The correlation on the logit scale.
+#'   rho = inv_logit(-1, 1, logit_rho) is between -1 and 1.
 #' @noRd
 ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho) {
   if (is.matrix(values) && ncol(values) > 1) {

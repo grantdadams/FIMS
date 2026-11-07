@@ -547,7 +547,7 @@ verify_fims_nll <- function(report,
   lengthcomp_nll_fleet <- lengthcomp_nll_survey <- 0
   for (y in 1:om_input[["nyr"]]) {
     # test using FIMS_dmultinom, which matches multinomial_lpmf(). Both differ
-    # from R by NOT rounding obs to the nearest integer.
+    # from stats::dmultinom() by not rounding the counts.
     lengthcomp_nll_fleet <- lengthcomp_nll_fleet -
       FIMS_dmultinom(
         fishing_lengthcomp_observed[y, ] * em_input[["n.L.lengthcomp"]][["fleet1"]],
