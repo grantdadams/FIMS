@@ -21,8 +21,8 @@
 #   conditional age-at-length data, by ages.
 # Population quantities cover the model years, some with 1 more year for the
 # start of the year after the last model year. Fleet quantities cover the
-# model years. A reported quantity left out of the table is listed in
-# derived_quantity_rows() (R/output.R).
+# model years. A reported quantity left out of the table is listed in `skip`
+# in derived_quantity_rows() (R/output.R).
 quantity_dimensions <- c(
   # Population quantities
   biomass = "year",

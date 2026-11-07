@@ -113,15 +113,15 @@ check_process <- function(parameters, formula, module_name, fleet,
   if (!is_single_number(sd[["value"]]) || sd[["value"]] <= 0) {
     cli::cli_abort(c(
       "x" = "The process sd is {.val {sd[['value']]}}.",
-      "i" = "The sd must be 1 number > 0. It is estimated as its log.",
+      "i" = "The sd must be 1 number > 0, because it is written as log_sd.",
       "i" = "Give it as {.code sd = list(value = 0.5)}."
     ))
   }
   if (!is_single_number(rho[["value"]]) || abs(rho[["value"]]) >= 1) {
     cli::cli_abort(c(
       "x" = "The process rho is {.val {rho[['value']]}}.",
-      "i" = "rho must be 1 number between -1 and 1. It is estimated on the
-      logit scale bounded by -1 and 1.",
+      "i" = "rho must be 1 number between -1 and 1, because it is written
+      as logit_rho.",
       "i" = "Give it as {.code rho = list(value = 0.5)}."
     ))
   }

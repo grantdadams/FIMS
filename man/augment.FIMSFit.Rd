@@ -24,8 +24,8 @@ and optional \code{.weight}, plus grouping-metadata columns.
 \description{
 Returns a tidy tibble of observed-vs-expected pairs drawn from the output of
 \code{\link[=get_estimates]{get_estimates()}}.  Only rows that have both an observed value and a
-model-expected value are included (i.e. data-likelihood rows), so parameter
-rows without data observations are automatically dropped.
+model-expected value are included, so parameter rows without data
+observations are dropped. Missing observations (-999) are left out.
 }
 \details{
 The returned tibble follows the conventions expected by every
