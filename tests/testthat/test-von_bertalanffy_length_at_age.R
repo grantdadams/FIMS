@@ -30,7 +30,28 @@ test_that("`von_bertalanffy_length_at_age()` works with correct inputs", {
 })
 
 ## Edge handling ----
-# No edge cases to test.
+test_that("`von_bertalanffy_length_at_age()` returns correct outputs for edge cases", {
+  # Ages below the young reference age grow linearly from length 0 at age 0
+  # to L1 at the young reference age, here L1 = 100 at age 2.
+  younger_length_at_age <- FIMS:::von_bertalanffy_length_at_age(
+    c(0, 0.5, 1, 2), 100, 500, 0.2, 2, 10
+  )
+  #' @description Test that `von_bertalanffy_length_at_age()` gives L1 times age / a1 below the young reference age, so 0, 25 and 50 at ages 0, 0.5 and 1 with L1 = 100 and a1 = 2.
+  expect_equal(
+    object = younger_length_at_age[1:3],
+    expected = c(0, 25, 50)
+  )
+  #' @description Test that `von_bertalanffy_length_at_age()` gives L1 at the young reference age, where the linear segment meets the curve.
+  expect_equal(
+    object = younger_length_at_age[4],
+    expected = 100
+  )
+  #' @description Test that `von_bertalanffy_length_at_age()` gives length 0 at ages below 0.
+  expect_equal(
+    object = FIMS:::von_bertalanffy_length_at_age(-1, 100, 500, 0.2, 2, 10),
+    expected = 0
+  )
+})
 
 ## Error handling ----
 # No built-in errors to test.

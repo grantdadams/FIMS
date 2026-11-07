@@ -12,16 +12,15 @@
 data_4_model <- FIMSFrame(FIMS::data_big)
 fleet1_length_comp <- get_data(data_4_model) |>
   dplyr::filter(fleet == "fleet1", type == "length_comp")
+# 23 length bins from 0 to 1100 by 50, in 30 years. Every row has a
+# multinomial sample size of 200.
 length_bins <- sort(unique(fleet1_length_comp[["length"]]))
-# Proportions times the multinomial sample size, by year then length bin.
-expected_counts <- function(bins) {
-  kept_rows <- fleet1_length_comp |>
-    dplyr::filter(length %in% bins) |>
-    dplyr::arrange(timing, length)
-  sample_size <- unlist(
-    FIMS:::parse_data_distribution(kept_rows[["uncertainty"]])[["size"]]
-  )
-  kept_rows[["observed"]] * sample_size
+sample_size <- 200
+# The observed proportion in 1 year and length bin of data_big.
+observed_proportion <- function(year, length_bin) {
+  fleet1_length_comp |>
+    dplyr::filter(timing == year, length == length_bin) |>
+    dplyr::pull(observed)
 }
 
 ## IO correctness ----
@@ -32,10 +31,23 @@ test_that("`read_length_comp()` works with correct inputs", {
       data_4_model, "fleet1", length_bins
     )
   )
-  #' @description Test that `read_length_comp()` returns proportion times sample size, by year then length bin.
-  expect_equal(
+  #' @description Test that `read_length_comp()` returns 1 value per year and length bin, 30 times 23.
+  expect_length(
     object = counts,
-    expected = expected_counts(length_bins)
+    n = 30 * 23
+  )
+  # Values are by year, then length bin. Length 300 is bin 7 and length 500
+  # is bin 11, so year 1 at length 300 is value 7 and year 2 at length 500 is
+  # value 23 + 11 = 34.
+  #' @description Test that `read_length_comp()` returns the year-1 proportion at length 300 times the sample size of 200 as value 7.
+  expect_equal(
+    object = counts[7],
+    expected = observed_proportion(1, 300) * sample_size
+  )
+  #' @description Test that `read_length_comp()` returns the year-2 proportion at length 500 times the sample size of 200 as value 34.
+  expect_equal(
+    object = counts[34],
+    expected = observed_proportion(2, 500) * sample_size
   )
 })
 
@@ -53,9 +65,16 @@ test_that("`read_length_comp()` returns correct warning messages", {
     ),
     regexp = "outside its resolved length bins"
   )
-  #' @description Test that `read_length_comp()` drops the rows outside the length bins and returns the rest.
-  expect_equal(
+  #' @description Test that `read_length_comp()` drops the rows outside the length bins, leaving 30 years times 21 bins.
+  expect_length(
     object = counts,
-    expected = expected_counts(kept_bins)
+    n = 30 * 21
+  )
+  # Without length 0, length 300 is bin 6, so year 1 at length 300 is
+  # value 6.
+  #' @description Test that `read_length_comp()` returns the year-1 proportion at length 300 times 200 as value 6 once length 0 is dropped.
+  expect_equal(
+    object = counts[6],
+    expected = observed_proportion(1, 300) * sample_size
   )
 })

@@ -231,17 +231,16 @@ make_vonb_model_comparison_context <- function() {
   )
 }
 
-# A fleet's length bins and whether it maps ages to lengths, from the model
-# data that initialize_fims() builds.
+# A fleet's length bins and the weights that rebin the population length grid
+# to them, from the model data that initialize_fims() builds. The model maps
+# ages to the fleet's lengths through these weights, 1 column per fleet bin.
 initialize_test_fleet <- function(parameters, data, fleet) {
   fleet_data <- FIMS::initialize_fims(parameters = parameters, data = data)[[
     "model_data"
   ]][["fleets"]][[fleet]]
   list(
     lengths = fleet_data[["length_bins"]],
-    n_lengths = length(fleet_data[["length_bins"]]),
-    requires_age_length_mapping = !is.null(fleet_data[["rebin_weights"]]) ||
-      !is.null(fleet_data[["age_to_length_conversion"]])
+    rebin_weights = fleet_data[["rebin_weights"]]
   )
 }
 
@@ -426,7 +425,7 @@ test_that("von bertalanffy growth converges when L1 L2 and K are estimable", {
     data = ctx$data,
     fleet = "fleet1"
   )
-  n_lengths <- fleet1_obj[["n_lengths"]]
+  n_lengths <- length(fleet1_obj[["lengths"]])
   realized_age_to_length_conversion_array <- array(
     realized_age_to_length_conversion,
     dim = c(n_lengths, n_ages, n_years)
@@ -637,7 +636,16 @@ test_that("von bertalanffy uses fleet length-comp bins when fixed fleet age-to-l
 
   #' @description Test that fleet initialization falls back to the observed length-comp bins when fixed age-to-length conversion rows are absent.
   expect_equal(fleet_obj[["lengths"]], fleet1_lengthcomp_bins)
-  expect_equal(fleet_obj[["n_lengths"]], length(fleet1_lengthcomp_bins))
+  #' @description Test that the model maps ages to 1 column per observed length-comp bin of the fleet.
+  expect_equal(
+    ncol(fleet_obj[["rebin_weights"]]),
+    length(fleet1_lengthcomp_bins)
+  )
+  #' @description Test that the expected length composition has 1 value per year and observed length-comp bin of the fleet.
+  expect_length(
+    report[["lengthcomp_proportion"]][[1]],
+    FIMS::get_n_years(ctx$data) * length(fleet1_lengthcomp_bins)
+  )
 
   #' @description Test that growth-derived mean WAA is still reported when the fleet relies on the length-comp bin fallback.
   expect_gt(length(report[["growth_derived_mean_WAA"]][[1]]), 0)
@@ -667,8 +675,17 @@ test_that("von bertalanffy keeps explicit length_bin geometry when fixed age-to-
   #' @description Test that explicit `length_bin` rows are used even when fixed age-to-length rows are present.
   expect_equal(fleet_obj[["lengths"]], ctx$explicit_bins)
 
-  #' @description Test that the explicit fleet geometry is reflected in the initialized `n_lengths`.
-  expect_equal(fleet_obj[["n_lengths"]], length(ctx$explicit_bins))
+  #' @description Test that the model maps ages to 1 column per explicit `length_bin` of survey1.
+  expect_equal(
+    ncol(fleet_obj[["rebin_weights"]]),
+    length(ctx[["explicit_bins"]])
+  )
+
+  #' @description Test that the expected survey1 length composition has 1 value per year and explicit `length_bin`.
+  expect_length(
+    report[["lengthcomp_proportion"]][[2]],
+    FIMS::get_n_years(ctx$data) * length(ctx[["explicit_bins"]])
+  )
 
   #' @description Test that the growth-derived age-to-length conversion path is still active when explicit fleet bins are present.
   expect_equal(report[["age_to_length_conversion_derived_used"]][[1]][1], 1)
@@ -704,10 +721,21 @@ test_that("von bertalanffy can use explicit length_bin geometry without length c
     fleet = "fleet1"
   )
 
-  expect_equal(fleet_obj[["lengths"]], ctx$explicit_bins)
-  expect_equal(fleet_obj[["n_lengths"]], length(ctx$explicit_bins))
-  expect_true(fleet_obj[["requires_age_length_mapping"]])
+  #' @description Test that explicit `length_bin` rows set the fleet's length bins when there are no length compositions.
+  expect_equal(fleet_obj[["lengths"]], ctx[["explicit_bins"]])
+  #' @description Test that the model maps ages to 1 column per explicit `length_bin` when there are no length compositions.
+  expect_equal(
+    ncol(fleet_obj[["rebin_weights"]]),
+    length(ctx[["explicit_bins"]])
+  )
+  #' @description Test that the expected length composition has 1 value per year and explicit `length_bin`, with no length compositions to fit.
+  expect_length(
+    report[["lengthcomp_proportion"]][[1]],
+    FIMS::get_n_years(ctx$data) * length(ctx[["explicit_bins"]])
+  )
+  #' @description Test that the growth-derived age-to-length conversion path is used for explicit `length_bin` rows without length compositions.
   expect_true(any(report[["age_to_length_conversion_derived_used"]][[1]] == 1))
+  #' @description Test that the growth-derived age-to-length conversion is reported when requested.
   expect_gt(length(report[["age_to_length_conversion_derived"]][[1]]), 0)
 })
 
@@ -790,7 +818,7 @@ test_that("von bertalanffy Newton polishing does not worsen objective or gradien
   )
 })
 
-test_that("fleet-specific length bins initialize n_lengths consistently", {
+test_that("fleet-specific length bins set the size of each fleet's age-to-length key", {
   expect_no_warning(ctx <- make_two_fleet_length_context())
   on.exit(
     {
@@ -814,14 +842,18 @@ test_that("fleet-specific length bins initialize n_lengths consistently", {
   fleet1_lengths <- fleet1_obj[["lengths"]]
   fleet_short_lengths <- fleet_short_obj[["lengths"]]
 
-  #' @description Test that each fleet's n_lengths matches its own initialized length_bin vector.
-  expect_equal(fleet1_obj[["n_lengths"]], length(fleet1_lengths))
-  expect_equal(fleet_short_obj[["n_lengths"]], length(fleet_short_lengths))
+  #' @description Test that the model maps fleet1's ages to 1 column per fleet1 length bin.
+  expect_equal(ncol(fleet1_obj[["rebin_weights"]]), length(fleet1_lengths))
+  #' @description Test that the model maps survey1's ages to 1 column per survey1 length bin, fewer than fleet1's.
+  expect_equal(
+    ncol(fleet_short_obj[["rebin_weights"]]),
+    length(fleet_short_lengths)
+  )
 
-  #' @description Test that different fleets can carry different length_bin vectors.
-  expect_false(identical(fleet1_lengths, fleet_short_lengths))
-  expect_true(length(fleet_short_lengths) < length(fleet1_lengths))
+  #' @description Test that survey1 keeps its own length bins, 0 to 550 by 50, rather than fleet1's.
   expect_equal(fleet_short_lengths, seq(0, 550, 50))
+  #' @description Test that fleet1 keeps its own length bins, 0 to 1100 by 50.
+  expect_equal(fleet1_lengths, seq(0, 1100, 50))
 
   lengthcomp1_values <- FIMS:::read_length_comp(
     ctx$data, "fleet1", fleet1_lengths
@@ -854,6 +886,7 @@ test_that("fleet-specific length bins initialize n_lengths consistently", {
       dplyr::pull(out)
   )
 
+  #' @description Test that survey1's length compositions keep only the rows in its own length bins.
   expect_equal(
     lengthcomp2_values,
     ctx$data |>

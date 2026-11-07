@@ -23,13 +23,6 @@ test_that("`beverton_holt_recruitment()` works with correct inputs", {
     ),
     expected = 18000 / 21.5
   )
-  #' @description Test that `beverton_holt_recruitment()` returns 6400 / 32 = 200 for a spawning biomass of 40, R0 of 1000, steepness of 0.2 and phi0 of 0.2.
-  expect_equal(
-    object = FIMS:::beverton_holt_recruitment(
-      40, log(1000), logit_steepness(0.2), 0.2
-    ),
-    expected = 200
-  )
   #' @description Test that `beverton_holt_recruitment()` returns R0 at unfished spawning biomass, R0 times phi0.
   expect_equal(
     object = FIMS:::beverton_holt_recruitment(
@@ -40,7 +33,25 @@ test_that("`beverton_holt_recruitment()` works with correct inputs", {
 })
 
 ## Edge handling ----
-# No edge cases to test.
+test_that("`beverton_holt_recruitment()` returns correct outputs for edge cases", {
+  # Steepness 0.2 is the lower bound (logit steepness of -Inf). There the
+  # curve is the replacement line R = S / phi0, so recruitment does not
+  # depend on R0.
+  #' @description Test that `beverton_holt_recruitment()` returns S / phi0 = 40 / 0.2 = 200 at steepness 0.2, for a spawning biomass of 40, R0 of 1000 and phi0 of 0.2.
+  expect_equal(
+    object = FIMS:::beverton_holt_recruitment(
+      40, log(1000), logit_steepness(0.2), 0.2
+    ),
+    expected = 40 / 0.2
+  )
+  #' @description Test that `beverton_holt_recruitment()` at steepness 0.2 gives S / phi0 for any R0, here 1e6.
+  expect_equal(
+    object = FIMS:::beverton_holt_recruitment(
+      40, log(1e6), logit_steepness(0.2), 0.2
+    ),
+    expected = 40 / 0.2
+  )
+})
 
 ## Error handling ----
 # No built-in errors to test.

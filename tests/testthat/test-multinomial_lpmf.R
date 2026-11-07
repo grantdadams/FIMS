@@ -24,6 +24,16 @@ test_that("`multinomial_lpmf()` works with correct inputs", {
       prob = c(0.2, 0.3, 0.5), log = TRUE
     )
   )
+  # Each bin holds an equal share of its row's value, so the per-bin values
+  # reported by get_estimates() sum to the row's value.
+  #' @description Test that each of the 3 bins of a row of `multinomial_lpmf()` holds 1/3 of the row's `stats::dmultinom()` log probability.
+  expect_equal(
+    object = log_probability[1, ],
+    expected = rep(
+      stats::dmultinom(c(2, 3, 5), prob = c(0.2, 0.3, 0.5), log = TRUE) / 3,
+      3
+    )
+  )
 })
 
 ## Edge handling ----
@@ -33,6 +43,21 @@ test_that("`multinomial_lpmf()` returns correct outputs for edge cases", {
   expect_equal(
     object = sum(log_probability[2, ]),
     expected = 0
+  )
+
+  # Counts are proportions times a sample size, so they need not be whole
+  # numbers. stats::dmultinom() would round them, so the expected value is
+  # the gamma-function form: log(10!) - sum(lgamma(x + 1)) + sum(x log(p)).
+  non_integer_counts <- c(2.5, 3.5, 4)
+  #' @description Test that `multinomial_lpmf()` does not round counts that are not whole numbers, matching a hand calculation of the gamma-function form for counts 2.5, 3.5 and 4.
+  expect_equal(
+    object = sum(FIMS:::multinomial_lpmf(
+      rbind(non_integer_counts),
+      rbind(c(0.2, 0.3, 0.5))
+    )),
+    expected = log(factorial(10)) -
+      (lgamma(3.5) + lgamma(4.5) + log(factorial(4))) +
+      sum(non_integer_counts * log(c(0.2, 0.3, 0.5)))
   )
 })
 

@@ -13,7 +13,10 @@
 # so the prior scores positions 1 and 3.
 prior_entry <- list(
   target = "Fleet.fleet1.log_Fmort",
-  mean = list(kind = "parameter", name = "Fleet.fleet1.log_Fmort_prior_expected_mean"),
+  mean = list(
+    kind = "parameter",
+    name = "Fleet.fleet1.log_Fmort_prior_expected_mean"
+  ),
   positions = c(1L, 3L),
   hyperparameters = list(
     log_sd = "Fleet.fleet1.log_Fmort_prior_log_sd"
@@ -42,6 +45,43 @@ test_that("`density_inputs()` works with correct inputs", {
   expect_equal(
     object = inputs[["hyperparameters"]][["log_sd"]],
     expected = log(0.5)
+  )
+})
+
+test_that("`density_inputs()` takes a process mean from the population or 0", {
+  # The log_r recruitment process varies around the log of the stock-recruit
+  # curve, a population quantity, so its mean is "derived".
+  log_r_entry <- list(
+    distribution_type = "process",
+    target = "Recruitment.log_r",
+    structure = "iid",
+    mean = list(kind = "derived", name = "log_expected_recruitment"),
+    hyperparameters = list(log_sd = "Recruitment.log_sd")
+  )
+  parameters <- list(
+    Recruitment.log_r = c(13.9, 13.6, 14.1),
+    Recruitment.log_sd = log(0.6)
+  )
+  population <- list(log_expected_recruitment = c(13.8, 13.7, 13.9))
+  inputs <- FIMS:::density_inputs(log_r_entry, parameters, population)
+  #' @description Test that `density_inputs()` gives a process all of its target values when it has no positions.
+  expect_equal(
+    object = inputs[["x"]],
+    expected = c(13.9, 13.6, 14.1)
+  )
+  #' @description Test that `density_inputs()` takes a derived mean from the population, here the log of the stock-recruit curve.
+  expect_equal(
+    object = inputs[["mean"]],
+    expected = c(13.8, 13.7, 13.9)
+  )
+  #' @description Test that `density_inputs()` gives a process with a mean of kind zero the mean 0, as for recruitment deviations.
+  expect_equal(
+    object = FIMS:::density_inputs(
+      utils::modifyList(log_r_entry, list(mean = list(kind = "zero"))),
+      parameters,
+      population
+    )[["mean"]],
+    expected = 0
   )
 })
 

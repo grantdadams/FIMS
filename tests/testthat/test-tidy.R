@@ -137,8 +137,9 @@ test_that("augment() returns correct outputs for edge cases", {
   expect_no_error(object = generics::augment(fit))
 
   # fleet1's age composition in year 2 is left out, so FIMSFrame() fills its
-  # 12 ages with -999.
+  # ages with -999, 1 value per age.
   data_full <- FIMSFrame(data_big)
+  n_missing <- get_n_ages(data_full)
   data_missing <- data_big |>
     dplyr::filter(!(fleet == "fleet1" & type == "age_comp" & timing == 2)) |>
     FIMSFrame()
@@ -151,15 +152,15 @@ test_that("augment() returns correct outputs for edge cases", {
   fit_missing <- fit_without_optimizing(data_missing)
   #' @description Test that generics::augment() leaves out missing observations (-999), so they do not count as data.
   expect_false(any(generics::augment(fit_missing)[[".truth"]] == -999))
-  #' @description Test that generics::augment() has 12 fewer rows when 12 ages of 1 year are missing.
+  #' @description Test that generics::augment() has 1 fewer row per age when the ages of 1 year are missing.
   expect_equal(
     object = nrow(generics::augment(fit_missing)),
-    expected = nrow(generics::augment(fit_full)) - 12
+    expected = nrow(generics::augment(fit_full)) - n_missing
   )
-  #' @description Test that generics::glance() counts 12 fewer observations when 12 ages of 1 year are missing.
+  #' @description Test that generics::glance() counts 1 fewer observation per age when the ages of 1 year are missing.
   expect_equal(
     object = generics::glance(fit_missing)[["nobs"]],
-    expected = generics::glance(fit_full)[["nobs"]] - 12
+    expected = generics::glance(fit_full)[["nobs"]] - n_missing
   )
 })
 
