@@ -87,12 +87,11 @@ Imports:
     jsonlite,
     methods,
     purrr,
-    Rcpp,
     rlang,
+    RTMB (>= 1.9),
     stats,
     stockplotr,
     tibble,
-    TMB (>= 1.8.0),
     utils,
     viridisLite,
     yardstick (>= 1.3.0)
@@ -112,10 +111,6 @@ Suggests:
     tidyr,
     usethis,
     withr
-LinkingTo:
-    Rcpp,
-    RcppEigen,
-    TMB
 VignetteBuilder:
     knitr
 Remotes:
@@ -123,13 +118,11 @@ Remotes:
     github::noaa-afsc/SparseNUTS
 Additional_repositories: 
     https://noaa-fisheries-integrated-toolbox.r-universe.dev
-Config/Rcpp/registration: none
 Config/roxygen2/version: 8.1.1
 Config/testthat/edition: 3
 Config/testthat/parallel: false
 Encoding: UTF-8
 Language: en-US
 LazyData: true
-NeedsCompilation: yes
+NeedsCompilation: no
 Roxygen: list(markdown = TRUE)
-SystemRequirements: GNU make

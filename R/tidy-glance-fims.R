@@ -26,7 +26,7 @@ generics::augment
 #'   \item{`"random_effects"`}{Integrated-out random effects (log_devs, etc.).}
 #'   \item{`"derived_quantity"`}{Model outputs that are not parameters
 #'     (spawning biomass, expected catches, etc.). Uncertainty here comes from
-#'     the delta method via [TMB::sdreport()].}
+#'     the delta method via [RTMB::sdreport()].}
 #' }
 #' Pass any subset of these strings to `parameters` to control which rows are
 #' returned.
@@ -55,7 +55,7 @@ generics::augment
 #' \describe{
 #'   \item{`term`}{Parameter label (from `label` in [get_estimates()]).}
 #'   \item{`estimate`}{Point estimate at the MLE.}
-#'   \item{`std.error`}{Standard error from [TMB::sdreport()].}
+#'   \item{`std.error`}{Standard error from [RTMB::sdreport()].}
 #'   \item{`statistic`}{Wald z-statistic (`estimate / std.error`).}
 #'   \item{`p.value`}{Two-sided p-value for the z-test.}
 #'   \item{`conf.low`, `conf.high`}{Confidence bounds (only when
@@ -185,14 +185,14 @@ tidy.FIMSFit <- function(
 #'   \item{`npar_random`}{Number of random-effect parameters.}
 #'   \item{`marginal_nll`}{Marginal negative log-likelihood
 #'     (`opt$objective`); `NA` if the model was not optimized.}
-#'   \item{`total_nll`}{Total (joint) negative log-likelihood from the TMB
+#'   \item{`total_nll`}{Total (joint) negative log-likelihood from the model
 #'     report (`report$jnll`).}
 #'   \item{`max_gradient`}{Maximum absolute gradient at the MLE. Values
 #'     below 0.001 are generally considered well-converged.}
 #'   \item{`converged`}{Logical; `TRUE` when `opt$convergence == 0` **and**
 #'     `max_gradient < 0.001`.}
 #'   \item{`terminal_sb`}{Spawning biomass at the terminal year,
-#'     extracted from the TMB report. Returns a list-column when multiple
+#'     extracted from the model report. Returns a list-column when multiple
 #'     populations are present.}
 #'   \item{`fims_version`}{The version of FIMS used to fit the model.}
 #'   \item{`run_time`}{Total wall-clock time of the fit in seconds.}
@@ -234,16 +234,13 @@ glance.FIMSFit <- function(x, ...) {
   log_lik <- if (optimized) -marginal_nll else NA_real_
   total_nll <- if (!is.null(report[["jnll"]])) report[["jnll"]] else NA_real_
 
-  # Observations
-  # Count rows that have both observed and expected values.
-  #
-  # don't call get_estimates() here. That function calls
-  # reshape_tmb_estimates() which in turn calls obj$gr()
-  # function can segfault after clear() has freed the C++ memory.
-  # reshape_json_estimates() only parses the stored JSON string (x@model_output)
-  # and is safe to call at any time.
-  json_estimates <- reshape_json_estimates(get_model_output(x))
-  nobs <- sum(!is.na(json_estimates[["observed"]]) & !is.na(json_estimates[["expected"]]))
+  # Observations: rows that have both observed and expected values. Missing
+  # observations (-999) are not data, so they are not counted.
+  estimates <- get_estimates(x)
+  nobs <- sum(
+    !is.na(estimates[["observed"]]) & estimates[["observed"]] != -999 &
+      !is.na(estimates[["expected"]])
+  )
 
   # information criteria
   aic <- if (optimized) 2 * npar_fixed - 2 * log_lik else NA_real_

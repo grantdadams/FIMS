@@ -89,15 +89,10 @@ get_model_output(x)
 \code{\link[=get_input]{get_input()}} returns the list that was used to fit the FIMS model, which
 is the returned object from \code{\link[=setup_default_parameters]{setup_default_parameters()}}.
 
-\code{\link[=get_report]{get_report()}} returns the TMB report, where anything that is flagged as
-reportable in the C++ code is returned.
+\code{\link[=get_report]{get_report()}} returns the model report, with every quantity the model
+passes to \code{REPORT()}.
 
-\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[TMB:MakeADFun]{TMB::MakeADFun()}}. Its methods can use
-the FIMS model that is in memory instead of the model that made the fit.
-This happens after \code{\link[=clear]{clear()}}, after another model is set up, or after the
-fit is read with \code{\link[=readRDS]{readRDS()}}. The methods then return wrong values without
-an error. Use \code{\link[=get_report]{get_report()}}, \code{\link[=get_gradient]{get_gradient()}}, or \code{\link[=get_estimates]{get_estimates()}}
-instead. These return values stored during fitting.
+\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.
 
 \code{\link[=get_opt]{get_opt()}} returns the output from \code{\link[=nlminb]{nlminb()}}, which is the minimizer used
 in \code{\link[=fit_fims]{fit_fims()}}.
@@ -106,10 +101,9 @@ in \code{\link[=fit_fims]{fit_fims()}}.
 model.
 
 \code{\link[=get_gradient]{get_gradient()}} returns the per-parameter gradient vector at the MLE as
-stored during fitting. It reads a stored R vector, so it does not depend on
-the FIMS model in memory.
+stored during fitting, so the model is not evaluated again.
 
-\code{\link[=get_sdreport]{get_sdreport()}} returns the list from \code{\link[TMB:sdreport]{TMB::sdreport()}}.
+\code{\link[=get_sdreport]{get_sdreport()}} returns the list from \code{\link[RTMB:sdreport]{RTMB::sdreport()}}.
 
 \code{\link[=get_convergence]{get_convergence()}} returns a tibble with one row per convergence check
 run by \code{\link[=fit_fims]{fit_fims()}}: \code{check}, \code{severity} (\code{"OK"}, \code{"NOTE"} for a check that
@@ -137,7 +131,7 @@ seconds as a \code{difftime} object.
 \code{\link[=get_version]{get_version()}} returns the \code{package_version} of FIMS that was used to fit
 the model.
 
-\code{\link[=get_model_output]{get_model_output()}} returns the finalized FIMS output as a JSON list.
+\code{\link[=get_model_output]{get_model_output()}} returns the \code{\link[=get_estimates]{get_estimates()}} table as a JSON string.
 }
 \description{
 There is an accessor function for each slot in the S4 class \code{FIMSFit}, where
