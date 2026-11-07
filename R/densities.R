@@ -113,6 +113,10 @@ process_densities <- function(parameter_table) {
     if (length(process_structure) == 0) {
       process_structure <- "iid"
     }
+    # A process's own rows name their target in target_label. The 1
+    # exception is the default recruitment process from
+    # setup_default_parameters(), whose log_sd row has no target_label and
+    # belongs to log_devs or log_r.
     is_hyperparameter <- is_process &
       parameter_table[["label"]] %in% hyperparameter_labels &
       parameter_table[["module_name"]] == rows[["module_name"]][1] &

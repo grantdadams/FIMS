@@ -11,9 +11,61 @@
 # to them, so report_list() creates a variable with the right name for each
 # list element.
 
+# The dimensions of each quantity in the get_estimates() table, which labels
+# every value with its year, age and length bin. Matrices are flattened by
+# year (flatten_by_year()).
+# - "year": 1 value per year.
+# - "year_age": years by ages.
+# - "year_length": years by the fleet's length bins.
+# - "conditional_age_at_length": 1 row per year and length bin with
+#   conditional age-at-length data, by ages.
+# Population quantities cover the model years, some with 1 more year for the
+# start of the year after the last model year. Fleet quantities cover the
+# model years. A reported quantity left out of the table is listed in
+# derived_quantity_rows() (R/output.R).
+quantity_dimensions <- c(
+  # Population quantities
+  biomass = "year",
+  expected_recruitment = "year",
+  mortality_F = "year_age",
+  mortality_M = "year_age",
+  mortality_Z = "year_age",
+  numbers_at_age = "year_age",
+  proportion_mature_at_age = "year_age",
+  spawning_biomass = "year",
+  sum_selectivity = "year_age",
+  total_catch_numbers = "year",
+  total_catch_weight = "year",
+  unfished_biomass = "year",
+  unfished_numbers_at_age = "year_age",
+  unfished_spawning_biomass = "year",
+  spawning_biomass_ratio = "year",
+  # Fleet quantities
+  catch_numbers_at_age = "year_age",
+  catch_weight_at_age = "year_age",
+  index_numbers_at_age = "year_age",
+  index_weight_at_age = "year_age",
+  catch_numbers = "year",
+  catch_weight = "year",
+  index_numbers = "year",
+  index_weight = "year",
+  catch_expected = "year",
+  index_expected = "year",
+  log_catch_expected = "year",
+  log_index_expected = "year",
+  agecomp_expected = "year_age",
+  agecomp_proportion = "year_age",
+  lengthcomp_expected = "year_length",
+  lengthcomp_proportion = "year_length",
+  catch_numbers_at_length = "year_length",
+  index_numbers_at_length = "year_length",
+  conditional_age_at_length_proportion = "conditional_age_at_length"
+)
+
 #' Report the model's quantities
 #'
-#' Nothing here changes the likelihood.
+#' Nothing here changes the likelihood. The dimensions of each quantity in
+#' the get_estimates() table are in `quantity_dimensions` above.
 #'
 #' @param model_data The `model_data` element of initialize_fims().
 #' @param model Output of model_predictions().

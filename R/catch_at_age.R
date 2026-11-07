@@ -235,129 +235,204 @@ population_dynamics <- function(module_parameters, model_data, population_data,
 #' Catch, index and compositions by fleet (model years only)
 #'
 #' @return A list by fleet of predicted quantities, named as in the report.
+#'   Their order is the order of the report.
 #' @noRd
 fleet_predictions <- function(module_parameters, model_data, biology,
                               population) {
   n_years <- model_data[["n_years"]]
-  model_years <- seq_len(n_years)
-  numbers <- population[["numbers_at_age"]][model_years, ]
-  mortality_Z <- biology[["mortality_Z"]]
+  numbers_at_age <- population[["numbers_at_age"]][seq_len(n_years), ]
   predictions <- list()
   for (fleet in names(model_data[["fleets"]])) {
     fleet_data <- model_data[["fleets"]][[fleet]]
-    # The fleet's own weight at age if it has one, otherwise the population's.
-    fleet_weight <- if (is.null(fleet_data[["weight_at_age"]])) {
-      biology[["weight_at_age"]][model_years, ]
+    catch_and_index <- catch_and_index_predictions(
+      fleet, fleet_data, module_parameters, biology, numbers_at_age, n_years
+    )
+    # Compositions come from the catch numbers if the fleet has catch data,
+    # otherwise from the index numbers.
+    numbers_for_composition <- if (fleet_data[["has_catch"]]) {
+      catch_and_index[["catch_numbers_at_age"]]
     } else {
-      fleet_data[["weight_at_age"]]
+      catch_and_index[["index_numbers_at_age"]]
     }
-
-    # Baranov catch equation.
-    catch_numbers_at_age <- biology[["fishing_mortality_at_age"]][[fleet]] /
-      mortality_Z * numbers * (1 - exp(-mortality_Z))
-
-    # Index at the start of the year. q can vary by year.
-    catchability <- per_year(
-      exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years
+    age_to_length <- age_to_length_predictions(
+      fleet_data, biology, numbers_for_composition, n_years
     )
-    index_numbers_at_age <- catchability * biology[["selectivity"]][[fleet]] *
-      numbers
-
-    quantities <- list(
-      catch_numbers_at_age = catch_numbers_at_age,
-      catch_weight_at_age = catch_numbers_at_age * fleet_weight,
-      index_numbers_at_age = index_numbers_at_age,
-      index_weight_at_age = index_numbers_at_age * fleet_weight
+    compositions <- composition_predictions(
+      fleet_data, numbers_for_composition, age_to_length[["key"]],
+      catch_and_index
     )
-    quantities[["catch_numbers"]] <- RTMB::rowSums(catch_numbers_at_age)
-    quantities[["catch_weight"]] <- RTMB::rowSums(quantities[["catch_weight_at_age"]])
-    quantities[["index_numbers"]] <- RTMB::rowSums(index_numbers_at_age)
-    quantities[["index_weight"]] <- RTMB::rowSums(quantities[["index_weight_at_age"]])
-    quantities[["catch_expected"]] <- if (fleet_data[["observed_catch_units"]] == "number") {
+    predictions[[fleet]] <- c(
+      catch_and_index,
+      compositions[["age"]],
+      age_to_length[["derived"]],
+      compositions[["length"]],
+      age_to_length[["conditional_age_at_length"]]
+    )
+  }
+  predictions
+}
+
+#' Catch and index of 1 fleet
+#'
+#' Catch is over the whole year (Baranov). The index is at the start of the
+#' year, with no mortality within the year. The expected catch and index are
+#' in the units of the fleet's data, numbers or weight.
+#'
+#' @param fleet The fleet name.
+#' @param fleet_data The fleet's element of `model_data[["fleets"]]`.
+#' @param numbers_at_age Numbers at age in the model years.
+#' @return A list of catch and index quantities, by year or by year and age.
+#' @noRd
+catch_and_index_predictions <- function(fleet, fleet_data, module_parameters,
+                                        biology, numbers_at_age, n_years) {
+  mortality_Z <- biology[["mortality_Z"]]
+  # The fleet's own weight at age if it has one, otherwise the population's.
+  fleet_weight <- if (is.null(fleet_data[["weight_at_age"]])) {
+    biology[["weight_at_age"]][seq_len(n_years), ]
+  } else {
+    fleet_data[["weight_at_age"]]
+  }
+
+  # Baranov catch equation.
+  catch_numbers_at_age <- biology[["fishing_mortality_at_age"]][[fleet]] /
+    mortality_Z * numbers_at_age * (1 - exp(-mortality_Z))
+
+  # Index at the start of the year. q can vary by year.
+  catchability <- per_year(
+    exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years
+  )
+  index_numbers_at_age <- catchability * biology[["selectivity"]][[fleet]] *
+    numbers_at_age
+
+  quantities <- list(
+    catch_numbers_at_age = catch_numbers_at_age,
+    catch_weight_at_age = catch_numbers_at_age * fleet_weight,
+    index_numbers_at_age = index_numbers_at_age,
+    index_weight_at_age = index_numbers_at_age * fleet_weight
+  )
+  quantities[["catch_numbers"]] <- RTMB::rowSums(catch_numbers_at_age)
+  quantities[["catch_weight"]] <-
+    RTMB::rowSums(quantities[["catch_weight_at_age"]])
+  quantities[["index_numbers"]] <- RTMB::rowSums(index_numbers_at_age)
+  quantities[["index_weight"]] <-
+    RTMB::rowSums(quantities[["index_weight_at_age"]])
+  quantities[["catch_expected"]] <-
+    if (fleet_data[["observed_catch_units"]] == "number") {
       quantities[["catch_numbers"]]
     } else {
       quantities[["catch_weight"]]
     }
-    quantities[["index_expected"]] <- if (fleet_data[["observed_index_units"]] == "number") {
+  quantities[["index_expected"]] <-
+    if (fleet_data[["observed_index_units"]] == "number") {
       quantities[["index_numbers"]]
     } else {
       quantities[["index_weight"]]
     }
-    quantities[["log_catch_expected"]] <- log(quantities[["catch_expected"]])
-    quantities[["log_index_expected"]] <- log(quantities[["index_expected"]])
+  quantities[["log_catch_expected"]] <- log(quantities[["catch_expected"]])
+  quantities[["log_index_expected"]] <- log(quantities[["index_expected"]])
+  quantities
+}
 
-    # Compositions (evaluate_age_comp() says which numbers they come from).
-    numbers_for_composition <- if (fleet_data[["has_catch"]]) {
-      catch_numbers_at_age
-    } else {
-      index_numbers_at_age
-    }
-    age_composition <- evaluate_age_comp(
-      numbers_for_composition, fleet_data[["age_comp"]]
+#' The age-to-length key and conditional age-at-length of 1 fleet
+#'
+#' The age-to-length key, P(length bin | age), is either a fixed key from the
+#' data (1, or 1 per year), or, when initialize_fims() stored rebin weights
+#' for the fleet, the growth length distribution moved onto the fleet's
+#' length bins.
+#'
+#' @inheritParams catch_and_index_predictions
+#' @param numbers_for_composition The numbers at age the compositions come
+#'   from, years by ages.
+#' @return A list with the `key` (NULL when the fleet has no length data),
+#'   the `derived` key quantities that are reported, and
+#'   `conditional_age_at_length`. The last 2 are empty lists when the fleet
+#'   has none.
+#' @noRd
+age_to_length_predictions <- function(fleet_data, biology,
+                                      numbers_for_composition, n_years) {
+  key <- fleet_data[["age_to_length_conversion"]]
+  derived <- list()
+  if (!is.null(fleet_data[["rebin_weights"]])) {
+    growth <- biology[["growth"]]
+    key <- age_to_length_conversion_derived(
+      growth[["length_probability"]], fleet_data[["rebin_weights"]]
     )
-    quantities[["agecomp_expected"]] <- age_composition[["expected"]]
-    quantities[["agecomp_proportion"]] <- age_composition[["proportion"]]
-
-    # The age-to-length key, P(length bin | age). It is either a fixed key
-    # from the data (1, or 1 per year), or, when initialize_fims() stored
-    # rebin weights for the fleet, the growth length distribution moved onto
-    # the fleet's length bins.
-    age_to_length <- fleet_data[["age_to_length_conversion"]]
-    if (!is.null(fleet_data[["rebin_weights"]])) {
-      age_to_length <- age_to_length_conversion_derived(
-        biology[["growth"]][["length_probability"]],
-        fleet_data[["rebin_weights"]]
-      )
-      quantities[["age_to_length_conversion_derived"]] <- age_to_length
-      # Mean weight at age implied by the fleet's key: weight at each bin's
-      # midpoint, averaged over P(length bin | age). Reported only.
-      growth <- biology[["growth"]]
-      mean_weight_at_age <- age_to_length %*% weight_at_length(
-        fleet_data[["length_bin_midpoints"]],
-        growth[["length_weight_a"]], growth[["length_weight_b"]]
-      )
-      quantities[["growth_derived_mean_WAA"]] <- RTMB::matrix(
+    # Mean weight at age implied by the fleet's key: weight at each bin's
+    # midpoint, averaged over P(length bin | age). Reported only.
+    mean_weight_at_age <- key %*% weight_at_length(
+      fleet_data[["length_bin_midpoints"]],
+      growth[["length_weight_a"]], growth[["length_weight_b"]]
+    )
+    derived <- list(
+      age_to_length_conversion_derived = key,
+      growth_derived_mean_WAA = RTMB::matrix(
         as.vector(mean_weight_at_age), n_years, length(mean_weight_at_age),
         byrow = TRUE
       )
-    }
-    if (!is.null(age_to_length)) {
-      length_composition <- evaluate_length_comp(
-        age_composition[["proportion"]], age_to_length,
-        fleet_data[["length_comp"]]
-      )
-      quantities[["lengthcomp_expected"]] <- length_composition[["expected"]]
-      quantities[["lengthcomp_proportion"]] <-
-        length_composition[["proportion"]]
-      quantities[["catch_numbers_at_length"]] <-
-        apply_age_to_length_conversion(catch_numbers_at_age, age_to_length)
-      quantities[["index_numbers_at_length"]] <-
-        apply_age_to_length_conversion(index_numbers_at_age, age_to_length)
-    }
-
-    conditional_age_at_length <- fleet_data[["conditional_age_at_length"]]
-    if (!is.null(conditional_age_at_length)) {
-      quantities[["conditional_age_at_length_proportion"]] <-
-        expected_conditional_age_at_length(
-          numbers_for_composition, age_to_length,
-          conditional_age_at_length[["year"]],
-          conditional_age_at_length[["length_bin"]],
-          ageing_error = fleet_data[["ageing_error"]]
-        )
-    }
-
-    # Ageing error moves the expected age composition from true to read ages.
-    # This comes after the length composition, which needs true ages.
-    ageing_error <- fleet_data[["ageing_error"]]
-    if (!is.null(ageing_error) && !is.null(fleet_data[["age_comp"]])) {
-      quantities[["agecomp_proportion"]] <- apply_ageing_error(
-        quantities[["agecomp_proportion"]], ageing_error
-      )
-      quantities[["agecomp_expected"]] <- apply_ageing_error(
-        quantities[["agecomp_expected"]], ageing_error
-      )
-    }
-    predictions[[fleet]] <- quantities
+    )
   }
-  predictions
+
+  conditional_age_at_length <- list()
+  observed <- fleet_data[["conditional_age_at_length"]]
+  if (!is.null(observed)) {
+    conditional_age_at_length[["conditional_age_at_length_proportion"]] <-
+      expected_conditional_age_at_length(
+        numbers_for_composition, key,
+        observed[["year"]], observed[["length_bin"]],
+        ageing_error = fleet_data[["ageing_error"]]
+      )
+  }
+  list(
+    key = key, derived = derived,
+    conditional_age_at_length = conditional_age_at_length
+  )
+}
+
+#' Expected age and length compositions of 1 fleet
+#'
+#' @inheritParams age_to_length_predictions
+#' @param age_to_length The fleet's age-to-length key, or NULL.
+#' @param catch_and_index Output of catch_and_index_predictions().
+#' @return A list with the `age` composition quantities and the `length`
+#'   composition quantities (an empty list when the fleet has no key).
+#' @noRd
+composition_predictions <- function(fleet_data, numbers_for_composition,
+                                    age_to_length, catch_and_index) {
+  age_composition <- evaluate_age_comp(
+    numbers_for_composition, fleet_data[["age_comp"]]
+  )
+  age_quantities <- list(
+    agecomp_expected = age_composition[["expected"]],
+    agecomp_proportion = age_composition[["proportion"]]
+  )
+  # Ageing error moves the expected age composition from true to read ages.
+  # The length composition below uses true ages.
+  ageing_error <- fleet_data[["ageing_error"]]
+  if (!is.null(ageing_error) && !is.null(fleet_data[["age_comp"]])) {
+    age_quantities[["agecomp_expected"]] <- apply_ageing_error(
+      age_quantities[["agecomp_expected"]], ageing_error
+    )
+    age_quantities[["agecomp_proportion"]] <- apply_ageing_error(
+      age_quantities[["agecomp_proportion"]], ageing_error
+    )
+  }
+
+  length_quantities <- list()
+  if (!is.null(age_to_length)) {
+    length_composition <- evaluate_length_comp(
+      age_composition[["proportion"]], age_to_length,
+      fleet_data[["length_comp"]]
+    )
+    length_quantities <- list(
+      lengthcomp_expected = length_composition[["expected"]],
+      lengthcomp_proportion = length_composition[["proportion"]],
+      catch_numbers_at_length = apply_age_to_length_conversion(
+        catch_and_index[["catch_numbers_at_age"]], age_to_length
+      ),
+      index_numbers_at_length = apply_age_to_length_conversion(
+        catch_and_index[["index_numbers_at_age"]], age_to_length
+      )
+    )
+  }
+  list(age = age_quantities, length = length_quantities)
 }
