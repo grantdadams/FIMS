@@ -32,8 +32,8 @@ inv_logit <- function(a, b, logit_x) {
 #' negative one. Used by logistic maturity and selectivity.
 #'
 #' @param inflection_point The value of `x` where the function is 0.5.
-#' @param slope Steepness of the curve at the inflection point, positive for a
-#'   rising curve.
+#' @param slope The slope parameter, positive for a rising curve. The curve's
+#'   slope at the inflection point is slope / 4.
 #' @param x Values, e.g., ages.
 #' @return The logistic function at each `x`.
 #' @noRd
