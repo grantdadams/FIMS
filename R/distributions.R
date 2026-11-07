@@ -1,10 +1,10 @@
 # Distributions: log densities for data, processes and priors
 #
-# These return log densities, and fims_model() negates their sum.
+# These return log densities, and model_likelihood() negates their sum.
 #
 # Data log densities take (observed, predicted, ...): the observations, the
 # model's prediction named in the data's uncertainty formula, then the
-# family's own parameters (e.g. log_sd) by name. They return 1 value per
+# family's own parameters (e.g., log_sd) by name. They return 1 value per
 # observation, so each can be reported, and the total is sum() of the result.
 # Missing observations are NA and contribute 0. Which observations are missing
 # is data, so skipping them does not branch on an estimated value.
@@ -231,7 +231,7 @@ random_walk_process_draw <- function(x, mean, log_sd) {
 
 # Families and structures -----------------------------------------------------
 #
-# Data families, by the family in the data's uncertainty formula, e.g.
+# Data families, by the family in the data's uncertainty formula, e.g.,
 # "~ dlnorm(meanlog = log_catch_expected, sdlog = 0.01)". Each has:
 # - lpdf: the log density.
 # - draw: the matching draw for simulate_fims().

@@ -7,13 +7,11 @@
 #' one lines, that will be used in the bookdown report of the results from
 #' {testthat}. This line can be more than 80 characters.
 
-# use_*_template ----
+# use_testthat_template ----
 ## setup ----
-# Set up for all of the use_*_template functions in the following section.
-
-# This is a meta-test that creates a temporary package structure to test the use
-# of the `use_testthat_template()` function. It works
-# inside the temporary environment created by the test file.
+# This is a meta-test that creates a temporary package structure to test
+# `use_testthat_template()`. It works inside the temporary environment created
+# by the test file.
 
 # Create a temporary package structure with the minimal files necessary for
 # testing purposes in a temporary directory. And, ensure the temporary directory
@@ -44,9 +42,6 @@ withr::with_dir(
     suppressMessages(usethis::use_testthat())
   }
 )
-# use_testthat_template ----
-## setup ----
-# No additional setup is needed.
 
 ## IO correctness ----
 test_that("`use_testthat_template()` works with correct inputs", {

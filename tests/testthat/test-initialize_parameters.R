@@ -51,7 +51,7 @@ test_that("`initialize_parameters()` returns correct error messages", {
   )
   unsorted_parameters <- small_parameters |>
     dplyr::arrange(dplyr::desc(timing))
-  #' @description Test that `initialize_parameters()` errors for rows out of year order, because FIMS reads values in row order and sorting would change the model.
+  #' @description Test that `initialize_parameters()` errors for rows out of year order, rather than sorting them without telling the user.
   expect_error(
     object = FIMS:::initialize_parameters(unsorted_parameters),
     regexp = "not in year and age order"

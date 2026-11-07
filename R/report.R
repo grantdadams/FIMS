@@ -15,7 +15,7 @@
 #'
 #' Nothing here changes the likelihood.
 #'
-#' @param model_data The `data` element of initialize_fims().
+#' @param model_data The `model_data` element of initialize_fims().
 #' @param model Output of model_predictions().
 #' @param likelihood Output of model_likelihood().
 #' @noRd

@@ -1,7 +1,7 @@
 # Selectivity modules
 #
 # Each function returns selectivity at age, a value between 0 and 1, for 1
-# fleet. `age` is the age in years (e.g. 1:12), not an index. Parameters are
+# fleet. `age` is the age in years (e.g., 1:12), not an index. Parameters are
 # named as in the `label` column of the parameter tibble and are on the scale
 # the label says (natural unless it starts with log_ or logit_). Selectivity
 # is not rescaled to a maximum of 1, so a dome may peak below 1.

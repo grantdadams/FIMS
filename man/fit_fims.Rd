@@ -70,15 +70,14 @@ Fit a FIMS model (BETA)
 \details{
 This function is a beta version still and subject to change
 without warning.
-Mapped parameters are expanded to their full FIMS vectors for reporting.
-Shared parameters receive the same estimate and standard error in
-\code{\link[=get_estimates]{get_estimates()}}. Mapped-off parameters retain their starting values and
-have \code{NA} standard errors. Gradients describe reduced fixed-effect
-optimization variables and are reported only on the first full parameter
-in each shared level. Parameter counts describe the reduced vectors.
-With no active fixed effects, RTMB evaluates the random-effects model without
-running an outer optimizer. If no parameters remain active, use
-\code{optimize = FALSE}.
+
+\code{\link[=get_estimates]{get_estimates()}} keeps every parameter row and gives shared values the
+same estimate and standard error. Constant values keep their starting
+values and have \code{NA} standard errors. Gradients are reported only on the
+first row of each shared value. Parameter counts refer to the values that
+are estimated. If all fixed effects are held constant, the random-effects
+model is evaluated without an outer optimizer. If every value is held
+constant, use \code{optimize = FALSE}.
 }
 \seealso{
 \itemize{

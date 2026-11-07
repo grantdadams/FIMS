@@ -10,16 +10,30 @@
 #' (initialize_model_data()), and priors and processes become densities
 #' (initialize_densities()).
 #'
-#' @param parameters A tibble of parameters, as from setup_default_parameters()
-#'   and add_process().
+#' @param parameters A tibble of parameters, as from setup_default_parameters(),
+#'   add_process() and add_priors().
 #' @param data A FIMSFrame, or a data frame that FIMSFrame() accepts.
 #' @return A list with `parameters`, `map` and `random` for
 #'   RTMB::MakeADFun(), the model data (`model_data`), the parameter table
 #'   with the RTMB name of each row (`parameter_table`), the tibble as given
-#'   (`tibble`), the FIMSFrame (`frame`), and `model`, which holds the model
-#'   settings (model_settings()).
+#'   (`tibble`), the FIMSFrame (`frame`), and `model`, an environment of
+#'   reporting switches, e.g.,
+#'   `input[["model"]]$ReportAgeToLengthConversionDerivedTensor(TRUE)`.
 #' @keywords fit_fims
 #' @export
+#' @seealso
+#' * [setup_default_parameters()]
+#' * [FIMSFrame()]
+#' * [fit_fims()]
+#' @examples
+#' \dontrun{
+#' # Prepare data for FIMS model
+#' data("data_big", package = "FIMS")
+#' data_4_model <- FIMSFrame(data_big)
+#' # Build the model inputs from the default parameters
+#' parameters_list <- setup_default_parameters(data = data_4_model) |>
+#'   initialize_fims(data = data_4_model)
+#' }
 initialize_fims <- function(parameters, data) {
   if (missing(parameters) || !tibble::is_tibble(parameters)) {
     cli::cli_abort("The {.var parameters} argument must be a tibble.")
@@ -259,9 +273,12 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
     ))
   }
   if (value("reference_age_for_length_old") <= value("reference_age_for_length_young")) {
-    cli::cli_abort(
-      "VonBertalanffySchnuteGrowth reference_age_for_length_old must be > reference_age_for_length_young"
-    )
+    cli::cli_abort(c(
+      "x" = "VonBertalanffySchnute growth: reference_age_for_length_old must
+      be > reference_age_for_length_young.",
+      "i" = "The values are {.val {value('reference_age_for_length_young')}}
+      (young) and {.val {value('reference_age_for_length_old')}} (old)."
+    ))
   }
   for (label in c(
     "mean_length_young", "mean_length_old", "growth_coefficient",
@@ -275,9 +292,11 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
     }
   }
   if (value("mean_length_old") <= value("mean_length_young")) {
-    cli::cli_abort(
-      "VonBertalanffySchnuteGrowth mean_length_old must be > mean_length_young"
-    )
+    cli::cli_abort(c(
+      "x" = "VonBertalanffySchnute growth: mean_length_old must be > mean_length_young.",
+      "i" = "The values are {.val {value('mean_length_young')}} (young) and
+      {.val {value('mean_length_old')}} (old)."
+    ))
   }
   invisible(TRUE)
 }

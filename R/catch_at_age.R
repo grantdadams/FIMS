@@ -2,9 +2,8 @@
 #
 # catch_at_age() predicts everything the likelihood compares with data:
 # biology and mortality, then the population year by year, then each fleet's
-# catch, index and compositions. fims_model() (R/model.R) calls it, adds the
-# likelihood and reports, so another model type needs only its own
-# predictions.
+# catch, index and compositions. fims_model() (R/model.R) calls it, then adds
+# the likelihood and reports.
 #
 # RTMB records the arithmetic the first time it runs (the "tape") and then
 # evaluates the tape and its derivatives in C++, so this R code runs only when
@@ -13,7 +12,7 @@
 # data.
 #
 # Inputs, both from initialize_fims():
-# - `module_parameters`: parameters grouped by module and fleet, e.g.
+# - `module_parameters`: parameters grouped by module and fleet, e.g.,
 #   module_parameters$Selectivity$fleet1$slope. A parameter that varies by
 #   year is a matrix with 1 row per year.
 # - `model_data`: dimensions (n_years, ages), 1 entry per population
@@ -38,7 +37,7 @@
 #' `model_data[["populations"]]`.
 #'
 #' @param module_parameters Parameters grouped by module (group_parameters()).
-#' @param model_data The `data` element of initialize_fims().
+#' @param model_data The `model_data` element of initialize_fims().
 #' @return A list with `biology`, `population` and `fleets` (a list by fleet).
 #' @noRd
 catch_at_age <- function(module_parameters, model_data) {
@@ -63,7 +62,7 @@ population_biology <- function(module_parameters, model_data, population_data) {
   ages <- model_data[["ages"]]
   module_types <- population_data[["module_types"]]
 
-  # Natural mortality is a years-by-ages matrix on the log scale.
+  # log_M is a years-by-ages matrix of log natural mortality.
   mortality_M <- exp(module_parameters[["Population"]][["log_M"]])
 
   # Maturity in each model year. The year after the last model year repeats
@@ -99,7 +98,8 @@ population_biology <- function(module_parameters, model_data, population_data) {
       module_parameters[["Selectivity"]][[fleet]], n_years
     )
     annual_f <- per_year(
-      exp(module_parameters[["Fleet"]][[fleet]][["log_Fmort"]]), n_years
+      exp(module_parameters[["Fleet"]][[fleet]][["log_Fmort"]]), n_years,
+      name = paste0("Fleet.", fleet, ".log_Fmort")
     )
     fishing_mortality_at_age[[fleet]] <- annual_f * selectivity[[fleet]]
   }
@@ -125,9 +125,8 @@ population_biology <- function(module_parameters, model_data, population_data) {
 #' @noRd
 population_dynamics <- function(module_parameters, model_data, population_data,
                                 biology) {
-  # RTMB: without these lines, `x[i] <- value` fails when `x` starts as a
-  # plain matrix of zeros and `value` depends on parameters, and so does
-  # c(1, value).
+  # RTMB: lets `x[i] <- value` and c(1, value) keep AD values that depend on
+  # parameters when `x` starts as a plain matrix of zeros.
   "[<-" <- RTMB::ADoverload("[<-")
   "c" <- RTMB::ADoverload("c")
   n_years <- model_data[["n_years"]]
@@ -160,9 +159,9 @@ population_dynamics <- function(module_parameters, model_data, population_data,
   unfished_numbers_at_age <- matrix(0, n_years + 1, n_ages)
   spawning_biomass <- numeric(n_years + 1)
   unfished_spawning_biomass <- numeric(n_years + 1)
-  # `log_expected_recruitment` is the stock-recruit curve (the median, with
-  # no bias correction). `expected_recruitment` is the realized number of
-  # recruits, including the deviation.
+  # `log_expected_recruitment` is the log of median recruitment from the
+  # stock-recruit curve (no bias correction). `expected_recruitment` is the
+  # realized number of recruits, including the deviation.
   expected_recruitment <- numeric(n_years + 1)
   log_expected_recruitment <- numeric(n_years - 1)
 
@@ -263,7 +262,8 @@ fleet_predictions <- function(module_parameters, model_data, biology,
 
     # Index at the start of the year. q can vary by year.
     catchability <- per_year(
-      exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years
+      exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years,
+      name = paste0("Fleet.", fleet, ".log_q")
     )
     index_numbers_at_age <- catchability * biology[["selectivity"]][[fleet]] *
       numbers
@@ -368,8 +368,7 @@ fleet_predictions <- function(module_parameters, model_data, biology,
   predictions
 }
 
-# Model types, by `model_type` in the model data. A new model type adds its
-# predictions function here.
+# Model types, by `model_type` in the model data.
 model_functions <- list(
   CatchAtAge = catch_at_age
 )

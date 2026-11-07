@@ -18,7 +18,8 @@ add_process(
 \arguments{
 \item{parameters}{The parameter tibble.}
 
-\item{formula}{\verb{target ~ fixed term + random term} (see the file header).}
+\item{formula}{\verb{target ~ fixed term + random term}. See Details for the
+forms.}
 
 \item{module_name, fleet}{Which module the target belongs to.}
 
@@ -53,11 +54,35 @@ random term, each \code{expected_mean} starts from the mean of its block,
 and the random effects keep their own starting values.
 }
 }
+\details{
+The formula describes 1 parameter, the target. Its right side has a fixed
+term, a random term, or both:
+\itemize{
+\item \code{log_q ~ cut(year, c(-Inf, 10, 20, Inf))}: 3 time blocks.
+\item \code{inflection_point ~ cut(year, c(-Inf, 15, Inf)) + ar1(1 | year)}: an AR1
+process around 2 block means.
+\item \code{log_q ~ 1 + (1 | year)}: an iid process around 1 mean.
+\item \code{log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year)}: an iid process by
+age and year.
+\item \code{log_q ~ rw(1 | year)}: a random walk.
+}
+
+These breaks fit data with years 1 to 30, as in \code{data_big}. When the data
+use calendar years, \code{year} is a calendar year, e.g.,
+\code{cut(year, c(-Inf, 2000, Inf))}.
+}
 \examples{
 \dontrun{
+parameters <- setup_default_parameters(FIMSFrame(data_big))
+# An AR1 process on survey catchability
 parameters |>
   add_process(log_q ~ 1 + ar1(1 | year),
     module_name = "Fleet", fleet = "survey1"
+  )
+# Fishing mortality in 2 time blocks
+parameters |>
+  add_process(log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
+    module_name = "Fleet", fleet = "fleet1"
   )
 }
 }

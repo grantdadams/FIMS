@@ -79,7 +79,8 @@ von_bertalanffy_schnute_growth <- function(age,
                                            mean_length_young_growth_coefficient_logit_corr = NULL,
                                            mean_length_old_growth_coefficient_logit_corr = NULL) {
   mean_length_old <- exp(log_mean_length_old)
-  # Which arguments are given is set by the tibble (data), not by a value.
+  # Which arguments are given is set by the tibble (data), not by an
+  # estimated value, so this `if` is safe on the tape.
   mean_length_young <- if (is.null(logit_mean_length_young)) {
     exp(log_mean_length_young)
   } else {
@@ -151,6 +152,11 @@ von_bertalanffy_schnute_growth <- function(age,
 #' Ages below the young reference age grow linearly from 0 to L1. `age` and
 #' the reference ages are data, so the switch does not depend on an estimated
 #' value.
+#'
+#' @inheritParams delta_method_length_sd
+#' @param reference_age_young,reference_age_old The reference ages a1 and a2,
+#'   where mean length is L1 and L2.
+#' @return Mean length at each age, in the units of L1 and L2.
 #' @noRd
 von_bertalanffy_length_at_age <- function(age, mean_length_young,
                                           mean_length_old, growth_coefficient,
@@ -240,6 +246,11 @@ delta_method_length_sd <- function(age, mean_length, mean_length_young,
 }
 
 #' Weight at length, W = alpha L^beta
+#'
+#' @param fish_length Lengths, in the units of the length data.
+#' @param length_weight_a,length_weight_b alpha and beta, on the natural
+#'   scale.
+#' @return Weight at each length.
 #' @noRd
 weight_at_length <- function(fish_length, length_weight_a, length_weight_b) {
   length_weight_a * ad_max(fish_length, 1e-8)^length_weight_b
@@ -343,7 +354,7 @@ von_bertalanffy_schnute_working_scale <- function(rows) {
 #   keys come from growth.
 # - working_scale: the scale each tibble row is estimated on ("log", "logit"
 #   or NA). initialize_fims() transforms them and names them log_* or
-#   logit_*. Rows labelled reference_age_* are data (see `inputs`).
+#   logit_*. Rows labeled reference_age_* are data (see `inputs`).
 growth_modules <- list(
   EWAA = list(
     evaluate = ewaa_growth,

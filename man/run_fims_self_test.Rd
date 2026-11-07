@@ -22,7 +22,7 @@ run_fims_self_test(
 }
 \value{
 A tibble with 1 row per data set: convergence (nlminb code 0
-and maximum gradient at most 0.01, as in OPAL), and relative errors in
+and maximum gradient at most 0.01), and relative errors in
 terminal spawning biomass, terminal depletion, mean recruitment and the
 largest relative error in spawning biomass over all years.
 }

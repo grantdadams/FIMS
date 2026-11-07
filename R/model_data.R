@@ -15,7 +15,7 @@
 #'
 #' @param parameters The parameter tibble.
 #' @param data A FIMSFrame.
-#' @return The model data list (the `data` element of initialize_fims()).
+#' @return The model data list (the `model_data` element of initialize_fims()).
 #' @noRd
 initialize_model_data <- function(parameters, data) {
   fleet_names <- parameters |>
@@ -90,7 +90,7 @@ initialize_model_data <- function(parameters, data) {
 #' The module type of a module family (and fleet) in the parameter tibble
 #'
 #' @param parameters The parameter tibble.
-#' @param module_name The module family, e.g. "Selectivity".
+#' @param module_name The module family, e.g., "Selectivity".
 #' @param fleet The fleet, or NA for population modules.
 #' @noRd
 module_type <- function(parameters, module_name, fleet = NA) {

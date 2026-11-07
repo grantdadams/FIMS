@@ -1,24 +1,12 @@
 # add_process() and add_priors(): time-varying parameters, time blocks,
-# processes and priors, written into the parameter tibble
-#
-# A formula describes 1 parameter (the "target"):
-#
-#   log_q ~ cut(year, c(-Inf, 10, 20, Inf))            3 time blocks
-#   inflection_point ~ cut(year, c(-Inf, 15, Inf)) + ar1(1 | year)
-#                                                      AR1 around 2 block means
-#   log_q ~ 1 + (1 | year)                             iid around 1 mean
-#   log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year) iid by age and year
-#   log_q ~ rw(1 | year)                               random walk
+# processes and priors, written into the parameter tibble. The formula forms
+# are listed in the add_process() help page.
 #
 # The helpers only write rows. initialize_fims() builds the map and the
 # densities from the tibble, so a hand-edited tibble works the same way.
 # Columns used: map_group (rows with the same integer share 1 estimate),
 # re_structure (iid, ar1, rw on the target rows) and target_label (on the
 # hyperparameter rows expected_mean, log_sd and logit_rho).
-#
-# `year` is the `timing` column, so it is a calendar year when the data use
-# calendar years (e.g. cut(year, c(-Inf, 2000, Inf))). The examples above
-# use the integration-test data, whose years are 1 to 30.
 #
 # Estimation status: "not_estimated" is accepted as another name for
 # "constant", and `estimation_status` for `estimation_type`. Both are
@@ -44,8 +32,24 @@
 #'    random term, each `expected_mean` starts from the mean of its block,
 #'    and the random effects keep their own starting values.
 #'
+#' @details
+#' The formula describes 1 parameter, the target. Its right side has a fixed
+#' term, a random term, or both:
+#' - `log_q ~ cut(year, c(-Inf, 10, 20, Inf))`: 3 time blocks.
+#' - `inflection_point ~ cut(year, c(-Inf, 15, Inf)) + ar1(1 | year)`: an AR1
+#'   process around 2 block means.
+#' - `log_q ~ 1 + (1 | year)`: an iid process around 1 mean.
+#' - `log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year)`: an iid process by
+#'   age and year.
+#' - `log_q ~ rw(1 | year)`: a random walk.
+#'
+#' These breaks fit data with years 1 to 30, as in `data_big`. When the data
+#' use calendar years, `year` is a calendar year, e.g.,
+#' `cut(year, c(-Inf, 2000, Inf))`.
+#'
 #' @param parameters The parameter tibble.
-#' @param formula `target ~ fixed term + random term` (see the file header).
+#' @param formula `target ~ fixed term + random term`. See Details for the
+#'   forms.
 #' @param module_name,fleet Which module the target belongs to.
 #' @param estimation_type,estimation_status Estimation type of the target's
 #'   per-year rows when there is a random term.
@@ -57,9 +61,16 @@
 #' @export
 #' @examples
 #' \dontrun{
+#' parameters <- setup_default_parameters(FIMSFrame(data_big))
+#' # An AR1 process on survey catchability
 #' parameters |>
 #'   add_process(log_q ~ 1 + ar1(1 | year),
 #'     module_name = "Fleet", fleet = "survey1"
+#'   )
+#' # Fishing mortality in 2 time blocks
+#' parameters |>
+#'   add_process(log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
+#'     module_name = "Fleet", fleet = "fleet1"
 #'   )
 #' }
 add_process <- function(parameters,
@@ -83,34 +94,34 @@ add_process <- function(parameters,
   old_rows <- dplyr::filter(parameters, is_target)
   check_new_target(old_rows, target)
 
-  # Some values fixed and some estimated (e.g. log_Fmort in years with no
+  # Some values fixed and some estimated (e.g., log_Fmort in years with no
   # catch): the call would estimate or score the fixed ones. When every value
-  # is fixed (e.g. the default log_M), the call is a request to estimate them.
+  # is fixed (e.g., the default log_M), the call is a request to estimate them.
   if (any(old_rows[["estimation_type"]] == "constant") &&
     any(old_rows[["estimation_type"]] != "constant")) {
     cli::cli_abort(c(
       "x" = "{.val {target}} has some fixed (constant) values and some
-      estimated, e.g. years with no catch.",
+      estimated, e.g., years with no catch.",
       "i" = "The process would estimate or score the fixed ones."
     ))
   }
   if (has_prior(parameters, target, module_name, unique(old_rows[["fleet"]]))) {
     cli::cli_abort(c(
       "x" = "{.val {target}} has a prior, so it cannot also take a process.",
-      "i" = "Add the process first, then put priors on its parameters, e.g.
+      "i" = "Add the process first, then put priors on its parameters, e.g.,
       {.code {target}_log_sd ~ normal(...)}."
     ))
   }
   variables <- c(formula_terms[["fixed_variables"]], formula_terms[["random_variables"]])
   uses_age <- "age" %in% variables
-  # A formula in age only (e.g. age blocks on log_init_naa) keeps the rows
+  # A formula in age only (e.g., age blocks on log_init_naa) keeps the rows
   # as they are. A formula in year needs 1 row per year.
   new_rows <- old_rows
   if ("year" %in% variables) {
     if (!can_vary_by_year(target, module_name)) {
       cli::cli_abort(c(
         "x" = "{.val {target}} is not indexed by year in the model.",
-        "i" = "It can take blocks or a process by age only, e.g.
+        "i" = "It can take blocks or a process by age only, e.g.,
         {.code {target} ~ cut(age, c(-Inf, 5, Inf))}."
       ))
     }
@@ -233,6 +244,18 @@ add_process <- function(parameters,
 #' @return The parameter tibble with the prior's 2 rows added.
 #' @keywords setup_default_parameters
 #' @export
+#' @examples
+#' \dontrun{
+#' parameters <- setup_default_parameters(FIMSFrame(data_big)) |>
+#'   dplyr::mutate(estimation_type = dplyr::if_else(
+#'     label == "logit_steep", "fixed_effects", estimation_type
+#'   ))
+#' # A normal prior on steepness, on the logit scale it is estimated on
+#' parameters |>
+#'   add_priors(logit_steep ~ normal(mean = logit(0.2, 1, 0.75), sd = 0.5),
+#'     module_name = "Recruitment"
+#'   )
+#' }
 add_priors <- function(parameters, formula, module_name, fleet = NA_character_) {
   parameters <- add_process_columns(parameters)
   target <- as.character(formula[[2]])
@@ -244,8 +267,9 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
     ))
   }
   prior_arguments <- as.list(prior)[-1]
-  prior_mean <- eval(prior_arguments[["mean"]], baseenv())
-  prior_sd <- eval(prior_arguments[["sd"]], baseenv())
+  # The mean and sd may name variables from where the formula was written.
+  prior_mean <- eval(prior_arguments[["mean"]], environment(formula))
+  prior_sd <- eval(prior_arguments[["sd"]], environment(formula))
   is_target <- prior_target_rows(parameters, target, module_name, fleet)
   target_fleets <- unique(parameters[["fleet"]][is_target])
   if (has_prior(parameters, target, module_name, target_fleets)) {
@@ -271,7 +295,7 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
 #' The tibble rows a prior's target names
 #'
 #' See add_priors() for how targets are named. A target that has its own
-#' process (e.g. log_devs) cannot also take a prior.
+#' process (e.g., log_devs) cannot also take a prior.
 #' @noRd
 prior_target_rows <- function(parameters, target, module_name, fleet) {
   in_module <- parameters[["module_name"]] == module_name &
@@ -288,7 +312,7 @@ prior_target_rows <- function(parameters, target, module_name, fleet) {
     !any(parameters[["label"]][is_target] %in% hyperparameter_labels)) {
     cli::cli_abort(c(
       "x" = "{.val {target}} has a process, so it cannot also take a prior.",
-      "i" = "Put a prior on the process's parameters instead, e.g.
+      "i" = "Put a prior on the process's parameters instead, e.g.,
       {.code {target}_log_sd ~ normal(...)}."
     ))
   }
@@ -314,7 +338,7 @@ growth_prior_target <- function(parameters, target, in_module) {
     target_scale <- working_scale[is_transformed_label][1]
     cli::cli_abort(c(
       "x" = "{.val {target}} is estimated on the {target_scale} scale.",
-      "i" = "Give the prior on that scale, e.g.
+      "i" = "Give the prior on that scale, e.g.,
       {.code {target_scale}_{target} ~ normal(mean = , sd = )}."
     ))
   }
@@ -364,7 +388,7 @@ parse_process_formula <- function(formula) {
   fixed <- right_terms[!is_random]
   if (length(fixed) > 1) {
     cli::cli_abort(c(
-      "x" = "Additive fixed terms (e.g. {.code cut(age) + cut(year)}) need a
+      "x" = "Additive fixed terms (e.g., {.code cut(age) + cut(year)}) need a
       design matrix, not a map, and are not supported.",
       "i" = "Use an interaction ({.code :})."
     ))
@@ -452,7 +476,7 @@ check_target_rows <- function(parameters, is_target, target, module_name,
     where <- if (is.na(fleet)) module_name else c(module_name, fleet)
     cli::cli_abort(c(
       "x" = "There are no {.val {target}} rows for {.val {where}}.",
-      "i" = "Check the label, {.arg module_name} and {.arg fleet}, e.g. with
+      "i" = "Check the label, {.arg module_name} and {.arg fleet}, e.g., with
       {.code dplyr::distinct(parameters, module_name, fleet, label)}."
     ))
   }
@@ -535,8 +559,8 @@ evaluate_fixed_term <- function(fixed, rows, formula_environment) {
       target's rows."
     ))
   }
-  # Usually breaks outside the years (e.g. breaks 10 and 20 with calendar
-  # years). A fixed term meant to give 1 group is written 1.
+  # This usually means the breaks are outside the years, e.g., breaks 10 and
+  # 20 with calendar years. A fixed term meant to give 1 group is written 1.
   if (length(unique(groups)) == 1) {
     cli::cli_abort(c(
       "x" = "The fixed term gives the same group for every row.",

@@ -7,8 +7,8 @@
 initialize_fims(parameters, data)
 }
 \arguments{
-\item{parameters}{A tibble of parameters, as from setup_default_parameters()
-and add_process().}
+\item{parameters}{A tibble of parameters, as from setup_default_parameters(),
+add_process() and add_priors().}
 
 \item{data}{A FIMSFrame, or a data frame that FIMSFrame() accepts.}
 }
@@ -16,8 +16,9 @@ and add_process().}
 A list with \code{parameters}, \code{map} and \code{random} for
 RTMB::MakeADFun(), the model data (\code{model_data}), the parameter table
 with the RTMB name of each row (\code{parameter_table}), the tibble as given
-(\code{tibble}), the FIMSFrame (\code{frame}), and \code{model}, which holds the model
-settings (model_settings()).
+(\code{tibble}), the FIMSFrame (\code{frame}), and \code{model}, an environment of
+reporting switches, e.g.,
+\code{input[["model"]]$ReportAgeToLengthConversionDerivedTensor(TRUE)}.
 }
 \description{
 Takes the parameter tibble from setup_default_parameters() and the data,
@@ -26,5 +27,22 @@ the tibble becomes the RTMB parameters, map and random effects
 (initialize_parameters()), the data are read by population and fleet
 (initialize_model_data()), and priors and processes become densities
 (initialize_densities()).
+}
+\examples{
+\dontrun{
+# Prepare data for FIMS model
+data("data_big", package = "FIMS")
+data_4_model <- FIMSFrame(data_big)
+# Build the model inputs from the default parameters
+parameters_list <- setup_default_parameters(data = data_4_model) |>
+  initialize_fims(data = data_4_model)
+}
+}
+\seealso{
+\itemize{
+\item \code{\link[=setup_default_parameters]{setup_default_parameters()}}
+\item \code{\link[=FIMSFrame]{FIMSFrame()}}
+\item \code{\link[=fit_fims]{fit_fims()}}
+}
 }
 \keyword{fit_fims}

@@ -86,8 +86,8 @@
 #'   )
 #'
 #' # Do the same as above except, model fleet1 with double logistic selectivity
-#' # To see required parameters for double logistic selectivity, run
-#' # show(DoubleLogisticSelectivity) and look at the Fields list
+#' # To see the parameters double logistic selectivity needs, run
+#' # setup_default_parameters() with module_type = "DoubleLogistic" as below
 #' parameters_with_double_logistic <- updated_parameters |>
 #'   dplyr::filter(!(fleet == "fleet1" & module_name == "Selectivity")) |>
 #'   dplyr::bind_rows(
