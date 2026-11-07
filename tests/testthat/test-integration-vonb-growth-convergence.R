@@ -914,6 +914,69 @@ test_that("fleet-specific length bins set the size of each fleet's age-to-length
       dplyr::pull(out)
   )
 })
+
+test_that("von bertalanffy standard errors are on the scale of the estimates", {
+  ctx <- make_vonb_convergence_context()
+  # The standard deviation of the back-transformed value, from many draws of
+  # the working-scale estimate, checks the delta method without using it.
+  draw_sd <- function(estimate, standard_error, back_transform) {
+    set.seed(20261107)
+    stats::sd(back_transform(stats::rnorm(1e5, estimate, standard_error)))
+  }
+  working_scale_value <- function(fit, label) {
+    sdreport <- FIMS::get_sdreport(fit)
+    name <- grep(paste0("^Growth[.]", label, "[.]"),
+      names(sdreport[["par.fixed"]]),
+      value = TRUE
+    )
+    c(
+      estimate = sdreport[["par.fixed"]][[name]],
+      standard_error = sqrt(diag(sdreport[["cov.fixed"]]))[[name]]
+    )
+  }
+  growth_row <- function(fit, label) {
+    FIMS::get_estimates(fit) |>
+      dplyr::filter(module_name == "Growth", label == .env[["label"]])
+  }
+
+  fit <- suppressWarnings(
+    ctx[["parameters"]] |>
+      FIMS::initialize_fims(data = ctx[["data"]]) |>
+      FIMS::fit_fims()
+  )
+  for (label in c("mean_length_young", "mean_length_old", "growth_coefficient")) {
+    working <- working_scale_value(fit, paste0("log_", label))
+    #' @description Test that each log-scale growth parameter's standard error in `get_estimates()` matches the spread of its back-transformed draws.
+    expect_equal(
+      object = growth_row(fit, label)[["uncertainty"]],
+      expected = draw_sd(working[["estimate"]], working[["standard_error"]], exp),
+      tolerance = 0.01
+    )
+  }
+
+  # With L2 constant, L1 is estimated on a logit scale bounded by 0 and L2.
+  fixed_l2_parameters <- ctx[["parameters"]] |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      module_name == "Growth" & label == "mean_length_old",
+      "constant", estimation_type
+    ))
+  fixed_l2_fit <- suppressWarnings(
+    fixed_l2_parameters |>
+      FIMS::initialize_fims(data = ctx[["data"]]) |>
+      FIMS::fit_fims()
+  )
+  mean_length_old <- growth_row(fixed_l2_fit, "mean_length_old")[["estimated"]]
+  working <- working_scale_value(fixed_l2_fit, "logit_mean_length_young")
+  #' @description Test that the logit-scale L1 standard error in `get_estimates()` matches the spread of its back-transformed draws.
+  expect_equal(
+    object = growth_row(fixed_l2_fit, "mean_length_young")[["uncertainty"]],
+    expected = draw_sd(
+      working[["estimate"]], working[["standard_error"]],
+      function(x) FIMS::inv_logit(0, mean_length_old, x)
+    ),
+    tolerance = 0.01
+  )
+})
 ## Edge handling ----
 # No edge cases to test.
 
