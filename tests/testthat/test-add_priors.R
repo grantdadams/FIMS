@@ -198,7 +198,40 @@ test_that("`add_priors()` adds the prior's negative log density to the objective
 })
 
 ## Edge handling ----
-# No edge cases to test.
+test_that("`add_priors()` accepts a prior mean for each value of the target", {
+  # A hand-written prior on fleet1's log_Fmort (years 1 to 6) with 1 mean
+  # per year, given with the target's timing so each mean stays with its year.
+  per_year_prior <- small_parameters |>
+    add_priors(
+      log_Fmort ~ normal(mean = -1, sd = 0.5),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    dplyr::filter(!(target_label %in% "log_Fmort" & label == "expected_mean"))
+  mean_rows <- dplyr::filter(small_parameters, label == "log_Fmort") |>
+    dplyr::mutate(
+      label = "expected_mean", value = -(1:6) / 10,
+      estimation_type = "constant", target_label = "log_Fmort",
+      distribution_type = "prior", distribution = "Dnorm"
+    )
+  table <- FIMS:::initialize_parameters(
+    dplyr::bind_rows(per_year_prior, mean_rows)
+  )[["parameter_table"]]
+  prior <- FIMS:::prior_densities(table)[[1]]
+  #' @description Test that a prior with 1 mean per year scores every year of its target.
+  expect_equal(object = prior[["positions"]], expected = 1:6)
+
+  #' @description Test that a prior with 1 mean per year but no timing errors, because the means could not be matched to their years.
+  expect_error(
+    object = FIMS:::prior_densities(FIMS:::initialize_parameters(
+      dplyr::bind_rows(
+        per_year_prior,
+        dplyr::mutate(mean_rows, timing = NA_real_)
+      )
+    )[["parameter_table"]]),
+    regexp = "do not match"
+  )
+})
 
 ## Error handling ----
 test_that("`add_priors()` returns correct error messages", {

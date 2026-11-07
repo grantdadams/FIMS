@@ -63,6 +63,12 @@ initialize_fims <- function(parameters, data) {
     })),
     unlist(lapply(model_data[["likelihoods"]], `[[`, "estimated_parameters"))
   ))
+  held <- hold_unused_process_parameters(
+    model_parameters[["map"]], parameter_table,
+    model_data[["density_parameter_names"]]
+  )
+  model_parameters[["map"]] <- held[["map"]]
+  parameter_table <- held[["parameter_table"]]
   list(
     parameters = model_parameters[["parameters"]],
     map = model_parameters[["map"]],
@@ -72,6 +78,43 @@ initialize_fims <- function(parameters, data) {
     tibble = parameters,
     frame = data
   )
+}
+
+#' Hold a process's own parameters constant when no process uses them
+#'
+#' A process mean, log_sd or logit_rho row whose target has no process, such
+#' as the recruitment log_sd in a model without a recruitment process, does
+#' not affect the model. Estimating it would leave a gradient of 0 and a
+#' singular Hessian, so it is held at its starting value, with a message,
+#' and is not listed in get_estimates().
+#'
+#' @param map The map from initialize_parameters().
+#' @param parameter_table The parameter table from initialize_parameters().
+#' @param used_names The flat names of the parameters a density uses.
+#' @return A list with the updated `map` and `parameter_table`.
+#' @noRd
+hold_unused_process_parameters <- function(map, parameter_table, used_names) {
+  is_unused <- parameter_table[["original_label"]] %in%
+    c("expected_mean", "log_sd", "logit_rho") &
+    !parameter_table[["distribution_type"]] %in% "prior" &
+    !parameter_table[["name"]] %in% used_names &
+    parameter_table[["estimation_type"]] != "constant"
+  if (!any(is_unused)) {
+    return(list(map = map, parameter_table = parameter_table))
+  }
+  unused_names <- unique(parameter_table[["name"]][is_unused])
+  cli::cli_inform(c(
+    "i" = "{.val {unused_names}} {?is/are} not used by any process, so
+    {?it is/they are} held at {?its/their} starting value{?s}.",
+    "i" = "Add the process back with {.fn add_process}, or set
+    {.var estimation_type} to {.val constant}."
+  ))
+  for (rtmb_name in unique(parameter_table[["rtmb_name"]][is_unused])) {
+    map[[rtmb_name]] <- factor(rep(NA, length(map[[rtmb_name]])))
+  }
+  parameter_table[["estimation_type"]][is_unused] <- "constant"
+  parameter_table[["rtmb_level"]][is_unused] <- NA_integer_
+  list(map = map, parameter_table = parameter_table)
 }
 
 #' Give year-major rows their years

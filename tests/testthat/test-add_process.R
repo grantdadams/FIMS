@@ -454,4 +454,24 @@ test_that("`add_process()` returns correct error messages for the sd and rho", {
     ),
     regexp = "between\\s+-1\\s+and\\s+1"
   )
+  #' @description Test that `add_process()` does not check a rho that an iid process does not use.
+  expect_no_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      rho = list(value = 1, estimation_type = "fixed_effects")
+    )
+  )
+  #' @description Test that `add_process()` does not check an sd that time blocks without a process do not use.
+  expect_no_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ cut(year, c(-Inf, 3, Inf)),
+      module_name = "Fleet",
+      fleet = "survey1",
+      sd = list(value = 0, estimation_type = "fixed_effects")
+    )
+  )
 })
