@@ -8,7 +8,6 @@ on:
     paths:
       - 'R/**'
       - 'inst/**'
-      - 'src/**'
       - 'tests/**'
   push:
     branches:
@@ -16,7 +15,6 @@ on:
     paths:
       - 'R/**'
       - 'inst/**'
-      - 'src/**'
       - 'tests/**'
   workflow_dispatch:
 

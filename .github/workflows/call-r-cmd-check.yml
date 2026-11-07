@@ -13,7 +13,6 @@ on:
       - 'data/**'
       - 'data-raw/**'
       - 'vignettes/**'
-      - 'src/**'
       - 'README.md'
       - 'pkgdown/**'
   workflow_dispatch:

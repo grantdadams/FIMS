@@ -10,7 +10,6 @@ on:
       - 'DESCRIPTION'
       - 'NAMESPACE'
       - 'R/**'
-      - 'src/**'
       - 'inst/**'
       - 'data/**'
   # Runs the bash script from the main branch every Monday at midnight UTC
