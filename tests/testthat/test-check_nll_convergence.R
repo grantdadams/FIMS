@@ -23,7 +23,7 @@ fit_age_length_comp <- readRDS(
 ## IO correctness ----
 test_that("check_nll_convergence() works with correct inputs", {
   model_data <- get_input(fit_age_length_comp)[["model_data"]]
-  #' @description Test that check_nll_convergence() returns an OK row for a fit with finite negative log-likelihoods.
+  #' @description Test that check_nll_convergence() does not warn for a fit with finite negative log-likelihoods.
   expect_no_warning(
     out <- FIMS:::check_nll_convergence(
       get_opt(fit_age_length_comp),
@@ -31,12 +31,14 @@ test_that("check_nll_convergence() works with correct inputs", {
       model_data
     )
   )
+  #' @description Test that check_nll_convergence() names its check "nll".
   expect_equal(out[["check"]], "nll")
+  #' @description Test that check_nll_convergence() gives an OK row for a fit with finite negative log-likelihoods.
   expect_equal(out[["severity"]], "OK")
 
-  #' @description Test that label_nll_components() labels the recruitment process first, then each fleet's catch or index and compositions, 1 label per component.
   nll_components <- get_report(fit_age_length_comp)[["nll_components"]]
   labels <- FIMS:::label_nll_components(model_data)
+  #' @description Test that label_nll_components() labels the recruitment process first, then each fleet's catch or index and compositions.
   expect_equal(
     labels,
     c(
@@ -45,17 +47,61 @@ test_that("check_nll_convergence() works with correct inputs", {
       "survey1_lengthcomp"
     )
   )
+  #' @description Test that label_nll_components() gives 1 label per negative log-likelihood component.
   expect_length(labels, length(nll_components))
   #' @description Test that the labeled components add up to the joint negative log-likelihood.
   expect_equal(
     sum(nll_components),
     get_report(fit_age_length_comp)[["jnll"]]
   )
+
+  # Recompute 2 labeled components from data_big and the model's
+  # predictions, so a label on the wrong component fails.
+  names(nll_components) <- labels
+  report <- get_report(fit_age_length_comp)
+  catch <- data_big |>
+    dplyr::filter(type == "catch", fleet == "fleet1") |>
+    dplyr::arrange(timing)
+  # The catch sdlog for a CV of 0.01.
+  catch_sdlog <- sqrt(log(1 + 0.01^2))
+  #' @description Test that the component labeled fleet1_catch equals the lognormal negative log-likelihood of the fleet1 catch.
+  expect_equal(
+    object = nll_components[["fleet1_catch"]],
+    expected = -sum(stats::dlnorm(
+      catch[["observed"]], report[["log_catch_expected"]][[1]], catch_sdlog,
+      log = TRUE
+    ))
+  )
+  # Age compositions are proportions with a multinomial sample size of 200,
+  # 1 row per year and 1 column per age.
+  age_comp <- data_big |>
+    dplyr::filter(type == "age_comp", fleet == "fleet1") |>
+    dplyr::arrange(timing, age)
+  observed_counts <- matrix(
+    age_comp[["observed"]] * 200,
+    nrow = 30, byrow = TRUE
+  )
+  expected_proportion <- matrix(
+    report[["agecomp_proportion"]][[1]],
+    nrow = 30, byrow = TRUE
+  )
+  age_comp_nll <- -sum(vapply(
+    1:30,
+    function(year) {
+      FIMS_dmultinom(observed_counts[year, ], expected_proportion[year, ])
+    },
+    numeric(1)
+  ))
+  #' @description Test that the component labeled fleet1_agecomp equals the multinomial negative log-likelihood of the fleet1 age compositions.
+  expect_equal(
+    object = nll_components[["fleet1_agecomp"]],
+    expected = age_comp_nll
+  )
 })
 
 ## Edge handling ----
 test_that("check_nll_convergence() returns correct outputs for edge cases", {
-  #' @description Test that check_nll_convergence() falls back to indexed labels when the model data do not line up with the components.
+  #' @description Test that check_nll_convergence() warns when a component is not finite and the model data do not line up with the components.
   expect_warning(
     out <- FIMS:::check_nll_convergence(
       opt = list(objective = 10),
@@ -64,6 +110,7 @@ test_that("check_nll_convergence() returns correct outputs for edge cases", {
     ),
     regexp = "not finite"
   )
+  #' @description Test that check_nll_convergence() falls back to indexed labels when the model data do not line up with the components.
   expect_equal(out[["parameter"]], "nll[2]")
 })
 
@@ -78,6 +125,8 @@ test_that("check_nll_convergence() returns correct error messages", {
     ),
     regexp = "not finite"
   )
+  #' @description Test that check_nll_convergence() gives a FAIL row when a value is not finite.
   expect_equal(out[["severity"]], "FAIL")
+  #' @description Test that check_nll_convergence() names each value that is not finite.
   expect_equal(out[["parameter"]], "jnll, nll[2]")
 })

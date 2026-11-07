@@ -50,7 +50,9 @@ test_that("`initialize_parameters()` returns correct error messages", {
     regexp = "identical starting"
   )
   unsorted_parameters <- small_parameters |>
-    dplyr::mutate(value = dplyr::if_else(label == "log_Fmort", -timing / 10, value)) |>
+    dplyr::mutate(
+      value = dplyr::if_else(label == "log_Fmort", -timing / 10, value)
+    ) |>
     dplyr::arrange(dplyr::desc(timing))
   withr::local_options(rlib_message_verbosity = "default")
   #' @description Test that `initialize_parameters()` gives a message for rows out of year order.
