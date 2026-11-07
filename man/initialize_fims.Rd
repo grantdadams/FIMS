@@ -16,9 +16,7 @@ add_process() and add_priors().}
 A list with \code{parameters}, \code{map} and \code{random} for
 RTMB::MakeADFun(), the model data (\code{model_data}), the parameter table
 with the RTMB name of each row (\code{parameter_table}), the tibble as given
-(\code{tibble}), the FIMSFrame (\code{frame}), and \code{model}, an environment of
-reporting switches, e.g.,
-\code{input[["model"]]$ReportAgeToLengthConversionDerivedTensor(TRUE)}.
+(\code{tibble}), and the FIMSFrame (\code{frame}).
 }
 \description{
 Takes the parameter tibble from setup_default_parameters() and the data,

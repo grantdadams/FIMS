@@ -233,11 +233,12 @@ map_levels <- function(is_estimated, map_group) {
   as.integer(factor(key, levels = unique(stats::na.omit(key))))
 }
 
-#' Refuse a parameter whose rows are not in year and age order
+#' Say when a parameter's rows are not in year and age order
 #'
-#' A parameter's values are read by year, then age. Rows out of that order
-#' would put values in the wrong years if read as given, so they are refused
-#' rather than sorted without the user knowing.
+#' A parameter's values are matched to years and ages by the `timing` and
+#' `age` columns, so initialize_parameters() sorts the rows. This tells the
+#' user, because a tibble out of order is often a sign of an editing
+#' mistake.
 #' @noRd
 check_row_order <- function(parameter_table) {
   unsorted <- parameter_table |>
@@ -248,11 +249,10 @@ check_row_order <- function(parameter_table) {
     dplyr::pull(.data[["name"]]) |>
     unique()
   if (length(unsorted) > 0) {
-    cli::cli_abort(c(
-      "x" = "The rows of {.val {unsorted}} are not in year and age order.",
-      "i" = "Values are read by year, then age. Sort the rows, for example
-      with {.code dplyr::arrange(parameters, module_name, fleet, label,
-      timing, age)}."
+    cli::cli_inform(c(
+      "i" = "The rows of {.val {unsorted}} are not in year and age order.",
+      "i" = "They are sorted by {.var timing} and {.var age}, so each value
+      goes with its own year and age."
     ))
   }
   invisible(parameter_table)
@@ -309,9 +309,9 @@ growth_to_working_scale <- function(parameters) {
   if (any(is_logit)) {
     # Logit bounded by 0 and L2, so L1 stays below L2: log(L1 / (L2 - L1)).
     mean_length_old <- growth_rows[["value"]][growth_rows[["label"]] == "mean_length_old"]
-    parameters[["value"]][is_logit] <-
-      log(parameters[["value"]][is_logit]) -
-      log(mean_length_old - parameters[["value"]][is_logit])
+    parameters[["value"]][is_logit] <- logit(
+      0, mean_length_old, parameters[["value"]][is_logit]
+    )
   }
   is_transformed <- !is.na(parameters[["working_scale"]])
   parameters[["label"]][is_transformed] <- paste0(

@@ -243,7 +243,7 @@ FIMS:::setup_default_log_init_naa(
 
 ### Time-varying parameters
 
-Catchability (`log_q`) can vary by year, with 1 value specified for each year instead of using a single value for all years. Give 1 row per year, in year order. FIMS stops with an error if a parameter's rows are not in year order, rather than sorting them. Years without index data for that fleet do not inform `log_q`, so set those rows to `estimation_type = "constant"`. The value does not change the fit, because `log_q` in a year without index data is not included in the likelihood. It only affects the expected index for that year. Estimating them would make the Hessian singular, and then no parameter gets a standard error. In the output from `get_estimates()`, each `log_q` value is labeled with its year. `add_process()` can share 1 estimated value across a block of years, as described below.
+Catchability (`log_q`) can vary by year, with 1 value specified for each year instead of using a single value for all years. Give 1 row per year. FIMS matches each value to its year by `timing`, and says so if it had to sort the rows. Years without index data for that fleet do not inform `log_q`, so set those rows to `estimation_type = "constant"`. The value does not change the fit, because `log_q` in a year without index data is not included in the likelihood. It only affects the expected index for that year. Estimating them would make the Hessian singular, and then no parameter gets a standard error. In the output from `get_estimates()`, each `log_q` value is labeled with its year. `add_process()` can share 1 estimated value across a block of years, as described below.
 
 ```{r time-varying-log-q}
 # 1 log_q per year for survey1, estimated only in years with index data

@@ -23,7 +23,7 @@ test_that("`get_input()` works with correct inputs", {
       input,
       c(
         "parameters", "map", "random", "model_data", "parameter_table",
-        "tibble", "frame", "model"
+        "tibble", "frame"
       )
     )
   }

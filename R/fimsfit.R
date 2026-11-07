@@ -524,6 +524,11 @@ FIMSFit <- function(
 #'   derived quantities is also calculated and stored as `cov` in the
 #'   `sdreport`; it grows with the square of the number of derived quantities
 #'   and can use several GB of memory. If `FALSE`, `cov` is `NA`.
+#' @param report_age_to_length_conversion_derived A logical, with the default
+#'   `FALSE`. If `TRUE`, the report includes the growth-derived
+#'   age-to-length conversion for every fleet and year in
+#'   `age_to_length_conversion_derived`. It is large, so it is left out by
+#'   default.
 #' @return
 #' An object of class `FIMSFit` is returned, where the structure is the same
 #' regardless if `optimize = TRUE` or not. Uncertainty information is only
@@ -556,7 +561,8 @@ fit_fims <- function(input,
                        trace = 0
                      ),
                      filename = NULL,
-                     getReportCovariance = FALSE) {
+                     getReportCovariance = FALSE,
+                     report_age_to_length_conversion_derived = FALSE) {
   # See issue 455 of sdmTMB to see what should be used.
   # https://github.com/pbs-assess/sdmTMB/issues/455
   # NOTE: When we add implementation for newton step we need to
@@ -582,13 +588,23 @@ fit_fims <- function(input,
   if (optimize && n_estimated == 0) {
     cli::cli_abort("FIMS must have at least one parameter to optimize.")
   }
+  not_parameters <- setdiff(names(input[["map"]]), names(input[["parameters"]]))
+  if (length(not_parameters) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.var input$map} has {.val {not_parameters}}, which {?is not a
+      model parameter/are not model parameters}.",
+      "i" = "Hold values constant with {.var estimation_type} {.val constant}
+      in the parameter tibble, and share 1 estimate with the {.var map_group}
+      column, e.g., {.fn add_process} with {.code cut(year, ...)} for time
+      blocks."
+    ))
+  }
 
   model_data <- input[["model_data"]]
   # Standard errors of derived quantities are only needed for an sdreport.
   model_data[["adreport"]] <- get_sd
-  model_data[["report_age_to_length_conversion_derived_tensor"]] <- isTRUE(
-    input[["model"]][["report_age_to_length_conversion_derived_tensor"]]
-  )
+  model_data[["report_age_to_length_conversion_derived_tensor"]] <-
+    isTRUE(report_age_to_length_conversion_derived)
   obj <- RTMB::MakeADFun(
     function(parameters) fims_model(parameters, model_data),
     input[["parameters"]],
@@ -921,9 +937,11 @@ parameter_labels <- function(parameter_names) {
 #' @param estimates The table from estimates_table().
 #' @noRd
 estimates_to_json <- function(estimates) {
+  # na = "string" writes Inf, -Inf and NaN as strings, so they survive the
+  # round trip. A failed likelihood (-Inf) would otherwise read back as NA.
   as.character(jsonlite::toJSON(
     estimates,
-    dataframe = "columns", digits = NA, na = "null"
+    dataframe = "columns", digits = NA, na = "string"
   ))
 }
 
@@ -942,7 +960,7 @@ estimates_from_json <- function(json) {
       version. Refit the model."
     ))
   }
-  integer_columns <- c("module_id", "type_id", "parameter_id")
+  integer_columns <- c("module_id", "type_id", "parameter_id", "year_i")
   character_columns <- c(
     "module_name", "module_type", "label", "type", "fleet",
     "estimation_type", "distribution", "input_type"
@@ -951,7 +969,8 @@ estimates_from_json <- function(json) {
     columns[[name]] <- if (name %in% integer_columns) {
       as.integer(columns[[name]])
     } else if (name %in% character_columns) {
-      as.character(columns[[name]])
+      # na = "string" writes a missing string as "NA".
+      dplyr::na_if(as.character(columns[[name]]), "NA")
     } else {
       as.numeric(columns[[name]])
     }

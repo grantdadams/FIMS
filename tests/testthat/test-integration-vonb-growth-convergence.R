@@ -307,10 +307,10 @@ test_that("von bertalanffy growth converges when L1 L2 and K are estimable", {
 
   input <- ctx$parameters |>
     FIMS::initialize_fims(data = ctx$data)
-  input$model$ReportAgeToLengthConversionDerivedTensor(TRUE)
 
   fit <- FIMS::fit_fims(
     input = input,
+    report_age_to_length_conversion_derived = TRUE,
     optimize = TRUE,
     number_of_loops = 4,
     number_of_newton_steps = 0,
@@ -471,10 +471,10 @@ test_that("von bertalanffy growth estimates stay close to Model Comparison OM gr
 
   input <- ctx$parameters |>
     FIMS::initialize_fims(data = ctx$data)
-  input$model$ReportAgeToLengthConversionDerivedTensor(TRUE)
 
   fit <- FIMS::fit_fims(
     input = input,
+    report_age_to_length_conversion_derived = TRUE,
     optimize = TRUE,
     number_of_loops = 2,
     number_of_newton_steps = 0,
@@ -689,10 +689,10 @@ test_that("von bertalanffy can use explicit length_bin geometry without length c
 
   input <- ctx$parameters |>
     FIMS::initialize_fims(data = ctx$data)
-  input$model$ReportAgeToLengthConversionDerivedTensor(TRUE)
 
   fit <- FIMS::fit_fims(
     input = input,
+    report_age_to_length_conversion_derived = TRUE,
     optimize = FALSE,
     get_sd = FALSE
   )

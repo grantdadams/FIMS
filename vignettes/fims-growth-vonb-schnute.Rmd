@@ -442,20 +442,18 @@ You can change the three starting values and rerun the fit to examine whether th
 
 ### Fit the Model
 
-Initialize and fit the model using the prepared parameter table. The report flag requests the complete realized Growth-derived age-to-length conversion tensor, which is used later to inspect the handoff from growth to fleet length bins.
+Initialize and fit the model using the prepared parameter table. The `report_age_to_length_conversion_derived` argument of `fit_fims()` requests the complete realized Growth-derived age-to-length conversion tensor, which is used later to inspect the handoff from growth to fleet length bins.
 
 ```{r fit}
 # Build the FIMS input from the prepared demo frame and parameters.
 input <- parameters |>
   FIMS::initialize_fims(data = demo$frame)
 
-# Ask FIMS to include the Growth-derived age-to-length conversion tensor in the report
-# so we can inspect it.
-input$model$ReportAgeToLengthConversionDerivedTensor(TRUE)
-
-# Fit the VonBertalanffySchnute demo
+# Fit the VonBertalanffySchnute demo, and ask FIMS to include the
+# growth-derived age-to-length conversion in the report so we can inspect it.
 fit <- FIMS::fit_fims(
   input = input,
+  report_age_to_length_conversion_derived = TRUE,
   optimize = TRUE,
   number_of_loops = 5,
   number_of_newton_steps = 0,
