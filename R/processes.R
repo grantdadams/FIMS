@@ -108,16 +108,21 @@ add_process <- function(parameters,
 #' @noRd
 check_process <- function(parameters, formula, module_name, fleet,
                           estimation_type, sd, rho) {
+  formula_terms <- parse_process_formula(formula)
   # The sd is written as log(sd) and rho as logit_rho, which are finite only
-  # for an sd above 0 and a rho between -1 and 1.
-  if (!is_single_number(sd[["value"]]) || sd[["value"]] <= 0) {
+  # for an sd above 0 and a rho between -1 and 1. They are checked only when
+  # the formula uses them.
+  random_term <- formula_terms[["random"]]
+  if (!is.null(random_term) &&
+    (!is_single_number(sd[["value"]]) || sd[["value"]] <= 0)) {
     cli::cli_abort(c(
       "x" = "The process sd is {.val {sd[['value']]}}.",
       "i" = "The sd must be 1 number > 0, because it is written as log_sd.",
       "i" = "Give it as {.code sd = list(value = 0.5)}."
     ))
   }
-  if (!is_single_number(rho[["value"]]) || abs(rho[["value"]]) >= 1) {
+  if (identical(random_term[["structure"]], "ar1") &&
+    (!is_single_number(rho[["value"]]) || abs(rho[["value"]]) >= 1)) {
     cli::cli_abort(c(
       "x" = "The process rho is {.val {rho[['value']]}}.",
       "i" = "rho must be 1 number between -1 and 1, because it is written
@@ -125,7 +130,6 @@ check_process <- function(parameters, formula, module_name, fleet,
       "i" = "Give it as {.code rho = list(value = 0.5)}."
     ))
   }
-  formula_terms <- parse_process_formula(formula)
   target <- formula_terms[["target"]]
   is_target <- target_rows(parameters, target, module_name, fleet)
   old_rows <- dplyr::filter(parameters, is_target)

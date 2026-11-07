@@ -65,6 +65,24 @@ prior_densities <- function(parameter_table) {
       .data[["target_label"]] == .env[["target_label"]]
     )
     name_of <- function(label) rows[["name"]][rows[["label"]] == label][1]
+    # A prior mean with 1 value per target value must carry the target's
+    # timing and age, so the means are sorted and shaped like the values
+    # and each mean stays with its own value.
+    mean_rows <- dplyr::filter(rows, .data[["label"]] == "expected_mean")
+    if (nrow(mean_rows) > 1 &&
+      (nrow(mean_rows) != nrow(target_rows) ||
+        !identical(mean_rows[["timing"]], target_rows[["timing"]]) ||
+        !identical(mean_rows[["age"]], target_rows[["age"]]))) {
+      cli::cli_abort(c(
+        "x" = "The prior on {.val {target}} has {.val {nrow(mean_rows)}}
+        means that do not match its {.val {nrow(target_rows)}} values by
+        year and age.",
+        "i" = "A prior mean is 1 value, or 1 per value with the same
+        {.var timing} and {.var age} as the target's rows.",
+        "i" = "Compare the rows with {.code dplyr::filter(parameters,
+        label == \"expected_mean\", target_label == \"{target_label}\")}."
+      ))
+    }
     list(
       distribution_type = "prior",
       target = target,

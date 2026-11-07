@@ -132,6 +132,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
   # A process's own parameter (expected_mean, log_sd or logit_rho) that no
   # density uses, such as the default recruitment log_sd in a model without a
   # recruitment process, is not part of the model, so it is not listed.
+  # initialize_fims() holds it constant (hold_unused_process_parameters()).
   is_unused_hyperparameter <- parameter_table[["original_label"]] %in%
     c("expected_mean", "log_sd", "logit_rho") &
     !parameter_table[["distribution_type"]] %in% "prior" &
