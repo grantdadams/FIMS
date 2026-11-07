@@ -160,8 +160,8 @@ methods::setGeneric("get_input", function(x) standardGeneric("get_input"))
 methods::setMethod("get_input", "FIMSFit", function(x) x@input)
 
 #' @return
-#' [get_report()] returns the TMB report, where anything that is flagged as
-#' reportable in the C++ code is returned.
+#' [get_report()] returns the model report, with every quantity the model
+#' passes to `REPORT()`.
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -171,7 +171,7 @@ methods::setGeneric("get_report", function(x) standardGeneric("get_report"))
 methods::setMethod("get_report", "FIMSFit", function(x) x@report)
 
 #' @return
-#' [get_obj()] returns the output from [TMB::MakeADFun()].
+#' [get_obj()] returns the output from [RTMB::MakeADFun()].
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -204,9 +204,7 @@ methods::setMethod("get_max_gradient", "FIMSFit", function(x) x@max_gradient)
 
 #' @return
 #' [get_gradient()] returns the per-parameter gradient vector at the MLE as
-#' stored during fitting. Unlike calling `get_obj(x)[["gr"]](get_opt(x)[["par"]])`
-#' this function is safe to call after [clear()] because it reads
-#' from a stored R vector rather than the compiled C++ objective function.
+#' stored during fitting, so the model is not evaluated again.
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -216,7 +214,7 @@ methods::setGeneric("get_gradient", function(x) standardGeneric("get_gradient"))
 methods::setMethod("get_gradient", "FIMSFit", function(x) x@gradient)
 
 #' @return
-#' [get_sdreport()] returns the list from [TMB::sdreport()].
+#' [get_sdreport()] returns the list from [RTMB::sdreport()].
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -261,58 +259,9 @@ methods::setMethod(
   "get_estimates",
   "FIMSFit",
   function(x) {
-    # Helper function
-    add_unique_id <- function(data) {
-      dplyr::group_by(data, .data$label) |>
-        dplyr::mutate(
-          unique_id = paste(
-            .data$label,
-            dplyr::if_else(
-              is.na(.data$parameter_id),
-              seq_len(dplyr::n()),
-              .data$parameter_id
-            ),
-            sep = "_"
-          )
-        ) |>
-        dplyr::ungroup()
-    }
-    # Extract the core TMB components (object, sdreport, optimization result)
-    # from the fit object.
-    obj <- get_obj(x)
-    sdreport <- get_sdreport(x)
-    opt <- get_opt(x)
-    parameter_names <- get_obj(x)[["par"]] |>
-      names()
-
-    # Reshape the TMB output into a standardized data frame.
-    # This serves as the "expected" result to compare against.
-    tmb_output <- reshape_tmb_estimates(
-      obj = obj,
-      sdreport = sdreport,
-      opt = opt,
-      parameter_names = parameter_names,
-      precomputed_gradient = get_gradient(x),
-      mapping = get_input(x)[["tmb_mapping"]]
-    ) |>
-      add_unique_id()
-
-    # Extract the model_output, which contains the JSON-like structure.
-    model_output <- get_model_output(x)
-    # Reshape the output from the JSON structure into a data frame.
-    json_output <- reshape_json_estimates(model_output) |>
-      add_unique_id()
-
-    # Join the two outputs on parameter_id to compare and consolidate information.
-    estimates <- dplyr::left_join(
-      # There are more rows in json_estimates than tmb_estimates
-      x = json_output,
-      y = tmb_output |>
-        dplyr::select(dplyr::all_of(c("unique_id", "uncertainty", "log_like_cv", "gradient"))),
-      by = c("unique_id")
-    ) |>
-      dplyr::select(-dplyr::all_of("unique_id")) |>
-      dplyr::relocate(dplyr::all_of("uncertainty"), .after = dplyr::all_of("estimation_type"))
+    # fit_fims() builds the table once, at the end of the fit, and stores it
+    # as JSON in the model_output slot.
+    estimates_from_json(get_model_output(x))
   }
 )
 
@@ -358,7 +307,7 @@ methods::setGeneric("get_version", function(x) standardGeneric("get_version"))
 methods::setMethod("get_version", "FIMSFit", function(x) x@version)
 
 #' @return
-#' [get_model_output()] returns the finalized FIMS output as a JSON list.
+#' [get_model_output()] returns the [get_estimates()] table as a JSON string.
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -374,15 +323,15 @@ methods::setValidity(
   method = function(object) {
     errors <- character()
 
-    # Check that obj is from TMB::MakeADFun()
+    # Check that obj is from RTMB::MakeADFun()
     TMB_MakeADFun_names <- c(
       "par", "fn", "gr", "he", "hessian", "method", "retape", "env", "report",
       "simulate"
     )
-    if (!setequal(names(object@obj), TMB_MakeADFun_names)) {
+    if (!all(TMB_MakeADFun_names %in% names(object@obj))) {
       errors <- c(
         errors,
-        "obj must be a list returned from TMB::MakeADFun() but it does not
+        "obj must be a list returned from RTMB::MakeADFun() but it does not
         appear to be so because it does not have the standard names."
       )
     }
@@ -409,89 +358,6 @@ is.FIMSFit <- function(x) {
 
 # Constructors ----
 
-# Restore full vectors, including fixed and shared map entries, from the best
-# joint parameter vector. The named par argument includes random effects;
-# parList's first argument accepts only the reduced fixed effects.
-restore_tmb_parameters <- function(obj) {
-  parameters <- obj[["env"]][["parList"]](par = obj[["env"]][["last.par.best"]])
-  FIMS::set_fixed(parameters[["p"]])
-  FIMS::set_random(parameters[["re"]])
-  invisible(parameters)
-}
-
-# Apply TMB's factor map to names from FIMS's full parameter registry.
-# TMB omits NA entries and returns one optimized parameter per factor level.
-tmb_mapped_parameter_names <- function(parameter_names, map = NULL) {
-  if (is.null(map)) {
-    return(parameter_names)
-  }
-  if (!is.factor(map)) {
-    cli::cli_abort("A TMB parameter map must be a factor.")
-  }
-  if (length(parameter_names) != length(map)) {
-    cli::cli_abort(c(
-      "x" = "A TMB parameter map must have one entry per FIMS parameter.",
-      "i" = "Found {length(map)} map entries for {length(parameter_names)}
-      parameters."
-    ))
-  }
-
-  active_map <- droplevels(map)
-  parameter_names[match(seq_len(nlevels(active_map)), as.integer(active_map))]
-}
-
-tmb_parameter_mapping <- function(input) {
-  maps <- input[["map"]]
-  if (!is.null(maps) &&
-    (!is.list(maps) || (length(maps) > 0 &&
-      (is.null(names(maps)) || anyDuplicated(names(maps)) ||
-        any(!names(maps) %in% c("p", "re")))))) {
-    cli::cli_abort("TMB maps must be a named list with entries p and/or re.")
-  }
-
-  mapping <- list()
-  for (effect in c("p", "re")) {
-    initial <- input[["parameters"]][[effect]]
-    full_names <- if (effect == "p") {
-      names(get_parameter_names(as.list(initial)))
-    } else {
-      names(get_random_names(as.list(initial)))
-    }
-    map <- maps[[effect]]
-    if (effect %in% names(maps) && !is.factor(map)) {
-      cli::cli_abort("A TMB parameter map must be a factor.")
-    }
-    reduced_names <- tmb_mapped_parameter_names(full_names, map)
-    index <- if (is.null(map)) seq_along(initial) else as.integer(droplevels(map))
-    for (level in seq_along(reduced_names)) {
-      positions <- which(index == level)
-      values <- initial[positions]
-      if (!isTRUE(all(values == values[[1L]]))) {
-        details <- vapply(positions, function(position) {
-          sprintf(
-            "Parameter %s: %s[%d], initial value = %s.",
-            full_names[[position]], effect, position,
-            format(initial[[position]], digits = 17)
-          )
-        }, character(1))
-        cli::cli_abort(c(
-          "Shared TMB map entries in {effect} must have identical starting values.",
-          stats::setNames(details, rep("i", length(details))),
-          "i" = "Use identical starting values to share a parameter, or NA map
-          entries to hold parameters at their individual starting values."
-        ))
-      }
-    }
-    mapping[[effect]] <- list(
-      full_names = full_names,
-      reduced_names = reduced_names,
-      index = index,
-      initial = unname(initial)
-    )
-  }
-  mapping
-}
-
 #' Class constructors for class `FIMSFit` and associated child classes
 #'
 #' Create an object with the class of `FIMSFit` after running a FIMS model. This
@@ -499,11 +365,11 @@ tmb_parameter_mapping <- function(input) {
 #' user if they have used their own bespoke code to fit a FIMS model.
 #'
 #' @inheritParams fit_fims
-#' @param obj An object returned from [TMB::MakeADFun()].
+#' @param obj An object returned from [RTMB::MakeADFun()].
 #' @param opt An object returned from an optimizer, typically from
-#'   [stats::nlminb()], used to fit a TMB model.
+#'   [stats::nlminb()], used to fit the model.
 #' @param sdreport An object of the `sdreport` class as returned from
-#'   [TMB::sdreport()].
+#'   [RTMB::sdreport()].
 #' @param run_time A vector of at least length one, where all entries are of the
 #'   `timediff` class and at least one is named "time_total". This information
 #'   is available in [fit_fims()] and added to this argument internally but if
@@ -524,7 +390,7 @@ tmb_parameter_mapping <- function(input) {
 #'       A list containing the model setup in the same form it was passed.
 #'     }
 #'     \item{\code{obj}:}{
-#'       A list returned from [TMB::MakeADFun()] in the same form it was passed.
+#'       A list returned from [RTMB::MakeADFun()].
 #'     }
 #'     \item{\code{opt}:}{
 #'       A list containing the optimized model in the same form it was passed.
@@ -538,7 +404,7 @@ tmb_parameter_mapping <- function(input) {
 #'     }
 #'     \item{\code{sdreport}:}{
 #'       An object with the `sdreport` class containing the output from
-#'       `TMB::sdreport(obj)`.
+#'       `RTMB::sdreport(obj)`.
 #'     }
 #'     \item{\code{run_time}:}{
 #'       The length of time it took to run the model if it was optimized.
@@ -567,11 +433,6 @@ FIMSFit <- function(
   version = utils::packageVersion("FIMS"),
   convergence = convergence_tibble(character(0), character(0))
 ) {
-  mapping <- input[["tmb_mapping"]]
-  if (is.null(mapping)) {
-    mapping <- tmb_parameter_mapping(input)
-    input[["tmb_mapping"]] <- mapping
-  }
   # Determine the number of parameters
   n_total <- length(obj[["env"]][["last.par.best"]])
   n_fixed_effects <- length(obj[["par"]])
@@ -584,11 +445,11 @@ FIMSFit <- function(
 
   # Compute the full per-parameter gradient vector once at construction time.
   # max_gradient is derived from it so obj$gr() is only ever called here.
-  # Storing gradient_vec in the FIMSFit slot means get_estimates() and the
-  # broom methods (tidy, augment, glance) can read from x@gradient instead of
-  # calling obj$gr() again - which segfaults after clear() frees C++ memory.
-  # as.numeric() is required because TMB's obj$gr() returns a matrix (1xn)
-  # in some call patterns, which would fail the "numeric" slot type check.
+  # Storing it in the FIMSFit slot means get_estimates() and the broom
+  # methods (tidy, augment, glance) read x@gradient instead of evaluating the
+  # model again.
+  # as.numeric() is required because obj$gr() returns a matrix (1xn) in some
+  # call patterns, which would fail the "numeric" slot type check.
   gradient_vector <- if (length(opt) > 0) {
     as.numeric(obj[["gr"]](opt[["par"]]))
   } else {
@@ -602,39 +463,16 @@ FIMSFit <- function(
     max(abs(gradient_vector))
   }
 
-  parameter_names <- mapping[["p"]][["reduced_names"]]
-  random_effects_names <- mapping[["re"]][["reduced_names"]]
-  if (length(parameter_names) != length(obj[["par"]])) {
-    cli::cli_abort(c(
-      "x" = "TMB and FIMS produced different numbers of fixed parameters.",
-      "i" = "TMB produced {length(obj[[\"par\"]])} parameters",
-      "i" = "FIMS produced {length(parameter_names)} parameters"
-    ))
-  }
-  names(obj[["par"]]) <- parameter_names
-  if (length(opt) > 0) {
-    names(opt[["par"]]) <- parameter_names
-  }
-
   # Get the report
   report <- obj[["report"]](obj[["env"]][["last.par.best"]])
-  parameters <- restore_tmb_parameters(obj)
-  for (effect in c("p", "re")) {
-    mapping[[effect]][["estimate"]] <- unname(parameters[[effect]])
-  }
-  input[["tmb_mapping"]] <- mapping
 
-  if (length(sdreport) > 0) {
-    # rename the sdreport
-    names(sdreport[["par.fixed"]]) <- parameter_names
-    dimnames(sdreport[["cov.fixed"]]) <- list(parameter_names, parameter_names)
-    if (length(sdreport[["par.random"]]) > 0) {
-      names(sdreport[["par.random"]]) <- random_effects_names
-    }
-  }
+  # The get_estimates() table, built once and stored as JSON
+  model_output <- estimates_to_json(
+    estimates_table(input, obj, report, gradient_vector, sdreport)
+  )
 
-  model_output <- input[["model"]]$get_output()
-
+  # Name the sdreport's parameters by their parameter ids
+  sdreport <- name_by_parameter_id(sdreport, input[["parameter_table"]])
 
   fit <- methods::new(
     "FIMSFit",
@@ -656,18 +494,12 @@ FIMSFit <- function(
 
 #' Fit a FIMS model (BETA)
 #'
-#' @param input Input list as returned by [initialize_fims()]. An optional
-#'   `map` entry is a named list of factors for `p` (fixed effects) and/or `re`
-#'   (random effects), in the order of the corresponding `parameters` vector.
-#'   Each factor must have one entry per parameter. `NA` holds a parameter at
-#'   its starting value; repeated levels share one estimated value. Shared
-#'   entries must have identical starting values; otherwise, the error lists
-#'   each parameter's name, 1-based index in `p` or `re`, and initial value.
-#'   Factor levels determine the
-#'   reduced parameter order; unused levels are dropped. Levels in `p` and `re`
-#'   are independent; sharing
-#'   across these vectors is not supported.
-#' @param get_sd A boolean specifying if the [TMB::sdreport()] should be
+#' @param input Input list as returned by [initialize_fims()]. Which values
+#'   are estimated, held constant or shared comes from the `estimation_type`
+#'   and `map_group` columns of the parameter tibble, which [initialize_fims()]
+#'   turns into `input[["map"]]`, 1 factor per model parameter. Shared values
+#'   must have identical starting values.
+#' @param get_sd A boolean specifying if the [RTMB::sdreport()] should be
 #'   calculated? It is skipped when the maximum gradient is above 0.01 or not
 #'   finite, because standard errors far from the optimum are not meaningful.
 #' @param save_sd A logical, with the default `TRUE`, indicating whether the
@@ -687,7 +519,7 @@ FIMSFit <- function(
 #'   object as an RDS object. Defaults to 'fit.RDS', and a value of NULL
 #'   indicates not to save it. If specified, it must end in .RDS. The file is
 #'   written to folder given by `input[["path"]]`. Not yet implemented.
-#' @param getReportCovariance A logical passed to [TMB::sdreport()], with the
+#' @param getReportCovariance A logical passed to [RTMB::sdreport()], with the
 #'   default `FALSE`. Standard errors of all parameters and derived quantities
 #'   are calculated either way. If `TRUE`, the full covariance matrix of the
 #'   derived quantities is also calculated and stored as `cov` in the
@@ -709,7 +541,7 @@ FIMSFit <- function(
 #' have `NA` standard errors. Gradients describe reduced fixed-effect
 #' optimization variables and are reported only on the first full parameter
 #' in each shared level. Parameter counts describe the reduced vectors.
-#' With no active fixed effects, TMB evaluates the random-effects model without
+#' With no active fixed effects, RTMB evaluates the random-effects model without
 #' running an outer optimizer. If no parameters remain active, use
 #' `optimize = FALSE`.
 #' @keywords fit_fims
@@ -746,23 +578,29 @@ fit_fims <- function(input,
   }
   # If the estimation_type of all parameters is constant, FIMS will abort if
   # optimize is set to TRUE
-  input[["tmb_mapping"]] <- tmb_parameter_mapping(input)
-  for (effect in names(input[["map"]])) {
-    input[["map"]][[effect]] <- droplevels(input[["map"]][[effect]])
-  }
-  parameter_names <- input[["tmb_mapping"]][["p"]][["reduced_names"]]
-  random_effects_names <- input[["tmb_mapping"]][["re"]][["reduced_names"]]
-  if (optimize && length(parameter_names) + length(random_effects_names) == 0) {
+  n_estimated <- sum(purrr::map_int(input[["map"]], function(map) {
+    sum(!is.na(map))
+  }))
+  if (optimize && n_estimated == 0) {
     cli::cli_abort("FIMS must have at least one parameter to optimize.")
   }
 
-  obj <- TMB::MakeADFun(
-    data = list(),
-    parameters = input$parameters,
-    map = input$map,
-    random = "re",
-    DLL = "FIMS",
+  model_data <- input[["model_data"]]
+  # Standard errors of derived quantities are only needed for an sdreport.
+  model_data[["adreport"]] <- get_sd
+  model_data[["report_age_to_length_conversion_derived_tensor"]] <- isTRUE(
+    input[["model"]][["report_age_to_length_conversion_derived_tensor"]]
+  )
+  obj <- RTMB::MakeADFun(
+    function(parameters) fims_model(parameters, model_data),
+    input[["parameters"]],
+    map = input[["map"]],
+    random = if (length(input[["random"]]) > 0) input[["random"]],
     silent = TRUE
+  )
+  parameter_names <- parameter_labels(names(obj[["par"]]))
+  random_effects_names <- parameter_labels(
+    names(obj[["env"]][["last.par.best"]])[obj[["env"]][["random"]]]
   )
   if (!optimize) {
     initial_fit <- FIMSFit(
@@ -845,12 +683,10 @@ fit_fims <- function(input,
       mle_convergence[["severity"]] == "FAIL"
   )
 
-  restore_tmb_parameters(obj)
-
   time_sdreport <- NA
   if (get_sd && !gradient_failed) {
     t2 <- Sys.time()
-    sdreport <- TMB::sdreport(
+    sdreport <- RTMB::sdreport(
       obj,
       par.fixed = opt[["par"]],
       getReportCovariance = getReportCovariance
@@ -895,9 +731,12 @@ fit_fims <- function(input,
   # The NLL check reads the report and model output that FIMSFit() builds
   fit@convergence <- dplyr::bind_rows(
     mle_convergence,
-    check_nll_convergence(opt, get_report(fit), get_model_output(fit)),
+    check_nll_convergence(opt, get_report(fit), input[["model_data"]]),
     sdreport_convergence
   )
+  if (!save_sd) {
+    fit@sdreport <- list()
+  }
   print(fit)
   if (!is.null(filename)) {
     cli::cli_warn(c(
@@ -1005,7 +844,7 @@ return_failed_nlminb <- function(object) {
 #' Build the FIMSFit returned when nlminb fails
 #'
 #' @param input Input list as returned by [initialize_fims()].
-#' @param obj The TMB object used for fitting.
+#' @param obj The RTMB object used for fitting.
 #' @return
 #' A FIMSFit object with the partial results and the convergence checks. The
 #' report is from the last parameters nlminb tried, so the `"nll"` check names
@@ -1028,7 +867,7 @@ failed_fims_fit <- function(input, obj) {
       threshold = 0,
       message = "nlminb failed or returned an objective that is not finite."
     ),
-    check_nll_convergence(get_opt(fit), get_report(fit), get_model_output(fit)),
+    check_nll_convergence(get_opt(fit), get_report(fit), input[["model_data"]]),
     convergence_tibble(
       check = "sdreport",
       severity = "NOTE",
@@ -1036,4 +875,88 @@ failed_fims_fit <- function(input, obj) {
     )
   )
   fit
+}
+
+#' Name the sdreport's parameters, ending in the parameter id
+#'
+#' Each estimated value is named "<name>.<parameter id>", so the sdreport's
+#' rows can be matched to get_estimates(). Values that share 1 estimate take
+#' the id of the first.
+#'
+#' @param sdreport The sdreport, or an empty list.
+#' @param parameter_table The `parameter_table` from initialize_fims().
+#' @noRd
+name_by_parameter_id <- function(sdreport, parameter_table) {
+  if (length(sdreport) == 0) {
+    return(sdreport)
+  }
+  label <- function(rtmb_names) {
+    level <- stats::ave(seq_along(rtmb_names), rtmb_names, FUN = seq_along)
+    row <- match(
+      paste(rtmb_names, level),
+      paste(parameter_table[["rtmb_name"]], parameter_table[["rtmb_level"]])
+    )
+    paste(rtmb_names, parameter_table[["parameter_id"]][row], sep = ".")
+  }
+  fixed_names <- label(names(sdreport[["par.fixed"]]))
+  names(sdreport[["par.fixed"]]) <- fixed_names
+  dimnames(sdreport[["cov.fixed"]]) <- list(fixed_names, fixed_names)
+  if (length(sdreport[["par.random"]]) > 0) {
+    names(sdreport[["par.random"]]) <- label(names(sdreport[["par.random"]]))
+  }
+  sdreport
+}
+
+#' Label each value of a parameter, e.g. `"Fleet.fleet1.log_Fmort[3]"`
+#'
+#' @param parameter_names RTMB parameter names, 1 per value.
+#' @noRd
+parameter_labels <- function(parameter_names) {
+  paste0(
+    parameter_names, "[",
+    stats::ave(seq_along(parameter_names), parameter_names, FUN = seq_along), "]"
+  )
+}
+
+#' The get_estimates() table as JSON, for the `model_output` slot
+#'
+#' @param estimates The table from estimates_table().
+#' @noRd
+estimates_to_json <- function(estimates) {
+  as.character(jsonlite::toJSON(
+    estimates,
+    dataframe = "columns", digits = NA, na = "null"
+  ))
+}
+
+#' The get_estimates() table from the `model_output` slot, with each column's
+#' type
+#'
+#' @param json The `model_output` slot.
+#' @noRd
+estimates_from_json <- function(json) {
+  columns <- jsonlite::fromJSON(json, simplifyVector = TRUE)
+  # A fit saved by an earlier version of FIMS holds JSON of another form.
+  if (!all(c("label", "estimated") %in% names(columns))) {
+    cli::cli_abort(c(
+      "x" = "The fit's model output is not a table of estimates.",
+      "i" = "Fits made with an earlier version of FIMS cannot be read by this
+      version. Refit the model."
+    ))
+  }
+  integer_columns <- c("module_id", "type_id", "parameter_id")
+  character_columns <- c(
+    "module_name", "module_type", "label", "type", "fleet",
+    "estimation_type", "distribution", "input_type"
+  )
+  for (name in names(columns)) {
+    columns[[name]] <- if (name %in% integer_columns) {
+      as.integer(columns[[name]])
+    } else if (name %in% character_columns) {
+      as.character(columns[[name]])
+    } else {
+      as.numeric(columns[[name]])
+    }
+  }
+  tibble::as_tibble(columns)
 }

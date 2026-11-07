@@ -24,14 +24,14 @@ observed and an expected value in \code{\link[=get_estimates]{get_estimates()}})
 \item{\code{npar_random}}{Number of random-effect parameters.}
 \item{\code{marginal_nll}}{Marginal negative log-likelihood
 (\code{opt$objective}); \code{NA} if the model was not optimized.}
-\item{\code{total_nll}}{Total (joint) negative log-likelihood from the TMB
+\item{\code{total_nll}}{Total (joint) negative log-likelihood from the model
 report (\code{report$jnll}).}
 \item{\code{max_gradient}}{Maximum absolute gradient at the MLE. Values
 below 0.001 are generally considered well-converged.}
 \item{\code{converged}}{Logical; \code{TRUE} when \code{opt$convergence == 0} \strong{and}
 \code{max_gradient < 0.001}.}
 \item{\code{terminal_sb}}{Spawning biomass at the terminal year,
-extracted from the TMB report. Returns a list-column when multiple
+extracted from the model report. Returns a list-column when multiple
 populations are present.}
 \item{\code{fims_version}}{The version of FIMS used to fit the model.}
 \item{\code{run_time}}{Total wall-clock time of the fit in seconds.}

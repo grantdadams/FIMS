@@ -15,25 +15,19 @@ FIMSFit(
 )
 }
 \arguments{
-\item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. An optional
-\code{map} entry is a named list of factors for \code{p} (fixed effects) and/or \code{re}
-(random effects), in the order of the corresponding \code{parameters} vector.
-Each factor must have one entry per parameter. \code{NA} holds a parameter at
-its starting value; repeated levels share one estimated value. Shared
-entries must have identical starting values; otherwise, the error lists
-each parameter's name, 1-based index in \code{p} or \code{re}, and initial value.
-Factor levels determine the
-reduced parameter order; unused levels are dropped. Levels in \code{p} and \code{re}
-are independent; sharing
-across these vectors is not supported.}
+\item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. Which values
+are estimated, held constant or shared comes from the \code{estimation_type}
+and \code{map_group} columns of the parameter tibble, which \code{\link[=initialize_fims]{initialize_fims()}}
+turns into \code{input[["map"]]}, 1 factor per model parameter. Shared values
+must have identical starting values.}
 
-\item{obj}{An object returned from \code{\link[TMB:MakeADFun]{TMB::MakeADFun()}}.}
+\item{obj}{An object returned from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.}
 
 \item{opt}{An object returned from an optimizer, typically from
-\code{\link[stats:nlminb]{stats::nlminb()}}, used to fit a TMB model.}
+\code{\link[stats:nlminb]{stats::nlminb()}}, used to fit the model.}
 
 \item{sdreport}{An object of the \code{sdreport} class as returned from
-\code{\link[TMB:sdreport]{TMB::sdreport()}}.}
+\code{\link[RTMB:sdreport]{RTMB::sdreport()}}.}
 
 \item{run_time}{A vector of at least length one, where all entries are of the
 \code{timediff} class and at least one is named "time_total". This information
@@ -57,7 +51,7 @@ following slots:
 A list containing the model setup in the same form it was passed.
 }
 \item{\code{obj}:}{
-A list returned from \code{\link[TMB:MakeADFun]{TMB::MakeADFun()}} in the same form it was passed.
+A list returned from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.
 }
 \item{\code{opt}:}{
 A list containing the optimized model in the same form it was passed.
@@ -71,7 +65,7 @@ A list containing the model report from \code{obj[["report"]]()}.
 }
 \item{\code{sdreport}:}{
 An object with the \code{sdreport} class containing the output from
-\code{TMB::sdreport(obj)}.
+\code{RTMB::sdreport(obj)}.
 }
 \item{\code{run_time}:}{
 The length of time it took to run the model if it was optimized.

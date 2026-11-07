@@ -80,9 +80,9 @@ convergence_tibble <- function(
 #' @param gradient The gradient vector of the fixed effects at the optimum, used
 #' to name the 3 parameters with the largest absolute gradients. The default
 #' of `NULL` leaves the names out of the messages.
-#' @param parameter_names A character vector of fixed-effect names, e.g., from
-#' [get_parameter_names()], in the same order as `gradient`. If `NULL`, labels
-#' such as `"p[2]"` are used.
+#' @param parameter_names A character vector of fixed-effect names, e.g.,
+#' `"Fleet.fleet1.log_Fmort[3]"`, in the same order as `gradient`. If `NULL`,
+#' labels such as `"p[2]"` are used.
 #' @return
 #' A tibble from `convergence_tibble()` with the rows `"optimizer"` and
 #' `"max_gradient"`. The `threshold` of `"max_gradient"` is always 0.001, so
@@ -224,12 +224,12 @@ check_mle_convergence <- function(
 #' 1000 or a condition number above the threshold gives a warning that the
 #' model may be weakly identified.
 #' @inheritParams check_mle_convergence
-#' @param obj The TMB object used for fitting, used to compute the Hessian.
-#' @param sdreport The sdreport output from TMB, containing standard errors and
-#' Hessian information.
-#' @param random_effects_names A character vector of random-effect names, e.g.,
-#' from [get_random_names()], in the same order as the random effects in
-#' `sdreport`. If `NULL`, labels such as `"re[2]"` are used.
+#' @param obj The RTMB object used for fitting, used to compute the Hessian.
+#' @param sdreport The output of [RTMB::sdreport()], containing standard
+#' errors and Hessian information.
+#' @param random_effects_names A character vector of random-effect names,
+#' e.g., `"Recruitment.log_devs[2]"`, in the same order as the random effects
+#' in `sdreport`. If `NULL`, labels such as `"re[2]"` are used.
 #' @return
 #' A tibble from `convergence_tibble()` with the row `"hessian"` and, when the
 #' Hessian is positive definite, the rows `"standard_errors"`,
@@ -247,8 +247,9 @@ check_sdreport_convergence <- function(
   # large means the data say almost nothing about the parameter.
   large_se_threshold <- 1e3
   has_random_effects <- length(obj[["env"]][["random"]]) > 0
-  # TMB labels every fixed effect "p" and every random effect "re", so prefer
-  # the FIMS names and only fall back to the summary row names without them.
+  # The sdreport gives every value of a parameter the same row name, so
+  # prefer the given labels, which tell the values apart, and fall back to the
+  # row names only without them.
   summary_labels <- function(summary_matrix, preferred_labels, fallback) {
     row_labels <- if (is.null(preferred_labels)) {
       rownames(summary_matrix)
@@ -437,12 +438,14 @@ check_sdreport_convergence <- function(
   hessian_check_result <- tryCatch(
     {
       if (has_random_effects) {
-        hessian <- obj[["env"]]$spHess(random = TRUE)
+        hessian <- as.matrix(obj[["env"]]$spHess(random = TRUE))
       } else {
         hessian <- as.matrix(obj$he(opt[["par"]]))
       }
-      # Compare condition number to threshold
-      condition_number <- kappa(hessian)
+      # The exact condition number is used because kappa()'s default is a
+      # quick estimate that depends on the order of the parameters, and it can
+      # fall on either side of the threshold for the same Hessian.
+      condition_number <- kappa(hessian, exact = TRUE)
 
       if (condition_number > condition_number_threshold) {
         n_show <- if (is.null(largest_se)) 0 else nrow(largest_se)
@@ -617,58 +620,33 @@ check_sdreport_convergence <- function(
 
 #' Label negative log-likelihood components
 #'
-#' Names each value of `nll_components` in the report from the density
-#' components in the model output. `Model::Evaluate()` in
-#' `inst/include/common/model.hpp` adds the components in the order priors,
-#' random effects, then data, and within each type in order of module id
-#' because the density components are stored in a map keyed by id.
+#' Names each value of `nll_components` in the report. The model adds the
+#' components in the order priors, processes (random effects), then data
+#' ([initialize_fims()] keeps that order in `model_data`). A prior or process
+#' is named by its target, such as `"Recruitment.log_devs"`, and a data set by
+#' its fleet and type, such as `"fleet1_agecomp"`.
 #'
-#' @param model_output The model output as a JSON string, e.g., from
-#' [get_model_output()].
-#' @param n_components The length of `nll_components`.
-#' @return
-#' A character vector of length `n_components`, e.g., `"fleet1_catch"` for a
-#' data component or `"random_effects_4"` for the random effects of density
-#' module 4. Labels such as `"nll[2]"` are used if the model output does not
-#' line up with `n_components`.
+#' @param model_data The `model_data` element of the list from
+#'   [initialize_fims()].
+#' @return A character vector with 1 label per negative log-likelihood
+#'   component.
 #' @noRd
-label_nll_components <- function(model_output, n_components) {
-  fallback <- sprintf("nll[%d]", seq_len(n_components))
-  output <- tryCatch(
-    jsonlite::fromJSON(model_output, simplifyVector = FALSE),
-    error = function(e) NULL
+label_nll_components <- function(model_data) {
+  data_type_labels <- c(
+    catch = "catch", index = "index", age_comp = "agecomp",
+    length_comp = "lengthcomp",
+    conditional_age_at_length = "conditional_age_at_length"
   )
-  densities <- output[["density_components"]]
-  if (length(densities) != n_components) {
-    return(fallback)
-  }
-
-  # Each fleet lists the id of each of its data types, e.g., catch = 2
-  data_labels <- output[["fleets"]] |>
-    purrr::map(function(fleet) {
-      data_ids <- unlist(fleet[["data_ids"]])
-      stats::setNames(
-        paste(fleet[["fleet"]], names(data_ids), sep = "_"),
-        data_ids
+  c(
+    purrr::map_chr(model_data[["densities"]], "target"),
+    purrr::map_chr(model_data[["likelihoods"]], function(likelihood) {
+      paste(
+        likelihood[["fleet"]],
+        data_type_labels[[likelihood[["data_type"]]]],
+        sep = "_"
       )
-    }) |>
-    unlist()
-
-  input_type <- purrr::map_chr(densities, "input_type")
-  module_id <- purrr::map_int(densities, "module_id")
-  labels <- purrr::map2_chr(densities, input_type, function(density, type) {
-    if (type == "data") {
-      label <- data_labels[as.character(density[["observed_data_id"]])]
-      if (!is.na(label)) {
-        return(unname(label))
-      }
-    }
-    paste(type, density[["module_id"]], sep = "_")
-  })
-  labels[order(
-    match(input_type, c("prior", "random_effects", "data")),
-    module_id
-  )]
+    })
+  )
 }
 
 #' Check the negative log-likelihood
@@ -678,19 +656,22 @@ label_nll_components <- function(model_output, n_components) {
 #' finite gives a warning that names the components that are not finite.
 #'
 #' @inheritParams check_mle_convergence
-#' @param report The report from the TMB object, e.g., from [get_report()].
+#' @param report The model report, e.g., from [get_report()].
 #' @inheritParams label_nll_components
 #' @return
 #' A tibble from `convergence_tibble()` with the row `"nll"`.
 #' @noRd
-check_nll_convergence <- function(opt, report, model_output) {
+check_nll_convergence <- function(opt, report, model_data) {
   nll_components <- report[["nll_components"]]
-  component_labels <- label_nll_components(
-    model_output,
-    length(nll_components)
-  )
+  component_labels <- label_nll_components(model_data)
+  # Indexed labels for components that do not line up with the model data,
+  # such as a report from another model.
+  if (length(component_labels) != length(nll_components)) {
+    component_labels <- sprintf("nll[%d]", seq_along(nll_components))
+  }
+  objective <- if (is.null(opt[["objective"]])) NA_real_ else opt[["objective"]]
   not_finite <- c(
-    objective = !is.finite(opt[["objective"]]),
+    objective = !is.finite(objective),
     jnll = !is.finite(report[["jnll"]]),
     stats::setNames(!is.finite(nll_components), component_labels)
   )
@@ -708,7 +689,7 @@ check_nll_convergence <- function(opt, report, model_output) {
   convergence_tibble(
     check = "nll",
     severity = if (length(not_finite_labels) > 0) "FAIL" else "OK",
-    value = opt[["objective"]],
+    value = objective,
     parameter = if (length(not_finite_labels) > 0) {
       paste(not_finite_labels, collapse = ", ")
     } else {

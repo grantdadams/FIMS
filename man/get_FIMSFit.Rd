@@ -89,10 +89,10 @@ get_model_output(x)
 \code{\link[=get_input]{get_input()}} returns the list that was used to fit the FIMS model, which
 is the returned object from \code{\link[=setup_default_parameters]{setup_default_parameters()}}.
 
-\code{\link[=get_report]{get_report()}} returns the TMB report, where anything that is flagged as
-reportable in the C++ code is returned.
+\code{\link[=get_report]{get_report()}} returns the model report, with every quantity the model
+passes to \code{REPORT()}.
 
-\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[TMB:MakeADFun]{TMB::MakeADFun()}}.
+\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.
 
 \code{\link[=get_opt]{get_opt()}} returns the output from \code{\link[=nlminb]{nlminb()}}, which is the minimizer used
 in \code{\link[=fit_fims]{fit_fims()}}.
@@ -101,11 +101,9 @@ in \code{\link[=fit_fims]{fit_fims()}}.
 model.
 
 \code{\link[=get_gradient]{get_gradient()}} returns the per-parameter gradient vector at the MLE as
-stored during fitting. Unlike calling \code{get_obj(x)[["gr"]](get_opt(x)[["par"]])}
-this function is safe to call after \code{\link[=clear]{clear()}} because it reads
-from a stored R vector rather than the compiled C++ objective function.
+stored during fitting, so the model is not evaluated again.
 
-\code{\link[=get_sdreport]{get_sdreport()}} returns the list from \code{\link[TMB:sdreport]{TMB::sdreport()}}.
+\code{\link[=get_sdreport]{get_sdreport()}} returns the list from \code{\link[RTMB:sdreport]{RTMB::sdreport()}}.
 
 \code{\link[=get_convergence]{get_convergence()}} returns a tibble with one row per convergence check
 run by \code{\link[=fit_fims]{fit_fims()}}: \code{check}, \code{severity} (\code{"OK"}, \code{"NOTE"} for a check that
@@ -128,7 +126,7 @@ seconds as a \code{difftime} object.
 \code{\link[=get_version]{get_version()}} returns the \code{package_version} of FIMS that was used to fit
 the model.
 
-\code{\link[=get_model_output]{get_model_output()}} returns the finalized FIMS output as a JSON list.
+\code{\link[=get_model_output]{get_model_output()}} returns the \code{\link[=get_estimates]{get_estimates()}} table as a JSON string.
 }
 \description{
 There is an accessor function for each slot in the S4 class \code{FIMSFit}, where

@@ -17,19 +17,13 @@ fit_fims(
 )
 }
 \arguments{
-\item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. An optional
-\code{map} entry is a named list of factors for \code{p} (fixed effects) and/or \code{re}
-(random effects), in the order of the corresponding \code{parameters} vector.
-Each factor must have one entry per parameter. \code{NA} holds a parameter at
-its starting value; repeated levels share one estimated value. Shared
-entries must have identical starting values; otherwise, the error lists
-each parameter's name, 1-based index in \code{p} or \code{re}, and initial value.
-Factor levels determine the
-reduced parameter order; unused levels are dropped. Levels in \code{p} and \code{re}
-are independent; sharing
-across these vectors is not supported.}
+\item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. Which values
+are estimated, held constant or shared comes from the \code{estimation_type}
+and \code{map_group} columns of the parameter tibble, which \code{\link[=initialize_fims]{initialize_fims()}}
+turns into \code{input[["map"]]}, 1 factor per model parameter. Shared values
+must have identical starting values.}
 
-\item{get_sd}{A boolean specifying if the \code{\link[TMB:sdreport]{TMB::sdreport()}} should be
+\item{get_sd}{A boolean specifying if the \code{\link[RTMB:sdreport]{RTMB::sdreport()}} should be
 calculated? It is skipped when the maximum gradient is above 0.01 or not
 finite, because standard errors far from the optimum are not meaningful.}
 
@@ -56,7 +50,7 @@ object as an RDS object. Defaults to 'fit.RDS', and a value of NULL
 indicates not to save it. If specified, it must end in .RDS. The file is
 written to folder given by \code{input[["path"]]}. Not yet implemented.}
 
-\item{getReportCovariance}{A logical passed to \code{\link[TMB:sdreport]{TMB::sdreport()}}, with the
+\item{getReportCovariance}{A logical passed to \code{\link[RTMB:sdreport]{RTMB::sdreport()}}, with the
 default \code{FALSE}. Standard errors of all parameters and derived quantities
 are calculated either way. If \code{TRUE}, the full covariance matrix of the
 derived quantities is also calculated and stored as \code{cov} in the
@@ -82,7 +76,7 @@ Shared parameters receive the same estimate and standard error in
 have \code{NA} standard errors. Gradients describe reduced fixed-effect
 optimization variables and are reported only on the first full parameter
 in each shared level. Parameter counts describe the reduced vectors.
-With no active fixed effects, TMB evaluates the random-effects model without
+With no active fixed effects, RTMB evaluates the random-effects model without
 running an outer optimizer. If no parameters remain active, use
 \code{optimize = FALSE}.
 }
