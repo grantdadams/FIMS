@@ -50,6 +50,21 @@ test_that("`get_estimates()` works with deterministic run", {
   })
 })
 
+test_that("`get_estimates()` of a new deterministic run matches the saved estimates", {
+  estimates <- FIMS::parameters_big |>
+    initialize_fims(data = FIMSFrame(data_big)) |>
+    fit_fims(optimize = FALSE) |>
+    get_estimates()
+  # The saved estimates can come from another platform, so the last digits
+  # can differ.
+  #' @description Test that a deterministic catch-at-age run of parameters_big gives the saved `estimates_big_unoptimized`.
+  expect_equal(
+    object = estimates,
+    expected = estimates_big_unoptimized,
+    tolerance = 1e-10
+  )
+})
+
 test_that("`get_estimates()` works with estimation run", {
   estimates_colnames <- colnames(estimates_big_optimized)
   #' @description Test that `get_estimates()` returns current estimate columns after optimization.

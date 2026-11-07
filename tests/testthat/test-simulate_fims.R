@@ -263,4 +263,15 @@ test_that("`run_fims_self_test()` works with correct inputs", {
 # No edge cases to test.
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`run_fims_self_test()` returns correct error messages", {
+  tuna <- FIMSFrame(data_limited_tuna)
+  surplus_production_fit <- tuna |>
+    setup_default_parameters(model_type = "SurplusProduction") |>
+    initialize_fims(data = tuna) |>
+    fit_fims(optimize = FALSE)
+  #' @description Test that `run_fims_self_test()` errors for a surplus production model, which has no spawning biomass or recruitment to compare.
+  expect_error(
+    object = run_fims_self_test(surplus_production_fit),
+    regexp = "does not work with a surplus production"
+  )
+})

@@ -328,6 +328,9 @@ test_that("`model_weight_at_age()` returns a fleet's own weight at age with the 
 
 ## Edge handling ----
 test_that("`FIMSFrame()` returns correct outputs for edge cases", {
+  #' @description Test that `FIMSFrame()` reads catch and index data whose ages are all `NA`, as for a surplus production model, with no model ages.
+  expect_equal(get_n_ages(FIMSFrame(data_limited_tuna)), 0)
+
   #' @description Test that `get_data()` retrieves the data slot as a data frame when passed a data frame rather than a FIMSFrame object.
   expect_s3_class(get_data(data_big), "data.frame")
 
@@ -728,6 +731,14 @@ test_that("`FIMSFrame()` returns correct error messages", {
   #' @description Test that `FIMSFrame()` returns an error when there are no age data.
   expect_error(
     FIMSFrame(dplyr::mutate(data_big, age = NA_integer_)),
+    regexp = "they are all\\s+`NA`"
+  )
+  #' @description Test that `FIMSFrame()` returns an error when length compositions come with ages that are all `NA`, because only catch and index data can have no ages.
+  expect_error(
+    data_big |>
+      dplyr::filter(type %in% c("catch", "index", "length_comp")) |>
+      dplyr::mutate(age = NA_integer_) |>
+      FIMSFrame(),
     regexp = "they are all\\s+`NA`"
   )
 
