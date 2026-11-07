@@ -33,6 +33,10 @@
 #'
 #' @param data A `FIMSFrame` object returned from running [FIMSFrame()] on
 #'   your long input data.
+#' @param model_type A string specifying the model, `"CatchAtAge"` (the
+#'   default) or `"SurplusProduction"`. A surplus production model has only
+#'   the Depletion rows from [setup_default_Depletion()]. Its fleets have no
+#'   parameters, because catch is known and q is calculated from the index.
 #' @return
 #' A `tibble` containing default parameter values and metadata for your model.
 #' Key columns are listed below:
@@ -97,9 +101,23 @@
 #'       module_type = "DoubleLogistic"
 #'     )
 #'   )
+#'
+#' # Set up a surplus production model
+#' data("data_limited_tuna")
+#' surplus_production_parameters <- setup_default_parameters(
+#'   data = FIMSFrame(data_limited_tuna),
+#'   model_type = "SurplusProduction"
+#' )
 #' }
-setup_default_parameters <- function(data) {
+setup_default_parameters <- function(
+  data,
+  model_type = c("CatchAtAge", "SurplusProduction")
+) {
   is.FIMSFrame(data)
+  model_type <- rlang::arg_match(model_type)
+  if (model_type == "SurplusProduction") {
+    return(setup_default_Depletion(data = data))
+  }
 
   fleets <- get_fleets(data)
 
@@ -1110,4 +1128,129 @@ setup_default_Recruitment <- function(
 
   default <- dplyr::bind_rows(module_type_default, distribution_default) |>
     tidyr::fill(dplyr::all_of(c("module_name", "module_type")))
+}
+
+#' Set up default Pella--Tomlinson depletion parameters
+#'
+#' @description
+#' This function sets up default parameters for Pella--Tomlinson depletion,
+#' the population dynamics of the surplus production model. Parameters are
+#' the natural log of the intrinsic growth rate, carrying capacity, shape and
+#' first-year depletion, log depletion in every later year, and the natural
+#' log of its process standard deviation.
+#'
+#' @inherit setup_default_parameters
+#' @return
+#' A tibble containing default depletion parameters. See
+#' [setup_default_Depletion()] for the model and the defaults.
+#' @seealso
+#' * [setup_default_Depletion()]
+#' @noRd
+#' @examples
+#' \dontrun{
+#' FIMS:::setup_default_PellaTomlinsonDepletion(
+#'   data = FIMSFrame(data_limited_tuna)
+#' )
+#' }
+setup_default_PellaTomlinsonDepletion <- function(data) {
+  is.FIMSFrame(data)
+  annual_catch <- get_data(data) |>
+    dplyr::filter(.data[["type"]] == "catch", .data[["observed"]] != -999) |>
+    dplyr::summarize(
+      observed = sum(.data[["observed"]]),
+      .by = dplyr::all_of("timing")
+    ) |>
+    dplyr::pull(.data[["observed"]])
+
+  module_defaults <- setup_default_parameters_template(n_parameters = 4) |>
+    dplyr::mutate(
+      label = c(
+        "log_growth_rate", "log_carrying_capacity", "log_shape",
+        "log_init_depletion"
+      ),
+      value = c(log(0.2), log(10 * max(annual_catch)), log(2), 0),
+      estimation_type = c(
+        "fixed_effects", "fixed_effects", "constant", "constant"
+      )
+    )
+  log_depletion <- setup_default_parameters_template(
+    n_parameters = get_n_years(data) - 1
+  ) |>
+    dplyr::mutate(
+      label = "log_depletion",
+      value = 0.0,
+      timing = (get_start_year(data) + 1):get_end_year(data),
+      estimation_type = "random_effects",
+      distribution_type = "process",
+      distribution = "Dnorm"
+    )
+  log_sd <- setup_default_parameters_template(n_parameters = 1) |>
+    dplyr::mutate(
+      label = "log_sd",
+      value = log(0.1),
+      estimation_type = "constant",
+      distribution_type = "process",
+      distribution = "Dnorm",
+      target_label = "log_depletion"
+    )
+
+  dplyr::bind_rows(module_defaults, log_depletion, log_sd) |>
+    dplyr::mutate(
+      module_name = "Depletion",
+      module_type = "PellaTomlinson"
+    )
+}
+
+#' Set up default depletion parameters
+#'
+#' @description
+#' This function sets up default parameters for a depletion module, the
+#' population dynamics of a surplus production model.
+#'
+#' @param module_type A string specifying the type of depletion module. The
+#'   available options are
+#'   `r toString(eval(formals(setup_default_Depletion)[["module_type"]]))`.
+#' @details
+#' Expected depletion (biomass divided by carrying capacity K) at the start of
+#' the next year is
+#' \deqn{P_{t+1} = P_t + \frac{r}{m - 1} P_t (1 - P_t^{m - 1}) - \frac{C_t}{K},}
+#' where r is the growth rate, m the shape and C the total catch of all
+#' fleets, which is known and taken after production. From the second year
+#' on, log depletion is a random effect with normal process error around the
+#' log of the expected depletion. Depletion in the first year is the
+#' initial depletion, without process error. Each index is q times biomass
+#' at the start of the year, where log q is the mean of log(index / biomass)
+#' weighted by 1 / sd^2, its maximum likelihood estimate given biomass.
+#'
+#' The defaults are a Schaefer model (shape of 2) that starts unfished
+#' (initial depletion of 1). The starting values are a growth rate of 0.2 and
+#' a carrying capacity of 10 times the largest annual catch, and both are
+#' estimated. The process standard deviation is 0.1 and constant, because
+#' without a prior its maximum likelihood estimate often goes to 0.
+#' @inherit setup_default_parameters
+#' @return
+#' A tibble containing default depletion parameters. See
+#' \code{\link{setup_default_parameters}} for full column descriptions. The
+#' process standard deviation row names its target, `log_depletion`, in the
+#' `target_label` column.
+#' @export
+#' @keywords setup_default_parameters
+#' @seealso
+#' * [setup_default_parameters()]
+#' @examples
+#' \dontrun{
+#' default_depletion_parameters <- setup_default_Depletion(
+#'   data = FIMSFrame(data_limited_tuna),
+#'   module_type = "PellaTomlinson"
+#' )
+#' }
+setup_default_Depletion <- function(
+  data,
+  module_type = c("PellaTomlinson")
+) {
+  is.FIMSFrame(data)
+  module_type <- rlang::arg_match(module_type)
+  switch(module_type,
+    "PellaTomlinson" = setup_default_PellaTomlinsonDepletion(data)
+  )
 }

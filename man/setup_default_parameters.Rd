@@ -4,11 +4,19 @@
 \alias{setup_default_parameters}
 \title{Set up default parameters for a FIMS model}
 \usage{
-setup_default_parameters(data)
+setup_default_parameters(
+  data,
+  model_type = c("CatchAtAge", "SurplusProduction")
+)
 }
 \arguments{
 \item{data}{A \code{FIMSFrame} object returned from running \code{\link[=FIMSFrame]{FIMSFrame()}} on
 your long input data.}
+
+\item{model_type}{A string specifying the model, \code{"CatchAtAge"} (the
+default) or \code{"SurplusProduction"}. A surplus production model has only
+the Depletion rows from \code{\link[=setup_default_Depletion]{setup_default_Depletion()}}. Its fleets have no
+parameters, because catch is known and q is calculated from the index.}
 }
 \value{
 A \code{tibble} containing default parameter values and metadata for your model.
@@ -99,6 +107,13 @@ parameters_with_double_logistic <- updated_parameters |>
       module_type = "DoubleLogistic"
     )
   )
+
+# Set up a surplus production model
+data("data_limited_tuna")
+surplus_production_parameters <- setup_default_parameters(
+  data = FIMSFrame(data_limited_tuna),
+  model_type = "SurplusProduction"
+)
 }
 }
 \seealso{

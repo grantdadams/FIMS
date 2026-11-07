@@ -85,8 +85,15 @@ methods::setMethod(
       sep = "="
     ))
     div_digit <- cli::cli_div(theme = list(.val = list(digits = 5)))
+    # A surplus production model has biomass, not spawning biomass.
+    terminal_label <- "Terminal SB"
+    terminal_quantity <- x@report[["spawning_biomass"]]
+    if (is.null(terminal_quantity)) {
+      terminal_label <- "Terminal biomass"
+      terminal_quantity <- x@report[["biomass"]]
+    }
     terminal_sb <- sapply(
-      x@report[["spawning_biomass"]],
+      terminal_quantity,
       function(y) utils::tail(y, 1)
     )
     # The overall status is the most severe check, so a failed check cannot be
@@ -123,7 +130,7 @@ methods::setMethod(
       "i" = "Negative log likelihood (NLL):",
       "*" = "Marginal NLL= {.val {x@opt$objective}}",
       "*" = "Total NLL= {.val {x@report$jnll}}",
-      "i" = "Terminal SB= {.val {terminal_sb}}"
+      "i" = "{terminal_label}= {.val {terminal_sb}}"
     ))
     cli::cli_end(div_digit)
   }
