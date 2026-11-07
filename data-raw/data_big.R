@@ -581,7 +581,6 @@ fit_big_unoptimized <- parameters_big |>
 estimates_big_unoptimized <- FIMS::get_estimates(
   fit_big_unoptimized
 )
-FIMS::clear()
 save(
   fit_big_unoptimized,
   estimates_big_unoptimized,
@@ -594,7 +593,6 @@ fit_big_optimized <- parameters_big |>
 estimates_big_optimized <- FIMS::get_estimates(
   fit_big_optimized
 )
-FIMS::clear()
 
 # Save the unoptimized objects
 if (data_changed(

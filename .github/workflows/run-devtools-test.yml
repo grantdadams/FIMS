@@ -9,7 +9,6 @@ on:
       - 'DESCRIPTION'
       - 'NAMESPACE'
       - 'R/**'
-      - 'src/**'
       - 'tests/**'
       - 'inst/**'
       - 'data/**'
