@@ -45,16 +45,14 @@ jobs:
           - slow
           - integration-ageing-error
           - integration-caa
-          - integration-fims-bayesian
           - integration-fims-estimation-random-effects
+          - integration-projections
           - integration-proportion
           - integration-unfished-equilibrium
           - integration-vonb-growth-convergence
           - fims_likelihood
           - fims_retrospective
           - fimsfit
-          - projections-looped
-          - reshape_json_estimates
           - run_modified_pars_fims
 
     name: ${{ matrix.os }} (${{ matrix.test_type }})
