@@ -67,8 +67,8 @@ report_model <- function(model_data, model, likelihood) {
     }
   )
   # The age-to-length keys. The full derived key, 1 copy per year, is large,
-  # so it is reported only when asked for with
-  # ReportAgeToLengthConversionDerivedTensor().
+  # so it is reported only when asked for with fit_fims()'s
+  # report_age_to_length_conversion_derived argument.
   fleet_data <- unname(model_data[["fleets"]])
   derived_key <- fleet_quantities[["age_to_length_conversion_derived"]]
   if (is.null(derived_key)) {

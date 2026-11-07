@@ -16,9 +16,7 @@
 #' @return A list with `parameters`, `map` and `random` for
 #'   RTMB::MakeADFun(), the model data (`model_data`), the parameter table
 #'   with the RTMB name of each row (`parameter_table`), the tibble as given
-#'   (`tibble`), the FIMSFrame (`frame`), and `model`, an environment of
-#'   reporting switches, e.g.,
-#'   `input[["model"]]$ReportAgeToLengthConversionDerivedTensor(TRUE)`.
+#'   (`tibble`), and the FIMSFrame (`frame`).
 #' @keywords fit_fims
 #' @export
 #' @seealso
@@ -68,26 +66,8 @@ initialize_fims <- function(parameters, data) {
     model_data = model_data,
     parameter_table = parameter_table,
     tibble = parameters,
-    frame = data,
-    model = model_settings()
+    frame = data
   )
-}
-
-#' Model settings, set by methods on `input[["model"]]`
-#'
-#' Some reporting is switched on with a method, for example
-#' `input$model$ReportAgeToLengthConversionDerivedTensor(TRUE)`. The setting
-#' is kept in an environment, so calling the method changes it, and
-#' fit_fims() reads it.
-#' @noRd
-model_settings <- function() {
-  settings <- new.env()
-  settings[["report_age_to_length_conversion_derived_tensor"]] <- FALSE
-  settings[["ReportAgeToLengthConversionDerivedTensor"]] <- function(report) {
-    settings[["report_age_to_length_conversion_derived_tensor"]] <- isTRUE(report)
-    invisible(NULL)
-  }
-  settings
 }
 
 #' Give year-major rows their years
