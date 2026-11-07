@@ -383,6 +383,47 @@ test_that("`initialize_fims()` works with edge cases", {
   expect_equal(report[["nll_components"]] |> length(), 6)
 })
 
+test_that("`initialize_fims()` holds a process's own parameters constant when no process uses them", {
+  withr::local_options(rlib_message_verbosity = "default")
+  is_survey_log_q <- function(parameters) {
+    parameters[["label"]] == "log_q" & parameters[["fleet"]] %in% "survey1"
+  }
+  # A process on survey1's log_q, then the process removed from the log_q
+  # rows but not its own mean and sd rows.
+  parameters <- default_parameters |>
+    add_process(
+      log_q ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    )
+  parameters <- parameters |>
+    dplyr::mutate(
+      distribution_type = dplyr::if_else(
+        is_survey_log_q(parameters), NA_character_, distribution_type
+      ),
+      distribution = dplyr::if_else(
+        is_survey_log_q(parameters), NA_character_, distribution
+      ),
+      re_structure = dplyr::if_else(
+        is_survey_log_q(parameters), NA_character_, re_structure
+      ),
+      estimation_type = dplyr::if_else(
+        is_survey_log_q(parameters), "fixed_effects", estimation_type
+      )
+    )
+  #' @description Test that `initialize_fims()` says which process parameters no process uses.
+  expect_message(
+    object = input <- initialize_fims(parameters = parameters, data = data),
+    regexp = "not used by any process"
+  )
+  #' @description Test that `initialize_fims()` holds an unused process sd at its starting value, so it is not estimated.
+  expect_true(all(is.na(input[["map"]][["Fleet.survey1.log_q_log_sd"]])))
+  #' @description Test that `initialize_fims()` holds an unused process mean at its starting value, so it is not estimated.
+  expect_true(all(is.na(
+    input[["map"]][["Fleet.survey1.log_q_expected_mean"]]
+  )))
+})
+
 test_that("`initialize_fims()` treats a catch of 0 as a year with no fishing", {
   zero_catch <- dplyr::mutate(
     data_big,

@@ -69,10 +69,10 @@ test_that("`simulate_fims()` draws data from the model's predictions", {
     ]]
     (log(simulated[["observed"]]) - log_expected) / index_sdlog
   }))
-  #' @description Test that the simulated survey index has a mean log residual near 0, within 0.1 standard deviations over 50 times 30 draws.
+  #' @description Test that the simulated survey index has a mean log residual near 0, within 0.05 standard deviations over 50 times 30 draws.
   expect_lt(
     object = abs(mean(standardized_index)),
-    expected = 0.1
+    expected = 0.05
   )
   #' @description Test that the simulated survey index has log residuals with a standard deviation near the sdlog in the data, within 10%.
   expect_lt(

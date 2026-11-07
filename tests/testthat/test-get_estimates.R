@@ -360,6 +360,85 @@ test_that("`get_estimates()` works with time-varying log_q", {
   clear()
 })
 
+test_that("`get_estimates()` keeps non-finite values and column types", {
+  estimates <- FIMS::estimates_big_optimized
+  estimates[["likelihood"]][1:3] <- c(-Inf, Inf, NaN)
+  estimates[["fleet"]][1] <- NA
+  stored <- FIMS:::estimates_to_json(estimates)
+  #' @description Test that the estimates stored in a fit read back unchanged, with -Inf, Inf, NaN, a missing string and an integer `year_i`.
+  expect_identical(
+    object = FIMS:::estimates_from_json(stored),
+    expected = estimates
+  )
+})
+
+test_that("`get_estimates()` lists a process sd and conditional age-at-length", {
+  data_4_model <- FIMSFrame(data_big)
+  process_fit <- setup_default_parameters(data_4_model) |>
+    add_process(
+      log_q ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    initialize_fims(data = data_4_model) |>
+    fit_fims(optimize = FALSE)
+  process_sd <- get_estimates(process_fit) |>
+    dplyr::filter(.data[["label"]] == "log_q_log_sd")
+  #' @description Test that `get_estimates()` lists the sd of a process added with `add_process()` once, as the sd of a normal distribution.
+  expect_equal(
+    object = process_sd[["distribution"]],
+    expected = "normal"
+  )
+
+  # Conditional age-at-length for fleet1 in years 1 to 3 and length bins 300
+  # and 400, with an equal proportion at each age.
+  caal_rows <- tidyr::expand_grid(
+    timing = 1:3,
+    length = c(300, 400),
+    age = 1:12
+  ) |>
+    dplyr::mutate(
+      type = "conditional_age_at_length",
+      fleet = "fleet1",
+      observed = 1 / 12,
+      unit = "proportion",
+      uncertainty = paste(
+        "~ dmultinom(prob = conditional_age_at_length_proportion,",
+        "size = 50)"
+      )
+    )
+  caal_data <- suppressWarnings(
+    FIMSFrame(dplyr::bind_rows(data_big, caal_rows))
+  )
+  caal_fit <- setup_default_parameters(caal_data) |>
+    initialize_fims(data = caal_data) |>
+    fit_fims(optimize = FALSE)
+  caal_estimates <- get_estimates(caal_fit) |>
+    dplyr::filter(
+      .data[["label"]] == "conditional_age_at_length_proportion"
+    )
+  #' @description Test that `get_estimates()` lists 1 conditional age-at-length row per year, length bin and age with data.
+  expect_equal(object = nrow(caal_estimates), expected = 3 * 2 * 12)
+  #' @description Test that `get_estimates()` gives conditional age-at-length rows their years, length bins and ages.
+  expect_equal(
+    object = dplyr::distinct(
+      caal_estimates, .data[["year_i"]], .data[["length"]]
+    ) |>
+      nrow(),
+    expected = 6
+  )
+  #' @description Test that the expected proportions at age in each conditional age-at-length row sum to 1.
+  expect_equal(
+    object = caal_estimates |>
+      dplyr::summarize(
+        total = sum(.data[["estimated"]]),
+        .by = c("year_i", "length")
+      ) |>
+      dplyr::pull(.data[["total"]]),
+    expected = rep(1, 6)
+  )
+})
+
 test_that("`get_estimates()` returns correct outputs for edge cases", {
   #' @description Test that an error occurs if the input is not a valid model fit object.
   expect_error(
