@@ -117,12 +117,24 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
     parameter_table[["original_label"]], parameter_table[["flat_label"]]
   )
   parameter_table[["value"]] <- parameter_table[["original_value"]]
-  # A recruitment log_sd with no recruitment process to belong to is not a
-  # model parameter, so it is not listed.
-  is_unused_sd <- parameter_table[["module_name"]] == "Recruitment" &
-    parameter_table[["label"]] == "log_sd" &
-    !parameter_table[["name"]] %in% input[["model_data"]][["density_parameter_names"]]
-  parameter_table <- dplyr::filter(parameter_table, !is_unused_sd)
+  # A process's own parameter (expected_mean, log_sd or logit_rho) that no
+  # density uses, such as the default recruitment log_sd in a model without a
+  # recruitment process, is not part of the model, so it is not listed.
+  is_unused_hyperparameter <- parameter_table[["original_label"]] %in%
+    c("expected_mean", "log_sd", "logit_rho") &
+    !parameter_table[["distribution_type"]] %in% "prior" &
+    !parameter_table[["name"]] %in%
+      input[["model_data"]][["density_parameter_names"]]
+  parameter_table <- dplyr::filter(parameter_table, !is_unused_hyperparameter)
+  # The log_sd of each process is the sd of its normal density.
+  process_log_sd_names <- unlist(lapply(
+    input[["model_data"]][["densities"]],
+    function(density) {
+      if (density[["distribution_type"]] == "process") {
+        density[["hyperparameters"]][["log_sd"]]
+      }
+    }
+  ))
   # Reference ages are data in the model. They are listed as constants, with
   # the other growth inputs.
   reference_ages <- input[["tibble"]] |>
@@ -139,8 +151,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
       year_i = .data[["timing"]] - input[["model_data"]][["start_year"]] + 1,
       input = .data[["value"]],
       distribution = dplyr::if_else(
-        .data[["label"]] == "log_sd" & .data[["module_name"]] == "Recruitment",
-        "normal", NA_character_
+        .data[["name"]] %in% process_log_sd_names, "normal", NA_character_
       )
     )
 }
@@ -203,6 +214,18 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
   )
   rows <- list()
   for (name in setdiff(names(report), skip)) {
+    dimension <- quantity_dimensions[name]
+    if (is.na(dimension)) {
+      cli::cli_abort(c(
+        "x" = "The reported quantity {.val {name}} has no dimensions.",
+        "i" = "Every quantity in the get_estimates() table needs its
+        dimensions in {.var quantity_dimensions} (R/report.R). A quantity
+        that is not in the table is listed in {.var skip} in
+        derived_quantity_rows() (R/output.R).",
+        "i" = "List the reported quantities with
+        {.code names(get_report(fit))}."
+      ))
+    }
     is_fleet <- !name %in% population_names
     groups <- if (is_fleet) fleets else NA_character_
     standard_errors <- if (has_se && name %in% names(sdreport[["value"]])) {
@@ -214,11 +237,9 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
       if (length(value) == 0) {
         next
       }
-      dimensions <- if (is_fleet) {
-        fleet_dimensions(name, length(value), model_data, groups[i])
-      } else {
-        population_dimensions(length(value), model_data[["n_years"]], model_data[["ages"]])
-      }
+      dimensions <- value_dimensions(
+        name, dimension, length(value), model_data, groups[i]
+      )
       index <- n_earlier_values + seq_along(value)
       n_earlier_values <- n_earlier_values + length(value)
       rows[[length(rows) + 1]] <- tibble::tibble(
@@ -250,8 +271,8 @@ weight_at_age_rows <- function(input) {
     return(NULL)
   }
   weight_at_age <- population[["growth_inputs"]][["weight_at_age"]]
-  dimensions <- population_dimensions(
-    length(weight_at_age), model_data[["n_years"]], model_data[["ages"]]
+  dimensions <- value_dimensions(
+    "weight_at_age", "year_age", length(weight_at_age), model_data
   )
   weights <- flatten_by_year(weight_at_age)
   tibble::tibble(
@@ -263,62 +284,56 @@ weight_at_age_rows <- function(input) {
   )
 }
 
-#' Year and age of each value of a population quantity, from its length: by
-#' year, or by year and age, for the model years or 1 more
-#' @noRd
-population_dimensions <- function(n_values, n_years, ages) {
-  for (years in c(n_years, n_years + 1)) {
-    if (n_values == years) {
-      return(list(year_i = seq_len(years), age = NA, length = NA))
-    }
-    if (n_values == years * length(ages)) {
-      return(list(
-        year_i = rep(seq_len(years), each = length(ages)),
-        age = rep(ages, years), length = NA
-      ))
-    }
-  }
-  cli::cli_abort(c(
-    "x" = "A population quantity has {.val {n_values}} values, which match no
-    dimensions.",
-    "i" = "Population quantities are by year, or by year and age, for
-    {.val {n_years}} or {.val {n_years + 1}} years.",
-    "i" = "Check the lengths of the population quantities with
-    {.code str(get_report(fit))}."
-  ))
-}
-
-#' Year, age and length of each value of a fleet quantity
+#' Year, age and length bin of each value of a reported quantity
 #'
-#' Fleet quantities are by year, or by year (rows) and age or length bin
-#' (columns), flattened by year. Conditional age-at-length has 1 row per year
-#' and length bin with data.
+#' The dimension says how the values are laid out (see `quantity_dimensions`
+#' in R/report.R). Only the number of years comes from the number of values,
+#' and it must be the model years or 1 more.
+#'
+#' @param name The quantity's name, for the error message.
+#' @param dimension The quantity's dimension: "year", "year_age",
+#'   "year_length" or "conditional_age_at_length".
+#' @param n_values The number of values.
+#' @param model_data The `model_data` element of initialize_fims().
+#' @param fleet The fleet, for a quantity by length bin or conditional
+#'   age-at-length.
+#' @return A list with `year_i`, `age` and `length`, with 1 value per value
+#'   of the quantity, or NA when it is not by age or by length bin.
 #' @noRd
-fleet_dimensions <- function(name, n_values, model_data, fleet) {
+value_dimensions <- function(name, dimension, n_values, model_data,
+                             fleet = NA) {
   ages <- model_data[["ages"]]
-  length_bins <- model_data[["fleets"]][[fleet]][["length_bins"]]
-  if (name == "conditional_age_at_length_proportion") {
+  if (dimension == "conditional_age_at_length") {
     rows <- model_data[["fleets"]][[fleet]][["conditional_age_at_length"]]
+    length_bins <- model_data[["fleets"]][[fleet]][["length_bins"]]
     return(list(
       year_i = rep(rows[["year"]], each = length(ages)),
       age = rep(ages, length(rows[["year"]])),
       length = rep(length_bins[rows[["length_bin"]]], each = length(ages))
     ))
   }
-  if (grepl("length", name)) {
-    n_rows <- n_values / length(length_bins)
-    return(list(
-      year_i = rep(seq_len(n_rows), each = length(length_bins)), age = NA,
-      length = rep(length_bins, n_rows)
+  # Values by year are flattened by year, with 1 column per age, 1 per length
+  # bin, or 1 for a quantity by year only.
+  columns <- switch(dimension,
+    year = NA,
+    year_age = ages,
+    year_length = model_data[["fleets"]][[fleet]][["length_bins"]]
+  )
+  n_years <- n_values / length(columns)
+  if (!n_years %in% (model_data[["n_years"]] + 0:1)) {
+    cli::cli_abort(c(
+      "x" = "{.val {name}} has {.val {n_values}} values, which do not fit its
+      dimension, {.val {dimension}}.",
+      "i" = "A quantity has 1 value per model year, or 1 more year for the
+      start of the year after the last model year, times the number of ages
+      or length bins when it is also by age or length bin.",
+      "i" = "Check its values with {.code get_report(fit)[[\"{name}\"]]}."
     ))
   }
-  if (n_values %in% c(model_data[["n_years"]], model_data[["n_years"]] + 1)) {
-    return(list(year_i = seq_len(n_values), age = NA, length = NA))
-  }
-  n_rows <- n_values / length(ages)
   list(
-    year_i = rep(seq_len(n_rows), each = length(ages)),
-    age = rep(ages, n_rows), length = NA
+    year_i = rep(seq_len(n_years), each = length(columns)),
+    age = if (dimension == "year_age") rep(ages, n_years) else NA,
+    length = if (dimension == "year_length") rep(columns, n_years) else NA
   )
 }
 

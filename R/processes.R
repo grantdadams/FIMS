@@ -87,6 +87,27 @@ add_process <- function(parameters,
   estimation_type <- standard_estimation_type(estimation_type)
   sd[["estimation_type"]] <- hyperparameter_estimation_type(sd)
   rho[["estimation_type"]] <- hyperparameter_estimation_type(rho)
+  parameters <- add_process_columns(parameters)
+  process <- check_process(
+    parameters, formula, module_name, fleet, estimation_type, sd, rho
+  )
+  write_process(parameters, process, estimation_type, sd, rho)
+}
+
+#' Check a process request and find the rows it writes
+#'
+#' Stops with a message for any request the model cannot fit. The checks
+#' need the target's rows by year and the time block of each row, so this
+#' also returns them for write_process().
+#'
+#' @inheritParams add_process
+#' @return A list with the `target` label, `is_target` (its rows in
+#'   `parameters`), the parsed `formula_terms`, the target's `rows` (1 per
+#'   year when the formula uses year) and the `group` (time block) of each
+#'   row.
+#' @noRd
+check_process <- function(parameters, formula, module_name, fleet,
+                          estimation_type, sd, rho) {
   # The sd is written as log(sd) and rho as logit_rho, which are finite only
   # for an sd above 0 and a rho between -1 and 1.
   if (!is_single_number(sd[["value"]]) || sd[["value"]] <= 0) {
@@ -104,7 +125,6 @@ add_process <- function(parameters,
       "i" = "Give it as {.code rho = list(value = 0.5)}."
     ))
   }
-  parameters <- add_process_columns(parameters)
   formula_terms <- parse_process_formula(formula)
   target <- formula_terms[["target"]]
   is_target <- target_rows(parameters, target, module_name, fleet)
@@ -133,7 +153,7 @@ add_process <- function(parameters,
   uses_age <- "age" %in% variables
   # A formula in age only (e.g., age blocks on log_init_naa) keeps the rows
   # as they are. A formula in year needs 1 row per year.
-  new_rows <- old_rows
+  rows <- old_rows
   if ("year" %in% variables) {
     if (!can_vary_by_year(target, module_name)) {
       cli::cli_abort(c(
@@ -142,32 +162,28 @@ add_process <- function(parameters,
         {.code {target} ~ cut(age, c(-Inf, 5, Inf))}."
       ))
     }
-    new_rows <- expand_by_year(old_rows, all_years(parameters), keep_age = uses_age)
+    rows <- expand_by_year(old_rows, all_years(parameters), keep_age = uses_age)
   }
   group <- evaluate_fixed_term(
-    formula_terms[["fixed"]], new_rows, environment(formula)
+    formula_terms[["fixed"]], rows, environment(formula)
   )
-  if (!uses_age && all(!is.na(new_rows[["age"]])) && length(unique(group)) > 1) {
+  if (!uses_age && all(!is.na(rows[["age"]])) && length(unique(group)) > 1) {
     cli::cli_inform(c(
       "i" = "{.val {target}} varies by age. The formula has no age term, so
       each block shares 1 value across ages."
     ))
   }
-  # Each block starts from the mean of its rows' values, so the rows that
-  # share 1 estimate start from the same value.
-  block_mean <- stats::ave(new_rows[["value"]], group)
 
+  process <- list(
+    target = target, is_target = is_target, formula_terms = formula_terms,
+    rows = rows, group = group
+  )
   if (is.null(formula_terms[["random"]])) {
-    # Fixed only: rows in the same group share 1 estimate.
-    new_rows[["estimation_type"]] <- "fixed_effects"
-    new_rows[["map_group"]] <- shared_groups(group)
-    new_rows[["value"]] <- block_mean
-    return(replace_rows(parameters, is_target, new_rows))
+    return(process)
   }
-
   process_structure <- formula_terms[["random"]][["structure"]]
   random_grouping <- formula_terms[["random"]][["grouping"]]
-  has_age <- all(!is.na(new_rows[["age"]]))
+  has_age <- all(!is.na(rows[["age"]]))
   if (random_grouping == "year" && has_age) {
     cli::cli_abort(c(
       "x" = "{.code (1 | year)} on {.val {target}}, which varies by age and
@@ -194,18 +210,48 @@ add_process <- function(parameters,
       "i" = "The penalized objective is unbounded as the sd goes to 0."
     ))
   }
+  process
+}
 
-  new_rows[["estimation_type"]] <- estimation_type
-  new_rows[["map_group"]] <- NA_integer_
-  new_rows[["distribution_type"]] <- "process"
-  new_rows[["distribution"]] <- "Dnorm"
-  new_rows[["re_structure"]] <- process_structure
-  if (process_structure == "rw") {
-    first_year <- new_rows[["timing"]] == min(new_rows[["timing"]])
-    new_rows[["estimation_type"]][first_year] <- "fixed_effects"
+#' Write the rows of a checked process request into the parameter tibble
+#'
+#' Time blocks alone become rows that share 1 estimate through `map_group`.
+#' A random term makes the target's rows the process values and adds the
+#' process's own rows (log_sd, expected_mean, logit_rho).
+#'
+#' @inheritParams add_process
+#' @param process The output of check_process().
+#' @return The parameter tibble with the target's rows replaced and the
+#'   process's own rows added.
+#' @noRd
+write_process <- function(parameters, process, estimation_type, sd, rho) {
+  target <- process[["target"]]
+  rows <- process[["rows"]]
+  group <- process[["group"]]
+  # Each block starts from the mean of its rows' values, so the rows that
+  # share 1 estimate start from the same value.
+  block_mean <- stats::ave(rows[["value"]], group)
+
+  if (is.null(process[["formula_terms"]][["random"]])) {
+    # Fixed only: rows in the same group share 1 estimate.
+    rows[["estimation_type"]] <- "fixed_effects"
+    rows[["map_group"]] <- shared_groups(group)
+    rows[["value"]] <- block_mean
+    return(replace_rows(parameters, process[["is_target"]], rows))
   }
 
-  template <- dplyr::slice(new_rows, 1) |>
+  process_structure <- process[["formula_terms"]][["random"]][["structure"]]
+  rows[["estimation_type"]] <- estimation_type
+  rows[["map_group"]] <- NA_integer_
+  rows[["distribution_type"]] <- "process"
+  rows[["distribution"]] <- "Dnorm"
+  rows[["re_structure"]] <- process_structure
+  if (process_structure == "rw") {
+    first_year <- rows[["timing"]] == min(rows[["timing"]])
+    rows[["estimation_type"]][first_year] <- "fixed_effects"
+  }
+
+  template <- dplyr::slice(rows, 1) |>
     dplyr::mutate(
       age = NA, timing = NA, estimation_type = "fixed_effects",
       map_group = NA_integer_, re_structure = NA_character_,
@@ -219,7 +265,7 @@ add_process <- function(parameters,
     )
   )
   if (process_structure != "rw") {
-    hyperparameters[[2]] <- new_rows |>
+    hyperparameters[[2]] <- rows |>
       dplyr::mutate(
         label = "expected_mean", value = block_mean,
         estimation_type = "fixed_effects",
@@ -234,7 +280,10 @@ add_process <- function(parameters,
       estimation_type = rho[["estimation_type"]]
     )
   }
-  replace_rows(parameters, is_target, dplyr::bind_rows(new_rows, hyperparameters))
+  replace_rows(
+    parameters, process[["is_target"]],
+    dplyr::bind_rows(rows, hyperparameters)
+  )
 }
 
 #' Add a normal prior on 1 parameter
