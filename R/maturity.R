@@ -12,7 +12,7 @@
 #' @param slope Steepness of the curve at the inflection point.
 #' @noRd
 logistic_maturity <- function(age, inflection_point, slope) {
-  1 / (1 + exp(-slope * (age - inflection_point)))
+  logistic(inflection_point, slope, age)
 }
 
 # Module types, by the `module_type` in the parameter tibble.

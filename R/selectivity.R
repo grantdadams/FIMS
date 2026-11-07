@@ -17,7 +17,7 @@
 #' @param slope Steepness of the curve at the inflection point.
 #' @noRd
 logistic_selectivity <- function(age, inflection_point, slope) {
-  1 / (1 + exp(-slope * (age - inflection_point)))
+  logistic(inflection_point, slope, age)
 }
 
 #' Double logistic (dome-shaped) selectivity
@@ -32,8 +32,8 @@ logistic_selectivity <- function(age, inflection_point, slope) {
 #' @noRd
 double_logistic_selectivity <- function(age, inflection_point_asc, slope_asc,
                                         inflection_point_desc, slope_desc) {
-  ascending <- 1 / (1 + exp(-slope_asc * (age - inflection_point_asc)))
-  descending <- 1 / (1 + exp(slope_desc * (age - inflection_point_desc)))
+  ascending <- logistic(inflection_point_asc, slope_asc, age)
+  descending <- logistic(inflection_point_desc, -slope_desc, age)
   ascending * descending
 }
 
@@ -57,7 +57,7 @@ age_specific_selectivity <- function(age, logit_sel_at_age) {
       "i" = "It needs 1 value per age ({length(age)}), or 1 for all ages."
     ))
   }
-  1 / (1 + exp(-logit_sel_at_age))
+  inv_logit(0, 1, logit_sel_at_age)
 }
 
 # Module types, by the `module_type` in the parameter tibble. To add a type,

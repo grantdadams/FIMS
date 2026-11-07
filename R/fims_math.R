@@ -24,3 +24,18 @@ logit <- function(a, b, x) {
 inv_logit <- function(a, b, logit_x) {
   a + (b - a) / (1 + exp(-logit_x))
 }
+
+#' Logistic function
+#'
+#' 1 / (1 + exp(-slope * (x - inflection_point))): 0.5 at the inflection
+#' point, rising toward 1 for a positive slope and falling toward 0 for a
+#' negative one. Used by logistic maturity and selectivity.
+#'
+#' @param inflection_point The value of `x` where the function is 0.5.
+#' @param slope The slope, positive for a rising curve.
+#' @param x Values, e.g., ages.
+#' @return The logistic function at each `x`.
+#' @noRd
+logistic <- function(inflection_point, slope, x) {
+  1 / (1 + exp(-slope * (x - inflection_point)))
+}

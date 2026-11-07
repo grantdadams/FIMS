@@ -107,7 +107,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
   is_logit <- parameter_table[["working_scale"]] %in% "logit"
   if (any(is_logit)) {
     mean_length_old <- exp(values[["Growth.log_mean_length_old"]])
-    estimated[is_logit] <- mean_length_old / (1 + exp(-estimated[is_logit]))
+    estimated[is_logit] <- inv_logit(0, mean_length_old, estimated[is_logit])
   }
   parameter_table[["estimated"]] <- estimated
   # A prior's or process's own parameters are named after their target
