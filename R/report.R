@@ -19,6 +19,7 @@
 # - "year_length": years by the fleet's length bins.
 # - "conditional_age_at_length": 1 row per year and length bin with
 #   conditional age-at-length data, by ages.
+# - "na": 1 value, not by year.
 # Population quantities cover the model years, some with 1 more year for the
 # start of the year after the last model year. Fleet quantities cover the
 # model years. A reported quantity left out of the table is listed in `skip`
@@ -40,6 +41,11 @@ quantity_dimensions <- c(
   unfished_numbers_at_age = "year_age",
   unfished_spawning_biomass = "year",
   spawning_biomass_ratio = "year",
+  depletion = "year",
+  harvest_rate = "year",
+  harvest_rate_at_msy = "na",
+  biomass_at_msy = "na",
+  maximum_sustainable_yield = "na",
   # Fleet quantities
   catch_numbers_at_age = "year_age",
   catch_weight_at_age = "year_age",
@@ -59,7 +65,8 @@ quantity_dimensions <- c(
   lengthcomp_proportion = "year_length",
   catch_numbers_at_length = "year_length",
   index_numbers_at_length = "year_length",
-  conditional_age_at_length_proportion = "conditional_age_at_length"
+  conditional_age_at_length_proportion = "conditional_age_at_length",
+  catchability = "na"
 )
 
 #' Report the model's quantities
@@ -72,24 +79,14 @@ quantity_dimensions <- c(
 #' @param likelihood Output of model_likelihood().
 #' @noRd
 report_model <- function(model_data, model, likelihood) {
+  # RTMB: lets do.call(c, by_fleet) keep AD values when the first fleet has
+  # none, e.g., a catch fleet with no index in a surplus production model.
+  "c" <- RTMB::ADoverload("c")
   n_years <- model_data[["n_years"]]
-  biology <- model[["biology"]]
+  model_type <- model_data[["model_type"]]
   fleets <- model[["fleets"]]
 
-  population_values <- population_quantities(model)
-  # Growth by age, empty unless growth models length. Growth does not change
-  # by year, but it is reported for every year, like the other at-age
-  # quantities.
-  growth <- biology[["growth"]]
-  by_year <- function(name) {
-    if (is.null(growth[["mean_length_at_age"]])) numeric(0) else rep(growth[[name]], n_years)
-  }
-  growth_quantities <- list(
-    growth_mean_LAA = by_year("mean_length_at_age"),
-    growth_sd_LAA = by_year("sd_length_at_age"),
-    growth_mean_WAA = by_year("weight_at_age")
-  )
-
+  population_values <- population_quantities(model, model_type)
   fleet_quantity_names <- unique(unlist(lapply(fleets, names)))
   fleet_quantities <- lapply(
     stats::setNames(fleet_quantity_names, fleet_quantity_names),
@@ -99,53 +96,71 @@ report_model <- function(model_data, model, likelihood) {
       })
     }
   )
-  # The age-to-length keys. The full derived key, 1 copy per year, is large,
-  # so it is reported only when asked for with fit_fims()'s
-  # report_age_to_length_conversion_derived argument.
-  fleet_data <- unname(model_data[["fleets"]])
-  derived_key <- fleet_quantities[["age_to_length_conversion_derived"]]
-  if (is.null(derived_key)) {
-    derived_key <- lapply(fleet_data, function(x) numeric(0))
+
+  # Growth and the age-to-length keys are catch-at-age quantities, reported
+  # without standard errors.
+  growth_quantities <- list()
+  no_standard_error <- character(0)
+  if (model_type == "CatchAtAge") {
+    # Growth by age, empty unless growth models length. Growth does not
+    # change by year, but it is reported for every year, like the other
+    # at-age quantities.
+    growth <- model[["biology"]][["growth"]]
+    by_year <- function(name) {
+      if (is.null(growth[["mean_length_at_age"]])) numeric(0) else rep(growth[[name]], n_years)
+    }
+    growth_quantities <- list(
+      growth_mean_LAA = by_year("mean_length_at_age"),
+      growth_sd_LAA = by_year("sd_length_at_age"),
+      growth_mean_WAA = by_year("weight_at_age")
+    )
+    # The age-to-length keys. The full derived key, 1 copy per year, is
+    # large, so it is reported only when asked for with fit_fims()'s
+    # report_age_to_length_conversion_derived argument.
+    fleet_data <- unname(model_data[["fleets"]])
+    derived_key <- fleet_quantities[["age_to_length_conversion_derived"]]
+    if (is.null(derived_key)) {
+      derived_key <- lapply(fleet_data, function(x) numeric(0))
+    }
+    key_quantities <- list(
+      age_to_length_conversion = lapply(fleet_data, function(fleet) {
+        key <- fleet[["age_to_length_conversion"]]
+        if (is.matrix(key)) key <- list(key)
+        unlist(lapply(key, flatten_by_year))
+      }),
+      age_to_length_conversion_derived = lapply(derived_key, function(key) {
+        if (isTRUE(model_data[["report_age_to_length_conversion_derived_tensor"]])) {
+          rep(key, n_years)
+        } else {
+          numeric(0)
+        }
+      }),
+      age_to_length_conversion_derived_used = lapply(fleet_data, function(fleet) {
+        as.numeric(!is.null(fleet[["rebin_weights"]]))
+      })
+    )
+    if (is.null(fleet_quantities[["growth_derived_mean_WAA"]])) {
+      key_quantities[["growth_derived_mean_WAA"]] <- lapply(fleet_data, function(x) numeric(0))
+    }
+    fleet_quantities[names(key_quantities)] <- key_quantities
+    no_standard_error <- c(names(key_quantities), "growth_derived_mean_WAA")
   }
-  key_quantities <- list(
-    age_to_length_conversion = lapply(fleet_data, function(fleet) {
-      key <- fleet[["age_to_length_conversion"]]
-      if (is.matrix(key)) key <- list(key)
-      unlist(lapply(key, flatten_by_year))
-    }),
-    age_to_length_conversion_derived = lapply(derived_key, function(key) {
-      if (isTRUE(model_data[["report_age_to_length_conversion_derived_tensor"]])) {
-        rep(key, n_years)
-      } else {
-        numeric(0)
-      }
-    }),
-    age_to_length_conversion_derived_used = lapply(fleet_data, function(fleet) {
-      as.numeric(!is.null(fleet[["rebin_weights"]]))
-    })
-  )
-  if (is.null(fleet_quantities[["growth_derived_mean_WAA"]])) {
-    key_quantities[["growth_derived_mean_WAA"]] <- lapply(fleet_data, function(x) numeric(0))
-  }
-  fleet_quantities[names(key_quantities)] <- key_quantities
 
   report_list(lapply(c(population_values, growth_quantities), list))
   report_list(fleet_quantities)
   report_list(likelihood)
-  report_list(list(
-    log_expected_recruitment =
-      model[["population"]][["log_expected_recruitment"]]
-  ))
+  # The mean of the recruitment or depletion process (log_r or log_depletion)
+  # is reported, but has no rows in get_estimates().
+  process_means <- unlist(c(recruitment_process_means, depletion_process_means))
+  report_list(model[["population"]][
+    intersect(process_means, names(model[["population"]]))
+  ])
   if (isTRUE(model_data[["adreport"]])) {
-    # Standard errors for the population and fleet quantities. The growth
-    # quantities, the age-to-length keys and growth_derived_mean_WAA are
-    # reported without them.
+    # Standard errors for the population and fleet quantities.
     report_list(population_values, reporter = "ADREPORT")
     report_list(
       lapply(
-        fleet_quantities[setdiff(names(fleet_quantities), c(
-          names(key_quantities), "growth_derived_mean_WAA"
-        ))],
+        fleet_quantities[setdiff(names(fleet_quantities), no_standard_error)],
         function(by_fleet) do.call(c, by_fleet)
       ),
       reporter = "ADREPORT"
@@ -155,13 +170,21 @@ report_model <- function(model_data, model, likelihood) {
 
 #' The population quantities in the report
 #'
-#' 1 value per year, or per year and age flattened by year. get_estimates()
-#' reads the names to tell population quantities from fleet quantities.
+#' 1 value per year, per year and age flattened by year, or 1 value (the MSY
+#' quantities of the surplus production model). get_estimates() reads the
+#' names to tell population quantities from fleet quantities.
 #'
 #' @param model Output of model_predictions().
+#' @param model_type The `model_type` of the model data.
 #' @return A named list of the population quantities.
 #' @noRd
-population_quantities <- function(model) {
+population_quantities <- function(model, model_type) {
+  if (model_type == "SurplusProduction") {
+    return(model[["population"]][c(
+      "biomass", "depletion", "harvest_rate", "harvest_rate_at_msy",
+      "biomass_at_msy", "maximum_sustainable_yield"
+    )])
+  }
   biology <- model[["biology"]]
   population <- model[["population"]]
   fleets <- model[["fleets"]]

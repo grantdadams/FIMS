@@ -174,6 +174,8 @@ write_simulated_data <- function(input, simulated) {
 
 #' Simulation self-test: simulate, refit, and compare with the truth
 #'
+#' The self-test is for catch-at-age models.
+#'
 #' Each data set is drawn after a call to set.seed(), so the self-test
 #' changes the state of the random number generator for the rest of the
 #' session.
@@ -204,6 +206,16 @@ run_fims_self_test <- function(fit, number_of_simulations = 10,
                                random_effects = c("keep", "redraw"), seed = 20261106) {
   random_effects <- match.arg(random_effects)
   input <- get_input(fit)
+  if (input[["model_data"]][["model_type"]] == "SurplusProduction") {
+    cli::cli_abort(c(
+      "x" = "{.fn run_fims_self_test} does not work with a surplus production
+      model.",
+      "i" = "It compares spawning biomass and recruitment, which a surplus
+      production model does not have.",
+      "i" = "Use {.fn simulate_fims} and refit each simulated data set with
+      {.fn initialize_fims} and {.fn fit_fims}."
+    ))
+  }
   rows <- lapply(seq_len(number_of_simulations), function(i) {
     set.seed(seed + i)
     simulation <- simulate_fims(fit, 1, random_effects)[[1]]

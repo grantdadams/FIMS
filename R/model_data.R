@@ -10,6 +10,8 @@
 #   error.
 # - `likelihoods`: 1 entry per data set, in the order of the data components
 #   of nll_components.
+# A surplus production model stores the total catch in `populations` and has
+# 1 likelihood per index (initialize_surplus_production_data()).
 
 #' Read the data and module types the model needs
 #'
@@ -18,6 +20,9 @@
 #' @return The model data list (the `model_data` element of initialize_fims()).
 #' @noRd
 initialize_model_data <- function(parameters, data) {
+  if (parameters_model_type(parameters) == "SurplusProduction") {
+    return(initialize_surplus_production_data(parameters, data))
+  }
   fleet_names <- parameters |>
     dplyr::pull(.data[["fleet"]]) |>
     unique() |>
@@ -125,6 +130,158 @@ recruitment_process_type <- function(recruitment_labels) {
     process <- "log_devs"
   }
   process
+}
+
+# Surplus production ------------------------------------------------------------
+
+#' The model type of a parameter tibble
+#'
+#' A tibble with Depletion rows, as from
+#' `setup_default_parameters(model_type = "SurplusProduction")`, is a surplus
+#' production model. Any other is a catch-at-age model.
+#'
+#' @param parameters The parameter tibble.
+#' @return "SurplusProduction" or "CatchAtAge", the `model_type` of the model
+#'   data.
+#' @noRd
+parameters_model_type <- function(parameters) {
+  if ("Depletion" %in% parameters[["module_name"]]) {
+    "SurplusProduction"
+  } else {
+    "CatchAtAge"
+  }
+}
+
+#' Read the data the surplus production model needs
+#'
+#' The model uses the total catch of all fleets in each year, without error,
+#' and fits each index with a lognormal likelihood. Other data are not used.
+#'
+#' @inheritParams initialize_model_data
+#' @return The model data list (the `model_data` element of initialize_fims()).
+#' @noRd
+initialize_surplus_production_data <- function(parameters, data) {
+  fleet_names <- get_fleets(data)
+  catch_rows <- dplyr::filter(get_data(data), .data[["type"]] == "catch")
+  catch_units <- unique(catch_rows[["unit"]])
+  if (length(catch_units) != 1) {
+    cli::cli_abort(c(
+      "x" = "The catch data are in {length(catch_units)} unit{?s}:
+      {.val {catch_units}}.",
+      "i" = "The surplus production model adds the catch of all fleets, in the
+      units of biomass, so it needs catch data in 1 unit.",
+      "i" = "Count the catch rows by fleet and unit with
+      {.code dplyr::count(dplyr::filter(get_data(data), type == \"catch\"),
+      fleet, unit)}."
+    ))
+  }
+  # Missing catch is -999, so a year with a missing catch for any fleet is
+  # found before the catch is added.
+  missing_catch <- dplyr::filter(catch_rows, .data[["observed"]] == -999)
+  if (nrow(missing_catch) > 0) {
+    missing_labels <- paste(missing_catch[["fleet"]], missing_catch[["timing"]])
+    cli::cli_abort(c(
+      "x" = "The catch is missing for the following {.var fleet} and
+      {.var timing} combinations: {.val {missing_labels}}.",
+      "i" = "The surplus production model needs the catch of every fleet in
+      every year. Use 0 for a year with no catch.",
+      "i" = "Find the rows with {.code dplyr::filter(get_data(data),
+      type == \"catch\", observed == -999)}."
+    ))
+  }
+  catch <- catch_rows |>
+    dplyr::summarize(
+      catch = sum(.data[["observed"]]),
+      .by = dplyr::all_of("timing")
+    ) |>
+    dplyr::arrange(.data[["timing"]]) |>
+    dplyr::pull(.data[["catch"]])
+
+  index_fleets <- get_data(data) |>
+    dplyr::filter(.data[["type"]] == "index") |>
+    dplyr::pull(.data[["fleet"]]) |>
+    unique()
+  likelihoods <- do.call(c, lapply(index_fleets, function(fleet) {
+    initialize_likelihoods(data, fleet, list(), data_types = "index")
+  }))
+  not_lognormal <- index_fleets[
+    vapply(likelihoods, `[[`, character(1), "family") != "dlnorm" |
+      vapply(likelihoods, `[[`, character(1), "link") != "log_index_expected"
+  ]
+  if (length(not_lognormal) > 0) {
+    cli::cli_abort(c(
+      "x" = "The index of {.val {not_lognormal}} is not lognormal on
+      {.code log_index_expected}.",
+      "i" = "In the surplus production model, q is the maximum likelihood
+      estimate under a lognormal index, so each index needs
+      {.code ~ dlnorm(meanlog = log_index_expected, sdlog = )}.",
+      "i" = "Check the {.var uncertainty} column with
+      {.code dplyr::distinct(dplyr::filter(get_data(data), type == \"index\"),
+      fleet, uncertainty)}."
+    ))
+  }
+  # A row the model does not read, such as a log_q or a misspelled
+  # index_log_sd, would leave its value out of the fit without an error. Data
+  # rows replace an index parameter by name (link_estimated_family_parameters()).
+  index_parameter_names <- unlist(lapply(likelihoods, function(likelihood) {
+    paste(
+      "Data", likelihood[["fleet"]],
+      paste(likelihood[["data_type"]], names(likelihood[["parameters"]]),
+        sep = "_"
+      ),
+      sep = "."
+    )
+  }))
+  unused_rows <- parameters |>
+    dplyr::mutate(
+      name = dplyr::if_else(
+        is.na(.data[["fleet"]]),
+        paste(.data[["module_name"]], .data[["label"]], sep = "."),
+        paste(.data[["module_name"]], .data[["fleet"]],
+          dplyr::coalesce(.data[["target_label"]], .data[["label"]]),
+          sep = "."
+        )
+      )
+    ) |>
+    dplyr::filter(
+      !.data[["module_name"]] %in% c("Depletion", "Data") |
+        (.data[["module_name"]] == "Data" &
+          !.data[["name"]] %in% index_parameter_names)
+    )
+  if (nrow(unused_rows) > 0) {
+    cli::cli_abort(c(
+      "x" = "The surplus production model does not use the parameter
+      row{?s} {.val {unique(unused_rows[['name']])}}.",
+      "i" = "It uses the {.val Depletion} rows and {.val Data} rows for the
+      index parameters {.val {index_parameter_names}}.",
+      "i" = "Check the rows with {.code dplyr::distinct(parameters,
+      module_name, fleet, label)}."
+    ))
+  }
+  unused_types <- setdiff(unique(get_data(data)[["type"]]), c("catch", "index"))
+  if (length(unused_types) > 0) {
+    cli::cli_inform(c(
+      "i" = "The surplus production model does not use the
+      {.val {unused_types}} data.",
+      "i" = "It uses the catch, without error, and the indices."
+    ))
+  }
+
+  list(
+    model_type = "SurplusProduction",
+    n_years = get_n_years(data),
+    start_year = get_start_year(data),
+    populations = list(population = list(
+      module_types = list(depletion = module_type(parameters, "Depletion")),
+      catch = catch,
+      fleets = fleet_names
+    )),
+    fleets = lapply(stats::setNames(fleet_names, fleet_names), function(fleet) {
+      list()
+    }),
+    likelihoods = likelihoods,
+    adreport = FALSE
+  )
 }
 
 # Fleets ------------------------------------------------------------------------
@@ -250,13 +407,15 @@ initialize_fleet <- function(data, parameters, fleet, length_bins, edges,
 #' @param data A FIMSFrame.
 #' @param fleet The fleet name.
 #' @param fleet_data The fleet's entry from initialize_fleet().
+#' @param data_types The data types the model fits, in order.
 #' @noRd
-initialize_likelihoods <- function(data, fleet, fleet_data) {
+initialize_likelihoods <- function(data, fleet, fleet_data,
+                                   data_types = c(
+                                     "index", "catch", "age_comp",
+                                     "length_comp", "conditional_age_at_length"
+                                   )) {
   fleet_rows <- dplyr::filter(get_data(data), .data[["fleet"]] %in% .env[["fleet"]])
-  data_types <- intersect(
-    c("index", "catch", "age_comp", "length_comp", "conditional_age_at_length"),
-    unique(fleet_rows[["type"]])
-  )
+  data_types <- intersect(data_types, unique(fleet_rows[["type"]]))
   lapply(data_types, function(data_type) {
     observed <- switch(data_type,
       index = missing_to_na(model_index(data, fleet)),

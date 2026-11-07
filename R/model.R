@@ -2,8 +2,8 @@
 #
 # fims_model() is what RTMB tapes. It puts the parameters into module groups,
 # calls the model's predictions (catch_at_age() for a catch-at-age model,
-# looked up in model_functions), adds the negative log-likelihood of priors,
-# processes and data, and reports.
+# surplus_production() for a surplus production model), adds the negative
+# log-likelihood of priors, processes and data, and reports.
 
 #' Joint negative log-likelihood of a FIMS model
 #'
@@ -26,7 +26,8 @@ fims_model <- function(parameters, model_data) {
 #' @inheritParams fims_model
 #' @return A list with the flat `parameters` (split parameters put back
 #'   together) and the model's predictions (`biology`, `population` and
-#'   `fleets` for catch at age).
+#'   `fleets` for catch at age, `population` and `fleets` for surplus
+#'   production).
 #' @noRd
 model_predictions <- function(parameters, model_data) {
   parameters <- assemble_split_parameters(
@@ -38,16 +39,17 @@ model_predictions <- function(parameters, model_data) {
     parameters,
     skip = model_data[["not_module_parameter_names"]]
   )
-  predictions <- model_functions[[model_data[["model_type"]]]](
-    module_parameters, model_data
+  # Each model type's predictions function takes only the inputs it uses.
+  # The surplus production model also reads the index sds, which can be
+  # estimated, from the flat parameters.
+  predictions <- switch(model_data[["model_type"]],
+    CatchAtAge = catch_at_age(module_parameters, model_data),
+    SurplusProduction = surplus_production(
+      module_parameters, model_data, parameters
+    )
   )
   c(list(parameters = parameters), predictions)
 }
-
-# Model types, by `model_type` in the model data.
-model_functions <- list(
-  CatchAtAge = catch_at_age
-)
 
 # Likelihood -----------------------------------------------------------------
 
@@ -55,7 +57,8 @@ model_functions <- list(
 #' hyperparameters (log_sd, logit_rho), looked up by flat name
 #'
 #' The mean is 0, a parameter (expected_mean), or a population quantity
-#' (log_expected_recruitment, the log of the stock-recruit curve, for log_r).
+#' (log_expected_recruitment for log_r, the log of the stock-recruit curve,
+#' and log_expected_depletion for log_depletion).
 #'
 #' @param density_entry 1 entry of `model_data$densities`.
 #' @param parameters The flat parameter list.

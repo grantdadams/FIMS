@@ -36,7 +36,8 @@ estimates_table <- function(input, obj, report, gradient, sdreport) {
   dplyr::bind_rows(
     parameter_rows(input, obj, gradient, sdreport, values),
     derived_quantity_rows(
-      input, report, sdreport, names(population_quantities(model))
+      input, report, sdreport,
+      names(population_quantities(model, input[["model_data"]][["model_type"]]))
     ),
     weight_at_age_rows(input)
   ) |>
@@ -221,6 +222,7 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
   # which are in the report but not in the table.
   skip <- c(
     "jnll", "nll_components", "observation_lpdf", "log_expected_recruitment",
+    "log_expected_depletion",
     "age_to_length_conversion", "age_to_length_conversion_derived",
     "age_to_length_conversion_derived_used", "growth_derived_mean_WAA",
     "growth_mean_WAA", "growth_mean_LAA", "growth_sd_LAA"
@@ -278,9 +280,9 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
 #' @noRd
 weight_at_age_rows <- function(input) {
   model_data <- input[["model_data"]]
-  # The model has 1 population.
+  # The model has 1 population. A surplus production model has no growth.
   population <- model_data[["populations"]][[1]]
-  if (population[["module_types"]][["growth"]] != "EWAA") {
+  if (!identical(population[["module_types"]][["growth"]], "EWAA")) {
     return(NULL)
   }
   weight_at_age <- population[["growth_inputs"]][["weight_at_age"]]
@@ -305,7 +307,7 @@ weight_at_age_rows <- function(input) {
 #'
 #' @param name The quantity's name, for the error message.
 #' @param dimension The quantity's dimension: "year", "year_age",
-#'   "year_length" or "conditional_age_at_length".
+#'   "year_length", "conditional_age_at_length" or "na".
 #' @param n_values The number of values.
 #' @param model_data The `model_data` element of initialize_fims().
 #' @param fleet The fleet, for a quantity by length bin or conditional
@@ -316,6 +318,9 @@ weight_at_age_rows <- function(input) {
 value_dimensions <- function(name, dimension, n_values, model_data,
                              fleet = NA) {
   ages <- model_data[["ages"]]
+  if (dimension == "na") {
+    return(list(year_i = NA, age = NA, length = NA))
+  }
   if (dimension == "conditional_age_at_length") {
     rows <- model_data[["fleets"]][[fleet]][["conditional_age_at_length"]]
     length_bins <- model_data[["fleets"]][[fleet]][["length_bins"]]

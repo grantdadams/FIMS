@@ -104,8 +104,9 @@ prior_densities <- function(parameter_table) {
 #' log_devs or log_r.
 #'
 #' The mean of the density is the expected_mean parameter if there is one.
-#' Otherwise it comes from the recruitment process table for log_devs and log_r
-#' (recruitment_process_means), or is 0 (deviations, random walks).
+#' Otherwise it comes from the process mean tables for log_devs and log_r
+#' (recruitment_process_means) and log_depletion (depletion_process_means),
+#' or is 0 (deviations, random walks).
 #' @noRd
 process_densities <- function(parameter_table) {
   hyperparameter_labels <- c("expected_mean", "log_sd", "logit_rho")
@@ -169,11 +170,12 @@ process_densities <- function(parameter_table) {
         distribution_type == \"process\")}."
       ))
     }
+    process_means <- c(recruitment_process_means, depletion_process_means)
     density_mean <- if (!is.na(hyperparameter_name["expected_mean"])) {
       list(kind = "parameter", name = hyperparameter_name[["expected_mean"]])
-    } else if (!is.null(recruitment_process_means[[label]]) &&
-      recruitment_process_means[[label]] != "zero") {
-      list(kind = "derived", name = recruitment_process_means[[label]])
+    } else if (!is.null(process_means[[label]]) &&
+      process_means[[label]] != "zero") {
+      list(kind = "derived", name = process_means[[label]])
     } else {
       list(kind = "zero")
     }

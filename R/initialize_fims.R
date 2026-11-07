@@ -46,7 +46,10 @@ initialize_fims <- function(parameters, data) {
   check_initialize_inputs(parameters, data)
   years <- get_start_year(data):get_end_year(data)
   parameters <- add_year_timing(parameters, years)
-  check_fleet_parameter_sizes(parameters, length(years))
+  # A surplus production model has no log_q or log_Fmort.
+  if (parameters_model_type(parameters) == "CatchAtAge") {
+    check_fleet_parameter_sizes(parameters, length(years))
+  }
   check_parameter_years(parameters, years)
   model_parameters <- initialize_parameters(parameters)
   parameter_table <- model_parameters[["parameter_table"]]
@@ -202,8 +205,10 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
 #' would move every later value to the year before. A parameter with 1 row
 #' has the same value in every year. Recruitment deviations
 #' (log_devs or log_r) start in the 2nd model year, because recruitment in
-#' the first year comes from the initial numbers at age. They need their years
-#' even when no other parameter is given by year.
+#' the first year comes from the initial numbers at age. log_depletion also
+#' starts in the 2nd model year, because depletion in the first year is the
+#' initial depletion. They need their years even when no other parameter is
+#' given by year.
 #'
 #' @inheritParams initialize_fims
 #' @param years The model years.
@@ -220,33 +225,41 @@ check_parameter_years <- function(parameters, years) {
   )
   for (name in unique(parameters[["name"]])) {
     rows <- parameters[parameters[["name"]] == name, ]
-    # The deviations and the rows of their process or prior, such as a
-    # process mean by year.
+    # The values that start in the 2nd model year and the rows of their
+    # process or prior, such as a process mean by year.
+    module_name <- rows[["module_name"]][1]
     target <- dplyr::coalesce(rows[["target_label"]][1], rows[["label"]][1])
-    is_deviation <- rows[["module_name"]][1] == "Recruitment" &&
-      target %in% c("log_devs", "log_r")
-    is_deviation_value <- is_deviation && is.na(rows[["target_label"]][1])
+    from_second_year <- (module_name == "Recruitment" &&
+      target %in% c("log_devs", "log_r")) ||
+      (module_name == "Depletion" && target == "log_depletion")
+    is_second_year_value <- from_second_year && is.na(rows[["target_label"]][1])
     # 1 value, with or without a timing, is the same in every year.
-    if (!is_deviation_value &&
+    if (!is_second_year_value &&
       (all(is.na(rows[["timing"]])) || nrow(rows) == 1)) {
       next
     }
-    expected_years <- if (is_deviation) years[-1] else years
+    expected_years <- if (from_second_year) years[-1] else years
     given_years <- sort(unique(stats::na.omit(rows[["timing"]])))
     if (anyNA(rows[["timing"]]) ||
       !identical(as.numeric(given_years), as.numeric(expected_years))) {
       no_timing <- if (anyNA(rows[["timing"]])) ", some with no timing" else ""
-      first_year <- if (is_deviation) "the 2nd model year" else "model year"
+      first_year <- if (from_second_year) "the 2nd model year" else "model year"
+      first_year_reason <- if (!from_second_year) {
+        ""
+      } else if (module_name == "Recruitment") {
+        " Recruitment in the first year comes from the initial numbers at age."
+      } else {
+        " Depletion in the first year is the initial depletion."
+      }
       cli::cli_abort(c(
         "x" = "{.val {name}} has {.val {nrow(rows)}} row{?s} for the
         year{?s} {.val {given_years}}{no_timing}.",
         "i" = "It needs rows for each year from {first_year}
         {.val {expected_years[1]}} to
         {.val {expected_years[length(expected_years)]}}, with the year in
-        {.var timing}.{if (is_deviation) ' Recruitment in the first year
-        comes from the initial numbers at age.' else ''}",
+        {.var timing}.{first_year_reason}",
         "i" = "Count the rows by year with {.code dplyr::filter(parameters,
-        module_name == \"{rows[['module_name']][1]}\",
+        module_name == \"{module_name}\",
         label == \"{rows[['label']][1]}\") |> dplyr::count(fleet,
         timing)}."
       ))
@@ -339,8 +352,11 @@ check_initialize_inputs <- function(parameters, data) {
       as.numeric(value))} and check the rows that become {.code NA}."
     ))
   }
+  # The surplus production model has no fleet parameters. Its fleets come
+  # from the data.
+  is_catch_at_age <- parameters_model_type(parameters) == "CatchAtAge"
   fleets <- stats::na.omit(unique(parameters[["fleet"]]))
-  if (length(fleets) == 0) {
+  if (length(fleets) == 0 && is_catch_at_age) {
     cli::cli_abort(c(
       "x" = "No fleets found in the provided {.var parameters}.",
       "i" = "The {.var fleet} column is empty or all {.code NA}.",
@@ -351,7 +367,7 @@ check_initialize_inputs <- function(parameters, data) {
   # Only fleets in the parameter tibble are in the model, so data for any
   # other fleet would be left out of the likelihood.
   data_fleets_missing <- setdiff(get_fleets(data), fleets)
-  if (length(data_fleets_missing) > 0) {
+  if (length(data_fleets_missing) > 0 && is_catch_at_age) {
     cli::cli_abort(c(
       "x" = "The data have fleet{?s} {.val {data_fleets_missing}}, which
       {?is/are} not in {.var parameters}.",

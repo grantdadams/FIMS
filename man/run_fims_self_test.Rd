@@ -27,6 +27,9 @@ terminal spawning biomass, terminal depletion, mean recruitment and the
 largest relative error in spawning biomass over all years.
 }
 \description{
+The self-test is for catch-at-age models.
+}
+\details{
 Each data set is drawn after a call to set.seed(), so the self-test
 changes the state of the random number generator for the rest of the
 session.
