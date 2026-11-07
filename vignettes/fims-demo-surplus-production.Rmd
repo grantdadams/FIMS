@@ -1,0 +1,184 @@
+---
+title: "A surplus production model in FIMS"
+output: github_document
+vignette: >
+  %\VignetteIndexEntry{A surplus production model in FIMS}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# Set local options so vignette output is clean and consistent
+# (avoids color codes and subtle formatting in rendered docs)
+withr::local_options(list(
+  cli.num_colors = 1,
+  crayon.enabled = FALSE,
+  pillar.subtle = FALSE
+))
+```
+
+## Surplus production in FIMS
+
+This vignette fits a state-space surplus production model to catch and an index of abundance. It uses the same functions as a catch-at-age model (`FIMSFrame()`, `setup_default_parameters()`, `initialize_fims()` and `fit_fims()`) and the example of Meyer and Millar (1999), which Best and Punt (2020) also fit in Stan.
+
+```{r library, warning=FALSE, message=FALSE}
+library(FIMS)
+library(ggplot2)
+```
+
+## Data
+
+`data_limited_tuna` has the catch (metric tons) and catch per unit effort (kg per 100 hooks) of South Atlantic albacore tuna from 1967 to 1989, in the same long format as `data_big`. The ages and lengths are `NA`. The catch has no `uncertainty`, because the surplus production model treats catch as known. The index is lognormal, with a log-scale standard deviation of 0.1.
+
+```{r data}
+data("data_limited_tuna")
+data_4_model <- FIMSFrame(data_limited_tuna)
+get_data(data_4_model) |>
+  dplyr::filter(timing <= 1969)
+```
+
+## The model
+
+The state is depletion, $P_t = B_t / K$, biomass at the start of year $t$ divided by the carrying capacity $K$. Depletion next year follows the Pella-Tomlinson model,
+
+$$P_{t+1} = P_t + \frac{r}{m - 1} P_t \left(1 - P_t^{m - 1}\right) - \frac{C_t}{K},$$
+
+where $r$ is the intrinsic growth rate, $m$ the shape and $C_t$ the total catch of all fleets. Catch is taken at the end of the year, after production. A shape of 2 is the Schaefer model. Depletion at maximum sustainable yield (MSY) is $m^{-1/(m - 1)}$, and the harvest rate at MSY is $r / m$.
+
+Depletion in the first year is the initial depletion, $\exp$(`log_init_depletion`). From the second year on, log depletion has process error: `log_depletion` $\sim N(\log \hat{P}_t, \sigma)$, where $\hat{P}_t$ is the depletion from the equation above and $\sigma$ is the process standard deviation. The values of `log_depletion` are random effects.
+
+The index is $I_t = q B_t$, at the start of the year. Catchability $q$ is not a parameter. Given biomass, the maximum likelihood estimate of $\log q$ is the mean of $\log(I_t / B_t)$, weighted by $1 / \tau_t^2$, where $\tau_t$ is the standard deviation of the log index (Walters and Ludwig 1994).
+
+## Parameters
+
+`setup_default_parameters()` with `model_type = "SurplusProduction"` returns the Depletion rows. The fleets have no parameters. The defaults are a Schaefer model that starts unfished, with a constant process standard deviation of 0.1.
+
+```{r parameters}
+parameters <- setup_default_parameters(
+  data = data_4_model,
+  model_type = "SurplusProduction"
+)
+parameters |>
+  dplyr::filter(label != "log_depletion")
+```
+
+Meyer and Millar (1999) used lognormal priors on $r$ and $K$. A lognormal prior on $r$ is a normal prior on $\log r$, the parameter FIMS estimates, so the priors are added with `add_priors()` on the log scale. Their $K$ is in thousands of metric tons, so $\log(1000)$ is added to the mean of the prior on $\log K$. Their inverse gamma priors on the variances are not available in FIMS, so the process and index standard deviations are held at the medians of the Stan posterior, `data_limited_tuna_results`. A `Data` row with the label `index_log_sd` replaces the standard deviation of the index in the data.
+
+```{r priors}
+data("data_limited_tuna_results")
+stan_median <- function(label) {
+  data_limited_tuna_results |>
+    dplyr::filter(.data[["label"]] == .env[["label"]]) |>
+    dplyr::pull(median)
+}
+parameters <- parameters |>
+  dplyr::rows_update(
+    tibble::tibble(
+      label = "log_sd",
+      value = log(sqrt(stan_median("sigma2_depletion")))
+    ),
+    by = "label"
+  ) |>
+  dplyr::bind_rows(tibble::tibble(
+    module_name = "Data",
+    fleet = "survey1",
+    label = "index_log_sd",
+    value = log(sqrt(stan_median("sigma2_obs"))),
+    estimation_type = "constant"
+  )) |>
+  add_priors(
+    log_growth_rate ~ normal(mean = -1.38, sd = 1 / sqrt(3.845)),
+    module_name = "Depletion"
+  ) |>
+  add_priors(
+    log_carrying_capacity ~ normal(
+      mean = 5.042905 + log(1000), sd = 1 / sqrt(3.7603664)
+    ),
+    module_name = "Depletion"
+  )
+```
+
+## Fit
+
+```{r fit}
+fit <- parameters |>
+  initialize_fims(data = data_4_model) |>
+  fit_fims()
+estimates <- get_estimates(fit)
+```
+
+FIMS estimates $\log r$ and $\log K$ at the posterior mode, with depletion integrated out by the Laplace approximation and the standard deviations fixed. The Stan values are posterior medians. The posterior is skewed, so the mode and median differ, here by less than half a standard error. K is in metric tons.
+
+```{r compare}
+estimate_of <- function(label) {
+  estimates[["estimated"]][estimates[["label"]] == label]
+}
+tibble::tibble(
+  quantity = c("r", "K", "q"),
+  fims = c(
+    exp(estimate_of("log_growth_rate")),
+    exp(estimate_of("log_carrying_capacity")),
+    estimate_of("catchability")
+  ),
+  stan = c(
+    stan_median("growth_rate"),
+    stan_median("carrying_capacity"),
+    stan_median("q")
+  )
+)
+```
+
+The MSY quantities are derived quantities with standard errors. `harvest_rate_at_msy` is catch divided by biomass at MSY. `biomass_at_msy` and `maximum_sustainable_yield` are in metric tons.
+
+```{r msy}
+estimates |>
+  dplyr::filter(label %in% c(
+    "harvest_rate_at_msy", "biomass_at_msy", "maximum_sustainable_yield"
+  )) |>
+  dplyr::select(label, estimated, uncertainty)
+```
+
+## Results
+
+The plot shows depletion with ±2 standard errors (band) and the Stan posterior medians (points). Depletion in 1990 is the start of the year after the last year, and it has no process error. The Stan model also has process error in the first year, while FIMS starts at an initial depletion of 1.
+
+```{r depletion-plot, fig.width = 7, fig.height = 4}
+estimates |>
+  dplyr::filter(label == "depletion") |>
+  dplyr::mutate(
+    year = 1966 + year_i,
+    stan = stan_median("depletion")
+  ) |>
+  ggplot(aes(x = year, y = estimated)) +
+  geom_ribbon(
+    aes(
+      ymin = estimated - 2 * uncertainty,
+      ymax = estimated + 2 * uncertainty
+    ),
+    alpha = 0.2
+  ) +
+  geom_line() +
+  geom_point(aes(y = stan)) +
+  labs(x = "Year", y = "Depletion")
+```
+
+The fit to the index, with the observations as points.
+
+```{r index-plot, fig.width = 7, fig.height = 4}
+estimates |>
+  dplyr::filter(label == "index_expected") |>
+  dplyr::mutate(year = 1966 + year_i) |>
+  ggplot(aes(x = year, y = estimated)) +
+  geom_line() +
+  geom_point(aes(y = observed)) +
+  labs(x = "Year", y = "CPUE (kg per 100 hooks)")
+```
+
+## References
+
+Best, J.K., and Punt, A.E. 2020. Parameterizations for Bayesian state-space surplus production models. Fisheries Research 222: 105411.
+
+Meyer, R., and Millar, R.B. 1999. BUGS in Bayesian stock assessments. Canadian Journal of Fisheries and Aquatic Sciences 56: 1078-1086.
+
+Walters, C., and Ludwig, D. 1994. Calculation of Bayes posterior probability distributions for key population parameters. Canadian Journal of Fisheries and Aquatic Sciences 51: 713-722.

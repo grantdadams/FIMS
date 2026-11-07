@@ -18,7 +18,7 @@ knitr::opts_chunk$set(
 
 The FIMS model is written in R and run with [RTMB](https://github.com/kaskr/RTMB). RTMB records the model's arithmetic once (the "tape") and then evaluates it and its derivatives in C++, with the same Laplace approximation and `sdreport()` as TMB. A module is a plain R function, so adding one means writing that function and adding 1 line to a lookup table.
 
-This guide is for anyone adding a selectivity, maturity, recruitment or growth type, a likelihood family, or a process structure.
+This guide is for anyone adding a selectivity, maturity, recruitment, growth or depletion type, a likelihood family, a process structure, or a model type.
 
 # Where things are
 
@@ -26,7 +26,8 @@ This guide is for anyone adding a selectivity, maturity, recruitment or growth t
 |---|---|
 | `R/model.R` | `fims_model()`: the objective RTMB tapes. It calls the model's predictions, then the likelihood of priors, processes and data, then the report. |
 | `R/catch_at_age.R` | `catch_at_age()`: biology, population dynamics and fleet predictions. |
-| `R/selectivity.R`, `R/maturity.R`, `R/recruitment.R`, `R/growth.R`, `R/distributions.R` | 1 function per module type, with the family's lookup table at the bottom of the file. |
+| `R/surplus_production.R` | `surplus_production()`: depletion, biomass, MSY quantities and index predictions. |
+| `R/selectivity.R`, `R/maturity.R`, `R/recruitment.R`, `R/growth.R`, `R/depletion.R`, `R/distributions.R` | 1 function per module type, with the family's lookup table at the bottom of the file. |
 | `R/age_to_length_conversion.R`, `R/compositions.R` | The age-to-length key and the expected compositions. These have no lookup table. |
 | `R/modules.R` | `call_module()` and `evaluate_by_year()`, which call a module by its `module_type`. |
 | `R/setup_default_parameters.R` | `setup_default_<ModuleType>()`: the default parameter rows for each module type. |
@@ -115,4 +116,12 @@ Growth needs inputs that are not parameters (weight data, ages, a length grid), 
 
 # Adding a model type
 
-Write the model's predictions function (e.g. a surplus production model) and add it to `model_functions` at the bottom of `R/catch_at_age.R`. `fims_model()` adds the likelihood and the report for any model type.
+The surplus production model is the example.
+
+1. Write the model's predictions function in its own file, as `surplus_production()` in `R/surplus_production.R`, and add a case to the `switch()` in `model_predictions()` (`R/model.R`) that passes only the inputs it uses. It returns a list with `population` and `fleets` (1 element per fleet, with the expected values that the data's `uncertainty` formulas name, e.g. `log_index_expected`).
+2. In `R/model_data.R`, tell the model type from the parameter tibble in `parameters_model_type()`, and read its data in `initialize_model_data()`, as `initialize_surplus_production_data()` does.
+3. In `R/report.R`, list its population quantities in `population_quantities()` and give every reported quantity its dimensions in `quantity_dimensions`.
+4. Add it to `model_type` in `setup_default_parameters()`, returning its default rows as `setup_default_Depletion()` does.
+5. In `R/initialize_fims.R`, skip the input checks that do not apply to it, as the surplus production model skips the fleet checks, and list any parameter that starts in the 2nd model year in `check_parameter_years()`, as `log_depletion` is.
+
+`fims_model()` adds the likelihood for any model type.
