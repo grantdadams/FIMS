@@ -331,7 +331,7 @@
       319 Population         NA <NA>         log_M            vector      NA
       320 Population         NA <NA>         log_M            vector      NA
           parameter_id fleet   year_i   age length     input observed estimation_type
-                 <int> <chr>    <dbl> <dbl>  <dbl>     <dbl>    <dbl> <chr>
+                 <int> <chr>    <int> <dbl>  <dbl>     <dbl>    <dbl> <chr>
         1            1 fleet1      NA    NA     NA    2            NA fixed_effects
         2            2 fleet1      NA    NA     NA    1            NA fixed_effects
         3            3 survey1     NA    NA     NA    1.5          NA fixed_effects
@@ -1309,7 +1309,7 @@
       319 Population         NA <NA>         log_M            vector      NA
       320 Population         NA <NA>         log_M            vector      NA
           parameter_id fleet   year_i   age length     input observed estimation_type
-                 <int> <chr>    <dbl> <dbl>  <dbl>     <dbl>    <dbl> <chr>
+                 <int> <chr>    <int> <dbl>  <dbl>     <dbl>    <dbl> <chr>
         1            1 fleet1      NA    NA     NA    2            NA fixed_effects
         2            2 fleet1      NA    NA     NA    1            NA fixed_effects
         3            3 survey1     NA    NA     NA    1.5          NA fixed_effects
