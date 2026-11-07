@@ -81,3 +81,47 @@
 #' @format A tibble returned by [get_estimates()].
 #' @seealso [get_estimates()]
 "estimates_big_optimized"
+
+#' Surplus production input data frame
+#'
+#' Catch and catch per unit effort (CPUE) of South Atlantic albacore tuna from
+#' 1967 to 1989, as used by Meyer and Millar (1999) and Best and Punt (2020)
+#' to demonstrate a state-space surplus production model. It has the same
+#' columns as [data_big], with `NA` ages and lengths. Catch (`fleet1`) is in
+#' metric tons. Catch has no `uncertainty`, because the surplus production
+#' model treats catch as known. The index (`survey1`) is CPUE in kg per 100
+#' hooks, with a lognormal `uncertainty` of `sdlog = 0.1`. Its `unit` is
+#' `"mt"` because [FIMSFrame()] accepts only `"mt"` or `"number"` for an
+#' index. Catchability scales the index to biomass, so the unit of the index
+#' does not change the fit. The source code to make this dataset is in
+#' `data-raw/data_limited_tuna.R`.
+#'
+#' @format
+#' A data frame with `r NROW(data_limited_tuna)` observations of
+#' `r NCOL(data_limited_tuna)` variables, described in [data_big].
+#' @source Meyer, R., and Millar, R.B. 1999. BUGS in Bayesian stock
+#'   assessments. Canadian Journal of Fisheries and Aquatic Sciences 56:
+#'   1078-1086.
+#'
+#'   Best, J.K., and Punt, A.E. 2020. Parameterizations for Bayesian
+#'   state-space surplus production models. Fisheries Research 222: 105411.
+#' @seealso
+#' * [data_limited_tuna_results]
+#' * [setup_default_parameters()]
+"data_limited_tuna"
+
+#' Posterior medians of a Stan fit to the tuna data
+#'
+#' Posterior medians from a Stan fit of the Meyer and Millar (1999) Schaefer
+#' surplus production model (shape of 2) to [data_limited_tuna], with their
+#' priors. The labels are `growth_rate`, `carrying_capacity` (metric tons),
+#' `sigma2_obs` (the variance of the log index), `sigma2_depletion` (the
+#' variance of the log depletion process), `depletion` (1 per year and the
+#' year after the last year) and `q` (catchability, in kg per 100 hooks per
+#' metric ton of biomass). The source code is in
+#' `data-raw/data_limited_tuna.R`.
+#'
+#' @format A data frame with columns `label` and `median`.
+#' @seealso
+#' * [data_limited_tuna]
+"data_limited_tuna_results"
