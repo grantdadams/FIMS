@@ -20,6 +20,25 @@
 # To add a family or structure, write its functions here and add 1 entry to
 # likelihood_families or process_structures at the bottom of this file.
 
+#' Stop unless expected values and sds have 1 value or 1 per observation
+#'
+#' Recycling a vector of another length would compare observations with the
+#' wrong expected values, with no error.
+#' @noRd
+check_density_lengths <- function(n_observations, ...) {
+  lengths <- vapply(list(...), length, integer(1))
+  is_wrong <- !lengths %in% c(1L, n_observations)
+  if (any(is_wrong)) {
+    cli::cli_abort(c(
+      "x" = "{.val {names(lengths)[is_wrong]}} {?has/have}
+      {.val {lengths[is_wrong]}} value{?s} for {.val {n_observations}}
+      observation{?s}.",
+      "i" = "Expected values and sds need 1 value, or 1 per observation."
+    ))
+  }
+  invisible(n_observations)
+}
+
 #' Normal log density for data
 #'
 #' @param observed Observed values.
@@ -30,6 +49,7 @@ normal_lpdf <- function(observed, expected, log_sd) {
   # RTMB: lets `x[i] <- value` store AD values in a plain vector.
   "[<-" <- RTMB::ADoverload("[<-")
   n_observations <- length(observed)
+  check_density_lengths(n_observations, expected = expected, log_sd = log_sd)
   expected <- rep_len(expected, n_observations)
   standard_deviation <- rep_len(exp(log_sd), n_observations)
   is_observed <- !is.na(observed)
@@ -57,6 +77,7 @@ lognormal_lpdf <- function(observed, log_expected, log_sd) {
   # RTMB: lets `x[i] <- value` store AD values in a plain vector.
   "[<-" <- RTMB::ADoverload("[<-")
   n_observations <- length(observed)
+  check_density_lengths(n_observations, log_expected = log_expected, log_sd = log_sd)
   log_expected <- rep_len(log_expected, n_observations)
   standard_deviation <- rep_len(exp(log_sd), n_observations)
   is_observed <- !is.na(observed)
