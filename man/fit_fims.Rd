@@ -13,7 +13,8 @@ fit_fims(
   number_of_newton_steps = 0,
   control = list(eval.max = 10000, iter.max = 10000, trace = 0),
   filename = NULL,
-  getReportCovariance = FALSE
+  getReportCovariance = FALSE,
+  report_age_to_length_conversion_derived = FALSE
 )
 }
 \arguments{
@@ -56,6 +57,12 @@ are calculated either way. If \code{TRUE}, the full covariance matrix of the
 derived quantities is also calculated and stored as \code{cov} in the
 \code{sdreport}; it grows with the square of the number of derived quantities
 and can use several GB of memory. If \code{FALSE}, \code{cov} is \code{NA}.}
+
+\item{report_age_to_length_conversion_derived}{A logical, with the default
+\code{FALSE}. If \code{TRUE}, the report includes the growth-derived
+age-to-length conversion for every fleet and year in
+\code{age_to_length_conversion_derived}. It is large, so it is left out by
+default.}
 }
 \value{
 An object of class \code{FIMSFit} is returned, where the structure is the same

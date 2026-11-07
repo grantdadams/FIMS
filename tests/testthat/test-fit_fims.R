@@ -148,4 +148,11 @@ test_that("`fit_fims()` returns correct error messages", {
     object = fit_fims(all_constant_input),
     regexp = "at least one parameter to optimize"
   )
+  p_map_input <- initialize_fims(default_parameters, data = data_10_years)
+  p_map_input[["map"]] <- list(p = factor(1))
+  #' @description Test that `fit_fims()` errors with a pointer to `map_group` when `input$map` names something that is not a model parameter, such as `p`.
+  expect_error(
+    object = fit_fims(p_map_input, optimize = FALSE),
+    regexp = "map_group"
+  )
 })

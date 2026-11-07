@@ -50,11 +50,18 @@ test_that("`initialize_parameters()` returns correct error messages", {
     regexp = "identical starting"
   )
   unsorted_parameters <- small_parameters |>
+    dplyr::mutate(value = dplyr::if_else(label == "log_Fmort", -timing / 10, value)) |>
     dplyr::arrange(dplyr::desc(timing))
-  #' @description Test that `initialize_parameters()` errors for rows out of year order, rather than sorting them without telling the user.
-  expect_error(
-    object = FIMS:::initialize_parameters(unsorted_parameters),
+  withr::local_options(rlib_message_verbosity = "default")
+  #' @description Test that `initialize_parameters()` gives a message for rows out of year order.
+  expect_message(
+    object = sorted <- FIMS:::initialize_parameters(unsorted_parameters),
     regexp = "not in year and age order"
+  )
+  #' @description Test that `initialize_parameters()` matches each value to its own year when the rows are out of order.
+  expect_equal(
+    object = as.vector(sorted[["parameters"]][["Fleet.fleet1.log_Fmort"]]),
+    expected = -(1:6) / 10
   )
 })
 
