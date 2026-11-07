@@ -22,7 +22,6 @@ knitr::opts_chunk$set(
 ```{r setup}
 library(FIMS)
 packageVersion("FIMS")
-clear()
 ```
 
 ## Set up FIMS model
@@ -42,9 +41,6 @@ parameters <- setup_default_parameters(data = data_4_model)
 base_model <- parameters |>
   initialize_fims(data = data_4_model) |>
   fit_fims(optimize = TRUE)
-
-# Clear memory post-run
-clear()
 ```
 
 ## Likelihood profile
@@ -86,13 +82,6 @@ This function creates a `ggplot` object that can be customized and added onto. T
 fig_likelihood_custom_theme <- plot_likelihood(like_fit) +
   ggplot2::theme_bw()
 print(fig_likelihood_custom_theme)
-```
-
-### Clean up
-
-Once you are finished running a FIMS model, it is always good practice to clear the C++ memory from one FIMS model run to the next.
-```{r}
-clear()
 ```
 
 ## Retrospective analysis
@@ -160,11 +149,4 @@ retro_fit[["estimates"]] |>
     "Peel 2" = `2`
   ) |>
   tail()
-```
-
-### Clean up
-
-Once you are finished running a FIMS model, it is always good practice to clear the C++ memory from one FIMS model run to the next.
-```{r}
-clear()
 ```
