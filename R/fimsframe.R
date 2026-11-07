@@ -2069,14 +2069,19 @@ FIMSFrame <- function(data) {
 
   if ("age" %in% colnames(data)) {
     if (all(is.na(data[["age"]]))) {
-      cli::cli_abort(c(
-        "x" = "The {.var age} column exists in {.var data} but they are all
-        {.code NA}.",
-        "i" = "FIMS takes the model ages from the {.code age_comp} and
-        {.code weight_at_age} rows, so give those rows an {.var age}.",
-        "i" = "Without age-composition data, {.code weight_at_age} rows are
-        the only source of model ages."
-      ))
+      # Catch and index data alone, as for a surplus production model, have
+      # no ages. Every other data type is fit at age or length.
+      if (!all(data[["type"]] %in% c("catch", "index"))) {
+        cli::cli_abort(c(
+          "x" = "The {.var age} column exists in {.var data} but they are all
+          {.code NA}.",
+          "i" = "FIMS takes the model ages from the {.code age_comp} and
+          {.code weight_at_age} rows, so give those rows an {.var age}.",
+          "i" = "Without age-composition data, {.code weight_at_age} rows are
+          the only source of model ages."
+        ))
+      }
+      ages <- integer()
     } else {
       # Forced to use annual age bins because the model has an annual time step
       # FUTURE: allow for different age bins rather than 1 year increment
