@@ -422,6 +422,36 @@ test_that("`initialize_fims()` holds a process's own parameters constant when no
   expect_true(all(is.na(
     input[["map"]][["Fleet.survey1.log_q_expected_mean"]]
   )))
+
+  # With no recruitment process, a prior on the recruitment log_sd is its
+  # only use, so the log_sd is still estimated.
+  is_recruitment_process <- function(parameters) {
+    parameters[["module_name"]] == "Recruitment" &
+      parameters[["label"]] %in% c("log_devs", "log_sd")
+  }
+  no_process <- default_parameters |>
+    dplyr::mutate(
+      distribution_type = dplyr::if_else(
+        is_recruitment_process(default_parameters), NA_character_,
+        distribution_type
+      ),
+      distribution = dplyr::if_else(
+        is_recruitment_process(default_parameters), NA_character_,
+        distribution
+      ),
+      estimation_type = dplyr::case_when(
+        module_name == "Recruitment" & label == "log_devs" ~ "constant",
+        module_name == "Recruitment" & label == "log_sd" ~ "fixed_effects",
+        .default = estimation_type
+      )
+    ) |>
+    add_priors(
+      log_sd ~ normal(mean = log(0.4), sd = 0.2),
+      module_name = "Recruitment"
+    )
+  prior_input <- initialize_fims(parameters = no_process, data = data)
+  #' @description Test that `initialize_fims()` keeps estimating a parameter whose only use is a prior.
+  expect_false(anyNA(prior_input[["map"]][["Recruitment.log_sd"]]))
 })
 
 test_that("`initialize_fims()` treats a catch of 0 as a year with no fishing", {

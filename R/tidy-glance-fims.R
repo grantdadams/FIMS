@@ -233,12 +233,13 @@ glance.FIMSFit <- function(x, ...) {
   log_lik <- if (optimized) -marginal_nll else NA_real_
   total_nll <- if (!is.null(report[["jnll"]])) report[["jnll"]] else NA_real_
 
-  # Observations: rows that have both observed and expected values. Missing
-  # observations (-999) are not data, so they are not counted.
+  # Observations: rows that have both observed and expected values, as in
+  # augment(). Missing observations (-999) are not data, and an expected value
+  # that is not finite is stored as -999, so neither is counted.
   estimates <- get_estimates(x)
   nobs <- sum(
     !is.na(estimates[["observed"]]) & estimates[["observed"]] != -999 &
-      !is.na(estimates[["expected"]])
+      !is.na(estimates[["expected"]]) & estimates[["expected"]] != -999
   )
 
   # information criteria

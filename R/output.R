@@ -137,7 +137,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
     c("expected_mean", "log_sd", "logit_rho") &
     !parameter_table[["distribution_type"]] %in% "prior" &
     !parameter_table[["name"]] %in%
-      input[["model_data"]][["density_parameter_names"]]
+      input[["model_data"]][["used_parameter_names"]]
   parameter_table <- dplyr::filter(parameter_table, !is_unused_hyperparameter)
   # The log_sd of each process is the sd of its normal density.
   process_log_sd_names <- unlist(lapply(

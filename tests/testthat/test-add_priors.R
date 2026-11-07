@@ -198,7 +198,7 @@ test_that("`add_priors()` adds the prior's negative log density to the objective
 })
 
 ## Edge handling ----
-test_that("`add_priors()` accepts a prior mean for each value of the target", {
+test_that("a hand-written prior mean for each value is matched by year", {
   # A hand-written prior on fleet1's log_Fmort (years 1 to 6) with 1 mean
   # per year, given with the target's timing so each mean stays with its year.
   per_year_prior <- small_parameters |>

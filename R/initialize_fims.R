@@ -63,9 +63,16 @@ initialize_fims <- function(parameters, data) {
     })),
     unlist(lapply(model_data[["likelihoods"]], `[[`, "estimated_parameters"))
   ))
+  # A parameter is used if a density reads it, or if a prior scores it.
+  model_data[["used_parameter_names"]] <- unique(c(
+    model_data[["density_parameter_names"]],
+    unlist(lapply(model_data[["densities"]], function(density) {
+      if (density[["distribution_type"]] == "prior") density[["target"]]
+    }))
+  ))
   held <- hold_unused_process_parameters(
     model_parameters[["map"]], parameter_table,
-    model_data[["density_parameter_names"]]
+    model_data[["used_parameter_names"]]
   )
   model_parameters[["map"]] <- held[["map"]]
   parameter_table <- held[["parameter_table"]]
