@@ -88,7 +88,7 @@ proportion_mature_at_age <- rbind(maturity, maturity[n_years, ])
 FIMS:::maturity_functions
 ```
 
-`evaluate_by_year()` calls the function once if no parameter varies by year, or once per year with that year's values if one does. `rbind()` repeats the last year for the year after the last model year, which is needed for spawning biomass after all fishing in the terminal year.
+`evaluate_by_year()` calls the function once if no parameter varies by year, or once per year with that year's values if one does. `rbind()` repeats the last year for the year after the last model year, which is needed for spawning biomass at the start of the year after the last model year.
 
 ## 4. `logistic_maturity()`
 
@@ -124,4 +124,4 @@ get_estimates(fit) |>
 | Reporting | `report_model()` in `R/report.R` |
 | Tests | `tests/testthat/test-logistic_maturity.R` |
 
-To add a maturity type, see the vignette on adding a new module.
+To add a maturity type, see the vignette on [adding a new module](adding-new-module.html).

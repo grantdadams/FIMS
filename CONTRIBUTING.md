@@ -30,12 +30,12 @@ That guide explains the current architecture in detail. The quick checklist belo
 
 - [ ] Write the module function in the file for its family, e.g., `R/selectivity.R`, with a roxygen comment giving the equation, the scale of each parameter, and `@noRd`.
 - [ ] Add 1 line to the family's lookup table at the bottom of the same file, keyed by the `module_type`.
-- [ ] Do not branch on a parameter's value, and follow the vignette's rules for values that depend on parameters (`RTMB::ADoverload()`, `RTMB::matrix()`, `RTMB::rowSums()`).
+- [ ] Do not branch on a parameter's value, and follow the rules in the Adding a New Module vignette for values that depend on parameters (`RTMB::ADoverload()`, `RTMB::matrix()`, `RTMB::rowSums()`).
 
 **Defaults and initialization**
 
 - [ ] Update `R/setup_default_parameters.R` so default values and estimation types are generated correctly.
-- [ ] Update `initialize_fims()` (`R/model_data.R`) if the module needs inputs that are not parameters, as growth does.
+- [ ] If the module needs inputs that are not parameters, add an `inputs` function, as `growth_modules` does in `R/growth.R`. `initialize_model_data()` in `R/model_data.R` calls it.
 
 **Testing**
 
@@ -77,6 +77,5 @@ Versioning follows [semantic versioning](https://semver.org/) to establish the m
 
 Style guides are used to ensure the code is consistent, easy to use (e.g., read, share, and verify) and ultimately easier to write. We use the [tidyverse style guide](https://style.tidyverse.org/) for R code.
 
-A self-imposed style within FIMS is the use of `typename` instead of `class` when defining templates for consistency with the `TMB` package. While types may be defined in many ways, we use `Type` instead of `T` to define Types.
 
 Commit messages communicate details about changes that have occurred to collaborators and improve team efficiency. The best guidance for how to create an excellent commit message can be found on [Conventional Commits](https://www.conventionalcommits.org), which is our style guide for commit messages. See [Conventional Comments](https://conventionalcomments.org/) for how to format reviewer comments.

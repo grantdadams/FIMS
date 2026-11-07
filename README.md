@@ -15,7 +15,7 @@ If you are new to FIMS, the best place to start is the <a href="https://noaa-fim
 
 ## Installation
 
-A [built version of the latest release](https://noaa-fisheries-integrated-toolbox.r-universe.dev/FIMS) is available from the instance of [R universe](https://noaa-fisheries-integrated-toolbox.r-universe.dev) hosted by NOAA Fisheries Integrated Toolbox. You can install the latest version from GitHub.
+A [binary of the latest release](https://noaa-fisheries-integrated-toolbox.r-universe.dev/FIMS) is available from the instance of [R universe](https://noaa-fisheries-integrated-toolbox.r-universe.dev) hosted by NOAA Fisheries Integrated Toolbox. You can install the latest version from GitHub.
 
 ```r
 # Install the latest release

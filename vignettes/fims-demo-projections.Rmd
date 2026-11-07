@@ -240,8 +240,6 @@ parameters_projection <- setup_default_parameters(data = data_4_projections) |>
   )
 ```
 
-Reference-point targets are currently achieved by specifying a prior on `spawning_biomass_ratio`, a derived population quantity, in the final year/s of the projection period. Additionally, a prior can be specified on `log_f_multiplier`, which is a simple annual multiplier of fishing mortality, i.e., `F_mort` that allows the total fishing mortality for the population to be adjusted while keeping relative fleet effort constant by fixing `log_Fmort`. This approach allows the annual `log_f_multiplier` to be estimated while ensuring that total fishing mortality is held constant during the projection period and achieves the spawning biomass target.
-  
 The full projection approach, with a target for the projected `spawning_biomass_ratio`, needs a prior on a derived quantity, which FIMS does not have yet. It is not included here.  
 
 ### Model fit

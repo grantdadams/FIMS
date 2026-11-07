@@ -33,7 +33,7 @@ library(stockplotr)
 
 ### Getting help
 
-Use the traditional method of getting help within R for functions, i.e., `?FIMS::fit_fims`.
+Use `?` for help on any function, e.g., `?FIMS::fit_fims`.
 
 ### Memory
 
@@ -100,7 +100,7 @@ The parameters that are in the model will depend on which modules are used from 
 
 ### `setup_default_parameters()`
 
-Each module type in FIMS, e.g., logistic selectivity, is an R function, chosen by the `module_type` column of the parameter tibble. Several module types exist and more will be added in the future. The beauty of having modules rather than a control file really comes out as module types are added, because each one is used by naming it in the tibble rather than by changing a control file.
+Each module type in FIMS, e.g., logistic selectivity, is an R function, chosen by the `module_type` column of the parameter tibble. Several module types exist and more will be added in the future. A new module type is used by naming it in the tibble, so no control file changes.
 
 By just passing the data to `setup_default_parameters()`, the default values for parameters that relate to fleet(s), recruitment, growth, and maturity modules can be created. For example,
 

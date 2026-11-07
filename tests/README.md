@@ -1,12 +1,10 @@
 # :test_tube: Testing cheat sheet
 
-FIMS uses [GoogleTest](https://google.github.io/googletest) to build a C++ unit testing framework and [{testthat}](https://testthat.r-lib.org/) to build an R testing framework following guidance in [testing chapter of R packages](https://r-pkgs.org/tests.html).
+FIMS uses [{testthat}](https://testthat.r-lib.org/) for its tests, following the guidance in the [testing chapter of R packages](https://r-pkgs.org/tests.html).
 
 ## Adding a new test
 
-### :scroll: Create a test file using `FIMS:::use_*_template()`
-
-- Calling [`FIMS:::use_gtest_template()`](https://noaa-fims.github.io/FIMS/reference/use_gtest_template.html) will create a new C++ test file, e.g., `tests/gtest/test_FileName_ClassName_FunctionName.cpp`, for GoogleTest and register the test in `tests/gtest/CMakeLists.txt`.
+### :scroll: Create a test file using `FIMS:::use_testthat_template()`
 
 - Calling [`FIMS:::use_testthat_template()`](https://noaa-fims.github.io/FIMS/reference/use_testthat_template.html) will create a new R test file, e.g., `tests/testthat/test-function_name.R`, for {testthat} following the [tidyverse test conventions](https://style.tidyverse.org/tests.html).
 
@@ -15,8 +13,7 @@ FIMS uses [GoogleTest](https://google.github.io/googletest) to build a C++ unit 
 Prepare the test data in the new file or in a separate file if you plan on reusing the data in multiple test files.
 
 - In-line test data: make the data directly in the new test file within the `setup` section.
-- C++ reusable test data: create a fixture file, e.g., `tests/gtest/test_XXX_test_fixture.hpp`, to prepare reusable unit-test data, or create an integration file, e.g., `tests/gtest/integration/XXX.hpp`, to set up integration-test data for C++ tests.
-- If you used a test fixture from GoogleTest to use the same data configuration for multiple tests, `TearDown() override{}` can be used to clean up the test and then the test fixture will be deleted. See [GoogleTest user's guide](https://google.github.io/googletest/primer.html#same-data-multiple-tests) for more details.
+- Data used by several test files: define it once in a `tests/testthat/helper-*.R` file, e.g., `small_parameters` in `helper-small-parameters.R`.
 - R reusable test data: add code to the `prepare_test_data()` function in [`tests/testthat/helper-integration-tests-setup-run.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-setup-run.R), including code to save the new data object, e.g., `base::saveRDS(object, file = testthat::test_path("fixtures", "data_name.RDS"))`, and call `prepare_test_data()` in the `setup` section of the new test file to load the data using
   ```r
   if (!file.exists(testthat::test_path("fixtures", "data_name.RDS"))) {
@@ -30,42 +27,11 @@ Prepare the test data in the new file or in a separate file if you plan on reusi
 
 Follow the structure of the new test file to write appropriate correctness, edge-handling, and error-handling tests.
 
-### :stopwatch: Add benchmarks for a test
-
-Benchmarks measure performance of selected C++ workloads (for example, a
-population dynamics calculation) using
-[Google Benchmark](https://github.com/google/benchmark). Benchmarks live in
-`tests/google_benchmark/` and are separate from unit tests.
-
-- Call
-  `FIMS:::use_google_benchmark_template(name = "FileName_ClassName_FunctionName")`
-  to
-  create a new simple benchmark file
-  `tests/google_benchmark/benchmark_FileName_ClassName_FunctionName.cpp` and
-  register it in `tests/google_benchmark/CMakeLists.txt`.
-- Template modes:
-  - Simple (default): use when the benchmark can call production code directly
-    without a test fixture, e.g.
-    `FIMS:::use_google_benchmark_template(name = "FileName_ClassName_FunctionName")`.
-  - Fixture: use when the benchmark should reuse a GoogleTest fixture setup and
-    link against gtest, e.g.
-    `FIMS:::use_google_benchmark_template(name = "FileName_ClassName_FunctionName", type = "fixture")`.
-- The generated file includes TODO comments that show where to:
-  - include the appropriate header (simple) or test fixture (fixture mode)
-  - set up any shared state for the benchmark
-  - call the workload you want to time inside the benchmark loop
-- Whenever possible, reuse the same GoogleTest fixture that the corresponding
-  unit test uses so that the benchmark and test exercise the same workload.
-- Add a benchmark only when you care about performance of a specific,
-  well-defined workload (for example, after profiling has identified it as
-  slow, or when guarding against regressions in a critical section of code).
-
 #### :hammer: Helper functions to set up tests
 
 The following :hammer: helper functions are available to assist with writing integration tests in R.
 
-- `setup_and_run_FIMS_without_wrappers()`: Set up a FIMS model without wrappers (in [`tests/testthat/helper-integration-tests-setup-run.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-setup-run.R)).
-- `setup_and_run_FIMS_with_wrappers()`: Set up a FIMS model with wrappers (in [`tests/testthat/helper-integration-tests-setup-run.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-setup-run.R)).
+- `setup_and_run_FIMS_with_wrappers()`: Set up and fit a FIMS model with the wrapper functions (in [`tests/testthat/helper-integration-tests-setup-function.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-setup-function.R)).
 - `verify_fims_deterministic()`: Compare the model output from a FIMS deterministic run against the expected "truth" from an operating model (in [`tests/testthat/helper-integration-tests-validation.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-validation.R)).
 - `verify_fims_nll()`: Compare the negative log likelihood (NLL) from a FIMS model against the expected NLL calculated from an operating model (in [`tests/testthat/helper-integration-tests-validation.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-validation.R)).
 - `validate_fims()`: Compare the output from a FIMS model where parameters are estimated against the expected "truth" from an operating model (in [`tests/testthat/helper-integration-tests-validation.R`](https://github.com/NOAA-FIMS/FIMS/blob/main/tests/testthat/helper-integration-tests-validation.R)).
@@ -84,53 +50,16 @@ The following {testthat} functions can be used at the beginning of a test file t
 
 ## :computer: Run tests
 
-### C++
-
-- [`FIMS:::setup_and_run_gtest()`](https://noaa-fims.github.io/FIMS/reference/setup_and_run_gtest.html): Set up integration test data and run the GoogleTest suite.
-- [`FIMS:::run_gtest()`](https://noaa-fims.github.io/FIMS/reference/run_gtest.html): Run the GoogleTest suite.
-- C++ benchmarks are built as separate executables (for example,
-  `benchmark_Population_CatchAtAge_CatchNumbersAtAge`) in
-  `build/tests/google_benchmark/`.
-  After configuring and building with CMake, run a benchmark directly from the
-  command line, e.g.,
-  `./build/tests/google_benchmark/benchmark_Population_CatchAtAge_CatchNumbersAtAge`.
-
 ### R
 
-- Run [`devtools::load_all()`](https://devtools.r-lib.org/reference/load_all.html) and [`devtools::test()`](https://devtools.r-lib.org/reference/test.html) to execute all tests in the package. Using `devtools::load_all()` on a Windows machine will lead to `file too big` errors that can be avoided by running `withr::local_options(pkg.build_extra_flags = FALSE)` at the beginning of your R session.
+- Run [`devtools::load_all()`](https://devtools.r-lib.org/reference/load_all.html) and [`devtools::test()`](https://devtools.r-lib.org/reference/test.html) to execute all tests in the package.
 - Run [`devtools::test(filter = "test_file_name")`](https://devtools.r-lib.org/reference/test.html) to execute a specific test file.
 - Run [`devtools::install()`](https://devtools.r-lib.org/reference/install.html) before running `test-parallel*-.R`.
 - [`FIMS:::run_r_unit_tests()`](https://noaa-fims.github.io/FIMS/reference/run_r_unit_tests.html): Run all R unit tests in the package.
 - [`FIMS:::run_r_integration_tests()`](https://noaa-fims.github.io/FIMS/reference/run_r_integration_tests.html): Run all R integration tests in the package.
 - [`FIMS:::remove_test_data()`](https://noaa-fims.github.io/FIMS/reference/remove_test_data.html): Remove test data from `tests/testthat/fixtures` to run the tests from fresh if changes in the core code affect FIMS input or output.
-- You can interactively debug C++ code using `TMB::gdbsource()` in RStudio.
 
 ## :bug: Debug tests
-
-### C++
-
-- Run following lines in terminal and use gdb to debug:
-```bash
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build --parallel
-ctest --test-dir build --parallel
-gdb ./build/tests/gtest/population_dynamics_population.exe
-c // to continue without paging
-run // to see which line of code is broken
-print this->log_naa // for example, print this->log_naa to see the value of log_naa; 
-print i // for example, print i from the broken for loop
-bt // backtrace
-q // to quit
-```
-
-- Write print statements in the desired .hpp file and view them in `FIMS/build/tests/gtest/debug.txt` after you run `cmake` and `ctest`.
-```cpp
-n_fleets = fleets.size();
-std::ofstream out("debug.txt");
-out <<"number of fleets: "<<n_fleets<<"\n";
-```
-
-- Start the debugger using `R -d gdb` and then type `R` to start R. See detailed instructions [here](https://webhomes.maths.ed.ac.uk/~swood34/RCdebug/RCdebug.html).
 
 ### R
 
@@ -140,7 +69,7 @@ out <<"number of fleets: "<<n_fleets<<"\n";
 
 ### Long-running or crashing tests
 
-If a test crashes or hangs, it helps to save the output so you can see which test was running last. See the help file for [`LocationReporter`](https://testthat.r-lib.org/reference/LocationReporter.html) from {testthat} to understand how the following line is helpful for C++ code:
+If a test crashes or hangs, it helps to save the output so you can see which test was running last. See the help file for [`LocationReporter`](https://testthat.r-lib.org/reference/LocationReporter.html) from {testthat} to understand how the following line helps:
 
 ```bash
 Rscript -e "devtools::test(reporter = 'location')" > test_log.txt 2>&1
@@ -151,17 +80,6 @@ You can also set the following environment variables to for better diagnostics:
 ```bash
 R_KEEP_PKG_SOURCE=yes R_BACKTRACE_ON_ERROR=full TESTTHAT_PROGRESS=plain \
   Rscript -e "devtools::test(reporter = 'location')" > test_log.txt 2>&1
-```
-
-For segfaults, running under GDB (which probably will not work on a Windows machine) gives you a native backtrace. If you are on a Windows machine and want good backtrace information, consider [installing WSL](https://nmfs-ost.github.io/on-off-boarding/getting-started.html#software-and-tools).
-
-```bash
-# Linux
-gdb -batch -ex "run" -ex "bt" --args R --vanilla -e "devtools::test()" > backtrace_log.txt
-
-# Windows (with Rtools on PATH)
-export PATH="/c/rtools44/usr/bin:$PATH"
-gdb -batch -ex "run" -ex "bt" --args R --vanilla -e "devtools::test()" > backtrace_log.txt
 ```
 
 ### Random numbers
