@@ -24,7 +24,7 @@ The NOAA Fisheries Integrated Modeling System (FIMS) is a new modeling framework
 
 ### Loading the package
 
-Calling `library(FIMS)` loads the R package, Rcpp functions, and Rcpp modules into the R environment.
+Calling `library(FIMS)` loads the R package. The model is written in R and run with [RTMB](https://github.com/kaskr/RTMB), so nothing is compiled when FIMS is installed.
 ```{r library, warning=FALSE, message=FALSE}
 library(FIMS)
 library(ggplot2)
@@ -33,23 +33,11 @@ library(stockplotr)
 
 ### Getting help
 
-In addition to using the traditional method of getting help within R for functions, i.e., `?FIMS::fit_fims`, you can use `methods::show()` to access help information for the C++ functions that are exported via {Rcpp}. You will either be provided with a short description of the function or a link to the doxygen documentation for the C++ code that will provide information about the function.
-
-For example, `CreateTMBModel` is a C++ function that returns a boolean.
-```r
-methods::show(FIMS::CreateTMBModel)
-internal C++ function <0000014f7bd8ff00>
-    docstring : See the documentation for the Rcpp interface, https://noaa-fims.github.io/FIMS/doxygen/rcpp__interface_8hpp.html.
-    signature : bool CreateTMBModel()
-```
+Use the traditional method of getting help within R for functions, i.e., `?FIMS::fit_fims`.
 
 ### Memory
 
-The C++ code is compiled upon installation, rather than loading, so the call to `library()` should be pretty fast. Users should always run `clear()` prior to modeling to ensure that the C++ memory from any previous FIMS model run is cleared out.
-```{r clear-memory, warning=FALSE, message=FALSE}
-# clear memory
-clear()
-```
+Each call to `initialize_fims()` starts a new model, and FIMS keeps nothing in memory between fits, so `clear()` is not needed.
 
 ## Data
 
@@ -112,7 +100,7 @@ The parameters that are in the model will depend on which modules are used from 
 
 ### `setup_default_parameters()`
 
-Modules that are available in FIMS are known as reference classes in the C++ code. Each reference class acts as an interface between R and the underlining C++ code that defines FIMS. Several reference classes exist and several more will be created in the future. The beauty of having modules rather than a control file really comes out when more reference classes are created because each reference class can be accessed through R by itself to build up a model rather than needing to modify a control file for future features.
+Each module type in FIMS, e.g., logistic selectivity, is an R function, chosen by the `module_type` column of the parameter tibble. Several module types exist and more will be added in the future. The beauty of having modules rather than a control file really comes out as module types are added, because each one is used by naming it in the tibble rather than by changing a control file.
 
 By just passing the data to `setup_default_parameters()`, the default values for parameters that relate to fleet(s), recruitment, growth, and maturity modules can be created. For example,
 
@@ -255,7 +243,7 @@ FIMS:::setup_default_log_init_naa(
 
 ### Time-varying parameters
 
-Catchability (`log_q`) can vary by year, with 1 value specified for each year instead of using a single value for all years. Give 1 row per year, in year order, because FIMS uses the rows in the order they appear rather than sorting by `timing`. Years without index data for that fleet do not inform `log_q`, so set those rows to `estimation_type = "constant"`. The value does not change the fit, because `log_q` in a year without index data is not included in the likelihood. It only affects the expected index for that year. Estimating them would make the Hessian singular, and then no parameter gets a standard error. In the output from `get_estimates()`, each `log_q` value is labeled with its year. A TMB parameter map can share 1 estimated value across a block of years, as described below.
+Catchability (`log_q`) can vary by year, with 1 value specified for each year instead of using a single value for all years. Give 1 row per year, in year order. FIMS stops with an error if a parameter's rows are not in year order, rather than sorting them. Years without index data for that fleet do not inform `log_q`, so set those rows to `estimation_type = "constant"`. The value does not change the fit, because `log_q` in a year without index data is not included in the likelihood. It only affects the expected index for that year. Estimating them would make the Hessian singular, and then no parameter gets a standard error. In the output from `get_estimates()`, each `log_q` value is labeled with its year. `add_process()` can share 1 estimated value across a block of years, as described below.
 
 ```{r time-varying-log-q}
 # 1 log_q per year for survey1, estimated only in years with index data
@@ -289,35 +277,33 @@ With data and parameters in place, we can now initialize modules using `initiali
 
 ### `initialize_fims()`
 
-The tibble returned by `setup_default_parameters()` is just a data frame containing specifications. Nothing has been created in memory as of yet. To actually initialize the modules, `initialize_fims()` needs to be called. This function takes all of the specifications and matches them with the appropriate data to initialize a module and create the pointers to the memory.
+The tibble returned by `setup_default_parameters()` is just a data frame containing specifications. To build the model, `initialize_fims()` needs to be called. This function takes all of the specifications and matches them with the appropriate data, and returns the parameters, the map of which values are estimated, and the data the model needs.
 
 ### `fit_fims()`
 
 The list returned from `initialize_fims()` can be passed to the parameter of `fit_fims()` called `input` to run a FIMS model. If `optimize = FALSE`, the model will not actually be optimized but instead just checked to ensure it is a viable model. When `optimize = TRUE`, the model will be fit using `stats::nlminb()` and an object of the class `FIMSFit` will be returned.
 
-### Parameter maps
+### Fixed and shared parameters
 
-Add a named `map` list to the initialized input to fix or share parameters using TMB's factor maps. The `p` map applies to fixed effects and the `re` map applies to random effects. Each factor must have the same length and order as its corresponding vector in `input[["parameters"]]`. Missing maps leave that vector unchanged. An `NA` entry holds a parameter at its starting value; repeated levels share one estimated value. Shared entries must have identical starting values. Levels are independent between the fixed and random vectors.
+Which values are estimated, held constant or shared comes from the parameter tibble. Set `estimation_type` to `"constant"` to hold a value at its starting value. Values with the same integer in the `map_group` column share 1 estimate, so they must have the same starting value. `add_process()` writes `map_group` for time blocks.
 
-For example, share the first two estimated fishing-mortality parameters:
+For example, estimate 1 fishing mortality for fleet1 in years 1 and 2 and another for the remaining years:
 
 ```{r parameter-map, eval=FALSE}
-mapped_input <- initialize_fims(parameters_4_model, data = data_4_model)
-fixed_names <- names(get_parameter_names(
-  as.list(mapped_input[["parameters"]][["p"]])
-))
-shared <- utils::head(which(grepl("log_Fmort", fixed_names)), 2)
-fixed_map <- seq_along(fixed_names)
-fixed_map[shared[2]] <- fixed_map[shared[1]]
-mapped_input[["parameters"]][["p"]][shared[2]] <-
-  mapped_input[["parameters"]][["p"]][shared[1]]
-mapped_input[["map"]] <- list(p = factor(fixed_map))
-mapped_fit <- fit_fims(mapped_input)
+blocked_parameters <- parameters_4_model |>
+  add_process(
+    log_Fmort ~ cut(year, c(-Inf, 2, Inf)),
+    module_name = "Fleet",
+    fleet = "fleet1"
+  )
+blocked_fit <- blocked_parameters |>
+  initialize_fims(data = data_4_model) |>
+  fit_fims()
 ```
 
-Use the same approach with `re` to map random effects. Mapping holds or shares parameters but does not remove their likelihood contributions. For example, fixing every recruitment deviation at zero while estimating its process variance can make the variance estimate degenerate; fix the variance too if it is not informed by other data.
+Holding or sharing values does not remove their likelihood contributions. For example, fixing every recruitment deviation at zero while estimating its process variance can make the variance estimate degenerate. Fix the variance too if it is not informed by other data.
 
-`get_estimates()` retains all original parameter rows and gives shared parameters the same estimate and standard error. Mapped-off parameters have `NA` standard errors. Gradients are reported only on the first parameter in each shared fixed-effect level; parameter counts refer to the reduced vectors optimized by TMB. If all fixed effects are mapped off, TMB evaluates the random-effects model without an outer optimizer. If every fixed and random effect is mapped off, use `optimize = FALSE`.
+`get_estimates()` keeps every parameter row and gives shared values the same estimate and standard error. Constant values have `NA` standard errors. Gradients are reported only on the first row of each shared value. Parameter counts refer to the values that are estimated. If all fixed effects are held constant, the random-effects model is evaluated without an outer optimizer. If every value is held constant, use `optimize = FALSE`.
 
 ### Example
 
@@ -326,7 +312,6 @@ Use the same approach with `re` to map random effects. Mapping holds or shares p
 test_fit <- parameters_4_model |>
   initialize_fims(data = data_4_model) |>
   fit_fims(optimize = FALSE)
-clear()
 # Run the  model with optimization
 fit <- parameters_4_model |>
   initialize_fims(data = data_4_model) |>
@@ -367,22 +352,9 @@ If you find yourself in the unfortunate situation where your model didn't conver
 
 To dig further, `get_report(fit)[["nll_components"]]` shows each negative log-likelihood component, and `names(get_report(fit))` lists everything else in the report. You can also look through `View(get_estimates(fit))` to identify problem data. See the [Viewing results](#viewing-results) section for how to view and filter the results.
 
-#### Logging system
+#### Messages, warnings and errors
 
-Another thing is that you can look at the log file in R or write it to the disk but you must run `get_log()` before you run clear to obtain information about the model because clear removes everything from memory, including the log. `get_log()` returns the log information as a string. This string can be manipulated into a data frame using `jsonlite::fromJSON()`. There are three logging levels, "info", "warning", and "error". The log below will not have any error messages but if you were to have error messages and you want to know immediately upon the first error that there are problems, you can run `set_log_throw_on_error(TRUE)` prior to running your model. See the vignette on [FIMS logging](fims-logging.html) or the [doxygen documentation](https://noaa-fims.github.io/FIMS/doxygen/classfims_1_1FIMSLog.html) for more information.
-
-```{r example-log, eval = FALSE}
-log_json_string <- get_log()
-log_data_frame <- jsonlite::fromJSON(log_json_string)
-log_data_frame[1, ]
-dim(log_data_frame)
-# Print how many log entries there are of each type
-dplyr::count(log_data_frame, level)
-# Subset for just the warnings
-log_data_frame |> dplyr::filter(level == "warning")
-
-clear()
-```
+FIMS reports problems with the inputs or the fit as R messages, warnings and errors, so they appear in the console as the model is set up and fit. Use `withCallingHandlers()` or `tryCatch()` to collect them, e.g., across many fits in a simulation.
 
 #### Checking a fit that did not converge
 
@@ -403,7 +375,6 @@ unconverged_fit <- parameters_4_model |>
 get_convergence(unconverged_fit)
 sanity <- sanity_fims(unconverged_fit)
 sanity[["all_ok"]]
-clear()
 ```
 
 ### Viewing results
@@ -534,13 +505,9 @@ high_slope_fit <- parameters_high_slope |>
   initialize_fims(data = data_4_model) |>
   fit_fims(optimize = TRUE)
 
-clear()
-
 low_slope_fit <- parameters_low_slope |>
   initialize_fims(data = data_4_model) |>
   fit_fims(optimize = TRUE)
-
-clear()
 ```
 
 #### Age-specific selectivity
@@ -593,8 +560,6 @@ age_specific_selectivity_fit <- parameters_age_specific_selectivity |>
   fit_fims(optimize = TRUE)
 get_estimates(age_specific_selectivity_fit) |>
   dplyr::filter(module_name == "Selectivity", module_type == "AgeSpecific")
-
-clear()
 ```
 
 #### Age only
@@ -607,8 +572,6 @@ age_only_fit <- parameters_4_model |>
   initialize_fims(data = get_data(data_4_model) |>
     dplyr::filter(!type %in% c("length_comp", "age_to_length_conversion"))) |>
   fit_fims(optimize = TRUE)
-
-clear()
 ```
 
 #### Length
@@ -620,7 +583,6 @@ length_only_fit <- parameters_4_model |>
   initialize_fims(data = get_data(data_4_model) |>
     dplyr::filter(!type %in% c("age_comp"))) |>
   fit_fims(optimize = TRUE)
-clear()
 ```
 
 ```{r fit-plot-biomass}

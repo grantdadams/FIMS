@@ -387,9 +387,6 @@ The generated data use the standard parameter workflow. Because the generated da
 By default, the reference ages are set from the minimum and maximum ages in the `FIMSFrame`. This example overrides the second reference age to 12 so that the modeled ages beyond age 12 show the fitted curve approaching its implied asymptote.
 
 ```{r parameters}
-# Clear C++ objects created by earlier FIMS runs.
-FIMS::clear()
-
 # Identify the three estimable VonBertalanffySchnute curve parameters used for
 # comparisons, plots, and checks throughout the generated-data example.
 core_growth_labels <- c(

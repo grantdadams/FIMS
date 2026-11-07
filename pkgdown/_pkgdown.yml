@@ -2,9 +2,6 @@ url: https://NOAA-FIMS.github.io/FIMS
 
 home:
   title: Fisheries Integrated Modeling System (FIMS)
-  links:
-  - text: Documentation of C++ Code
-    href: https://noaa-fims.github.io/FIMS/doxygen/
 
 authors:
   FIMS implementation team:
@@ -38,6 +35,7 @@ reference:
   - starts_with("get_FIMSFrame")
   - starts_with("model_")
   - starts_with("setup_default_")
+  - starts_with("add_")
   - has_keyword("distribution")
   - starts_with("initialize_")
   - has_keyword("fit_fims")
@@ -53,13 +51,6 @@ reference:
   contents:
   - has_keyword("developer")
   - use_testthat_template
-  - starts_with("reshape_")
-
-- title: Exported C++ functions and classes
-  desc: Links to the relevant doxygen documentation for the C++ code.
-  contents:
-  - Cpp_classes
-  - Cpp_functions
 
 - title: Model Tidying and Fit Evaluation
   desc: Functions used to extract, tidy, and evaluate model fit results.
@@ -92,8 +83,6 @@ navbar:
       menu:
         - text: r/roxygen
           href: reference/index.html
-        - text: c++/doxygen
-          href: https://noaa-fims.github.io/FIMS/doxygen/index.html
     articles:
       text: articles
       menu:
@@ -104,8 +93,6 @@ navbar:
           href: articles/fims-input-data.html
         - text: FIMS Growth With VonBertalanffySchnute
           href: articles/fims-growth-vonb-schnute.html
-        - text: Introducing the FIMS Logging System
-          href: articles/fims-logging.html
         - text: FIMS User Setup Guide
           href: articles/fims-user-setup-guide.html
         - text: Simple projections using FIMS
@@ -114,16 +101,10 @@ navbar:
           href: articles/fims-diagnostics.html
         - text: -------
         - text: Developer
-        - text: Adding a New C++ Module
+        - text: Adding a New Module
           href: articles/adding-new-module.html
         - text: FIMS Path - Maturity
           href: articles/fims-path-maturity.html
-        - text: -------
-        - text: C++ Training
-        - text: Intro to C++
-          href: articles/training-intro-cpp.html
-        - text: Intro to Rcpp
-          href: articles/training-intro-rcpp.html
         - text: -------
         - text: Research and Development
         - text: RE Sparsity

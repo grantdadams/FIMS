@@ -135,7 +135,7 @@ NOAA Fisheries Google Cloud Workstations provide a managed RStudio, Code OSS (th
 
 - Provide a name for the workstation, select a configuration, and click the `Create` button.
 
-> **Note:**  Configurations with low core counts (`*-small`) will lead to failed compilation of FIMS due to insufficient memory. Use `posit-medium` or `posit-large` for workshops and rapid testing, as they have faster startup times and multiple IDE options. The `nmfs-rstudio-medium` or `nmfs-rstudio-large` options can also be used by users who prefer to work in RStudio.
+> **Note:** Use `posit-medium` or `posit-large` for workshops and rapid testing, as they have faster startup times and multiple IDE options. The `nmfs-rstudio-medium` or `nmfs-rstudio-large` options can also be used by users who prefer to work in RStudio.
   
 - Click the `Start` and `Launch` buttons to initialize the workstation. It is normal for a workstation to take a minute or two to spin up.
 
