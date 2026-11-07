@@ -22,62 +22,49 @@ fit_age_length_comp <- readRDS(
 
 ## IO correctness ----
 test_that("check_nll_convergence() works with correct inputs", {
+  model_data <- get_input(fit_age_length_comp)[["model_data"]]
   #' @description Test that check_nll_convergence() returns an OK row for a fit with finite negative log-likelihoods.
   expect_no_warning(
     out <- FIMS:::check_nll_convergence(
       get_opt(fit_age_length_comp),
       get_report(fit_age_length_comp),
-      get_model_output(fit_age_length_comp)
+      model_data
     )
   )
   expect_equal(out[["check"]], "nll")
   expect_equal(out[["severity"]], "OK")
 
-  #' @description Test that label_nll_components() labels each component with the density whose lpdf in the model output matches it, so the order follows C++.
-  model_output <- get_model_output(fit_age_length_comp)
+  #' @description Test that label_nll_components() labels the recruitment process first, then each fleet's catch or index and compositions, 1 label per component.
   nll_components <- get_report(fit_age_length_comp)[["nll_components"]]
-  labels <- FIMS:::label_nll_components(model_output, length(nll_components))
-  output <- jsonlite::fromJSON(model_output, simplifyVector = FALSE)
-  density_nll <- purrr::map_dbl(
-    output[["density_components"]],
-    function(density) -density[["density_component"]][["lpdf_value"]]
-  )
-  names(density_nll) <- purrr::map_chr(
-    output[["density_components"]],
-    function(density) {
-      if (density[["input_type"]] != "data") {
-        return(paste(density[["input_type"]], density[["module_id"]], sep = "_"))
-      }
-      fleet <- purrr::detect(output[["fleets"]], function(fleet) {
-        density[["observed_data_id"]] %in% unlist(fleet[["data_ids"]])
-      })
-      data_ids <- unlist(fleet[["data_ids"]])
-      paste(
-        fleet[["fleet"]],
-        names(data_ids)[data_ids == density[["observed_data_id"]]],
-        sep = "_"
-      )
-    }
-  )
-  expect_setequal(
+  labels <- FIMS:::label_nll_components(model_data)
+  expect_equal(
     labels,
     c(
-      "random_effects_7", "fleet1_catch", "fleet1_agecomp",
+      "Recruitment.log_devs", "fleet1_catch", "fleet1_agecomp",
       "fleet1_lengthcomp", "survey1_index", "survey1_agecomp",
       "survey1_lengthcomp"
     )
   )
-  # The model output rounds lpdf values to 6 significant digits
-  expect_equal(nll_components, unname(density_nll[labels]), tolerance = 1e-5)
+  expect_length(labels, length(nll_components))
+  #' @description Test that the labeled components add up to the joint negative log-likelihood.
+  expect_equal(
+    sum(nll_components),
+    get_report(fit_age_length_comp)[["jnll"]]
+  )
 })
 
 ## Edge handling ----
 test_that("check_nll_convergence() returns correct outputs for edge cases", {
-  #' @description Test that label_nll_components() falls back to indexed labels when the model output does not line up with the components.
-  expect_equal(
-    FIMS:::label_nll_components("not json", 2),
-    c("nll[1]", "nll[2]")
+  #' @description Test that check_nll_convergence() falls back to indexed labels when the model data do not line up with the components.
+  expect_warning(
+    out <- FIMS:::check_nll_convergence(
+      opt = list(objective = 10),
+      report = list(jnll = 5, nll_components = c(1, Inf)),
+      model_data = list()
+    ),
+    regexp = "not finite"
   )
+  expect_equal(out[["parameter"]], "nll[2]")
 })
 
 ## Error handling ----
@@ -87,7 +74,7 @@ test_that("check_nll_convergence() returns correct error messages", {
     out <- FIMS:::check_nll_convergence(
       opt = list(objective = 10),
       report = list(jnll = Inf, nll_components = c(1, NaN, 3)),
-      model_output = "not json"
+      model_data = list()
     ),
     regexp = "not finite"
   )
