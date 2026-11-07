@@ -28,7 +28,7 @@ initialize_model_data <- function(parameters, data) {
     cli::cli_abort(c(
       "x" = "There is no growth module {.val {growth_type}}.",
       "i" = "The growth modules are {.val {names(growth_modules)}}.",
-      "i" = "Check the Growth rows with {.code dplyr::distinct(parameters,
+      "i" = "Check the module types with {.code dplyr::distinct(parameters,
       module_name, module_type)}."
     ))
   }
@@ -114,7 +114,7 @@ recruitment_process_type <- function(recruitment_labels) {
   if (all(c("log_devs", "log_r") %in% process)) {
     cli::cli_warn(c(
       "!" = "Both {.val log_devs} and {.val log_r} are in the Recruitment
-      rows, but there can be only one recruitment process. The model uses
+      rows, but there can be only 1 recruitment process. The model uses
       {.val log_devs}.",
       "i" = "When fitting an AR1 to recruitment, use {.val log_r} for
       improved performance.",
@@ -336,7 +336,7 @@ read_length_comp <- function(data, fleet, length_bins) {
     cli::cli_warn(c(
       "!" = "Fleet {.val {fleet}} has {.val {nrow(out_of_bin)}}
       {.val length_comp} row{?s} outside its resolved length bins, at lengths
-      {.val {out_of_bin_lengths}} in timings {.val {out_of_bin_timings}}.",
+      {.val {out_of_bin_lengths}} in years {.val {out_of_bin_timings}}.",
       "i" = "Only rows in the fleet's length bins are used.",
       "i" = "Find the rows with {.code dplyr::filter(get_data(data),
       type == \"length_comp\", fleet == \"{fleet}\")}."
@@ -390,7 +390,7 @@ check_comp_dimensions <- function(values, n_years, n_columns, data_type,
     "x" = "The length of the {.val {data_type}} data for fleet
     {.val {fleet}} does not match the expected dimensions:
     {.val {length(values)}} values, {.val {sum(values == -999)}} of them
-    -999, in timings {.val {bad_data_years}}.",
+    -999, in years {.val {bad_data_years}}.",
     "i" = "The data need 1 value per year and age or length bin
     ({.val {expected_length}}). Use -999 for a missing value.",
     "i" = "Count the rows in each year with

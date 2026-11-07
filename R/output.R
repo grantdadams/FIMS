@@ -222,8 +222,8 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
         dimensions in {.var quantity_dimensions} (R/report.R). A quantity
         that is not in the table is listed in {.var skip} in
         derived_quantity_rows() (R/output.R).",
-        "i" = "List the reported quantities with
-        {.code names(get_report(fit))}."
+        "i" = "List the quantities that have dimensions with
+        {.code names(FIMS:::quantity_dimensions)}."
       ))
     }
     is_fleet <- !name %in% population_names
@@ -327,7 +327,8 @@ value_dimensions <- function(name, dimension, n_values, model_data,
       "i" = "A quantity has 1 value per model year, or 1 more year for the
       start of the year after the last model year, times the number of ages
       or length bins when it is also by age or length bin.",
-      "i" = "Check its values with {.code get_report(fit)[[\"{name}\"]]}."
+      "i" = "Check its dimension with
+      {.code FIMS:::quantity_dimensions[[\"{name}\"]]}."
     ))
   }
   list(
