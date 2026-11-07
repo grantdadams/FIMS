@@ -3,7 +3,8 @@
 #' Returns a tidy tibble of observed-vs-expected pairs drawn from the output of
 #' [get_estimates()].  Only rows that have both an observed value and a
 #' model-expected value are included, so parameter rows without data
-#' observations are dropped. Missing observations (-999) are left out.
+#' observations are dropped. Missing observations (-999) and expected values
+#' that are not finite (also stored as -999) are left out.
 #'
 #' The returned tibble follows the conventions expected by every
 #' [yardstick::metric_set()] metric function:
