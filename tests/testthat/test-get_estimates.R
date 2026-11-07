@@ -122,6 +122,57 @@ test_that("`get_estimates()` reports distribution parameters by id", {
   clear()
 })
 
+test_that("`get_estimates()` reports the log density of each value", {
+  data_4_model <- FIMSFrame(data_big)
+  parameters <- setup_default_parameters(data = data_4_model)
+  # Distinct deviations show whether each log density lands on its own
+  # deviation. Equal deviations, e.g., all 0, cannot.
+  is_log_devs <- parameters[["label"]] %in% "log_devs"
+  deviations <- seq(-1, 1, length.out = sum(is_log_devs))
+  parameters[["value"]][is_log_devs] <- deviations
+  recruitment_log_sd <- parameters |>
+    dplyr::filter(module_name == "Recruitment", label == "log_sd") |>
+    dplyr::pull(value)
+  fit <- parameters |>
+    initialize_fims(data = data_4_model) |>
+    fit_fims(optimize = FALSE)
+  estimates <- get_estimates(fit)
+
+  log_devs <- dplyr::filter(estimates, label == "log_devs")
+  #' @description Test that `get_estimates()` gives the recruitment deviations 1 row per deviation, in years 2 to 30.
+  expect_equal(
+    object = log_devs[["year_i"]],
+    expected = 2:30
+  )
+  #' @description Test that the `likelihood` of each recruitment deviation is the Normal(0, sd) log density of its own value.
+  expect_equal(
+    object = log_devs[["likelihood"]],
+    expected = stats::dnorm(
+      deviations, 0, exp(recruitment_log_sd),
+      log = TRUE
+    )
+  )
+
+  # Each catch observation is lognormal around the model's log expected
+  # catch, with the sdlog for a CV of 0.01. The density includes the
+  # -log(observed) term, as stats::dlnorm() does.
+  catch <- data_big |>
+    dplyr::filter(type == "catch", fleet == "fleet1") |>
+    dplyr::arrange(timing)
+  catch_rows <- estimates |>
+    dplyr::filter(fleet == "fleet1", label == "catch_expected") |>
+    dplyr::arrange(year_i)
+  log_catch_expected <- get_report(fit)[["log_catch_expected"]][[1]]
+  #' @description Test that the `likelihood` of each fleet1 catch row is the lognormal log density of the observed catch in data_big.
+  expect_equal(
+    object = catch_rows[["likelihood"]],
+    expected = stats::dlnorm(
+      catch[["observed"]], log_catch_expected, sqrt(log(1 + 0.01^2)),
+      log = TRUE
+    )
+  )
+})
+
 ## Edge handling ----
 test_that("`get_estimates()` keeps fleet names with spaces and quotes", {
   fleet_names <- c(fleet1 = "fleet one", survey1 = 'survey "A"')
