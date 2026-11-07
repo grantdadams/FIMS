@@ -322,7 +322,8 @@ methods::setValidity(
   method = function(object) {
     errors <- character()
 
-    # Check that obj is from RTMB::MakeADFun()
+    # Check that obj is from RTMB::MakeADFun(). %in% rather than setequal()
+    # because RTMB adds elements, e.g., force.update, to TMB's list.
     TMB_MakeADFun_names <- c(
       "par", "fn", "gr", "he", "hessian", "method", "retape", "env", "report",
       "simulate"
@@ -580,24 +581,24 @@ fit_fims <- function(input,
   if (number_of_loops < 0) {
     cli::cli_abort("number_of_loops ({.par {number_of_loops}}) must be >= 0.")
   }
-  # If the estimation_type of all parameters is constant, FIMS will abort if
-  # optimize is set to TRUE
-  n_estimated <- sum(purrr::map_int(input[["map"]], function(map) {
-    sum(!is.na(map))
-  }))
-  if (optimize && n_estimated == 0) {
-    cli::cli_abort("FIMS must have at least one parameter to optimize.")
-  }
   not_parameters <- setdiff(names(input[["map"]]), names(input[["parameters"]]))
   if (length(not_parameters) > 0) {
     cli::cli_abort(c(
-      "x" = "{.var input$map} has {.val {not_parameters}}, which {?is not a
-      model parameter/are not model parameters}.",
+      "x" = "{.code input[[\"map\"]]} has {.val {not_parameters}}, which
+      {?is not a model parameter/are not model parameters}.",
       "i" = "Hold values constant with {.var estimation_type} {.val constant}
       in the parameter tibble, and share 1 estimate with the {.var map_group}
       column, e.g., {.fn add_process} with {.code cut(year, ...)} for time
-      blocks."
+      blocks.",
+      "i" = "Compare {.code names(input[[\"map\"]])} with
+      {.code names(input[[\"parameters\"]])} to see which names do not match."
     ))
+  }
+  # If the estimation_type of all parameters is constant, FIMS will abort if
+  # optimize is set to TRUE
+  n_estimated <- sum(!is.na(unlist(input[["map"]])))
+  if (optimize && n_estimated == 0) {
+    cli::cli_abort("FIMS must have at least one parameter to optimize.")
   }
 
   model_data <- input[["model_data"]]
@@ -612,9 +613,13 @@ fit_fims <- function(input,
     random = if (length(input[["random"]]) > 0) input[["random"]],
     silent = TRUE
   )
-  parameter_names <- parameter_labels(names(obj[["par"]]))
+  parameter_names <- parameter_labels(
+    names(obj[["par"]]),
+    input[["parameter_table"]]
+  )
   random_effects_names <- parameter_labels(
-    names(obj[["env"]][["last.par.best"]])[obj[["env"]][["random"]]]
+    names(obj[["env"]][["last.par.best"]])[obj[["env"]][["random"]]],
+    input[["parameter_table"]]
   )
   if (!optimize) {
     initial_fit <- FIMSFit(
@@ -742,12 +747,14 @@ fit_fims <- function(input,
     sdreport = sdreport,
     run_time = run_time
   )
-  # The NLL check reads the report and model output that FIMSFit() builds
+  # The NLL check reads the report that FIMSFit() builds and the model data
   fit@convergence <- dplyr::bind_rows(
     mle_convergence,
     check_nll_convergence(opt, get_report(fit), input[["model_data"]]),
     sdreport_convergence
   )
+  # The sdreport is dropped only after FIMSFit() has used it, so
+  # get_estimates() still has the standard errors.
   if (!save_sd) {
     fit@sdreport <- list()
   }
@@ -904,32 +911,40 @@ name_by_parameter_id <- function(sdreport, parameter_table) {
   if (length(sdreport) == 0) {
     return(sdreport)
   }
-  label <- function(rtmb_names) {
-    level <- stats::ave(seq_along(rtmb_names), rtmb_names, FUN = seq_along)
-    row <- match(
-      paste(rtmb_names, level),
-      paste(parameter_table[["rtmb_name"]], parameter_table[["rtmb_level"]])
-    )
-    paste(rtmb_names, parameter_table[["parameter_id"]][row], sep = ".")
-  }
-  fixed_names <- label(names(sdreport[["par.fixed"]]))
+  fixed_names <- parameter_labels(
+    names(sdreport[["par.fixed"]]),
+    parameter_table
+  )
   names(sdreport[["par.fixed"]]) <- fixed_names
   dimnames(sdreport[["cov.fixed"]]) <- list(fixed_names, fixed_names)
   if (length(sdreport[["par.random"]]) > 0) {
-    names(sdreport[["par.random"]]) <- label(names(sdreport[["par.random"]]))
+    names(sdreport[["par.random"]]) <- parameter_labels(
+      names(sdreport[["par.random"]]),
+      parameter_table
+    )
   }
   sdreport
 }
 
-#' Label each value of a parameter, e.g., `"Fleet.fleet1.log_Fmort[3]"`
+#' Label each estimated value by its parameter id
 #'
-#' @param parameter_names RTMB parameter names, 1 per value.
+#' The label is "<name>.<parameter id>", e.g., `"Fleet.fleet1.log_Fmort.6"`,
+#' the same in the sdreport and the convergence checks. Values that share 1
+#' estimate take the id of the first.
+#'
+#' @param rtmb_names RTMB parameter names, 1 per estimated value, in RTMB's
+#'   order.
+#' @param parameter_table The `parameter_table` from initialize_fims().
 #' @noRd
-parameter_labels <- function(parameter_names) {
-  paste0(
-    parameter_names, "[",
-    stats::ave(seq_along(parameter_names), parameter_names, FUN = seq_along), "]"
+parameter_labels <- function(rtmb_names, parameter_table) {
+  # RTMB repeats a parameter's name for each estimated value, so the position
+  # within the name is the map level stored in rtmb_level.
+  level <- stats::ave(seq_along(rtmb_names), rtmb_names, FUN = seq_along)
+  row <- match(
+    paste(rtmb_names, level),
+    paste(parameter_table[["rtmb_name"]], parameter_table[["rtmb_level"]])
   )
+  paste(rtmb_names, parameter_table[["parameter_id"]][row], sep = ".")
 }
 
 #' The get_estimates() table as JSON, for the `model_output` slot

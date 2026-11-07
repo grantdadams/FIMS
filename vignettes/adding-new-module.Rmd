@@ -87,7 +87,7 @@ The parameter tibble holds each module's parameters, starting values and estimat
 
 ## Step 4: test it
 
-Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, which writes `tests/testthat/test-logistic_selectivity.R`, and test known values, e.g. 0.5 at the inflection point.
+Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, which writes `tests/testthat/test-logistic_selectivity.R`, and test known values, e.g. 0.5 at the inflection point. The module also needs a test that runs it through `initialize_fims()` and `fit_fims()`, which checks its lookup table entry and default rows.
 
 `initialize_fims()` then reads the new rows from the tibble, and `catch_at_age()` calls the function through the lookup table.
 
@@ -95,12 +95,14 @@ Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, 
 
 1. Write `<family>_lpdf(observed, expected, ...)` (or `_lpmf`) in `R/distributions.R`. The first 2 arguments are the observations and the expected values named in the data's `uncertainty` formula, on the scale the family uses (e.g. `log_expected` for the lognormal). The family's own parameters follow by name (e.g. `log_sd`). Return 1 log density per observation, and 0 where the observation is missing. Write a matching `<family>_draw()` for `simulate_fims()`.
 2. Add 1 entry to `likelihood_families` at the bottom of `R/distributions.R`, keyed by the family in the uncertainty formula. The entry holds its `lpdf`, `draw`, `distribution` (its name in `get_estimates()`) and `parameters` (its parameters from the parsed uncertainty column).
+3. Test known values of `<family>_lpdf()` in a file from `FIMS:::use_testthat_template()`, and fit a model whose `uncertainty` formula uses the family through `initialize_fims()` and `fit_fims()`.
 
 # Adding a process structure
 
 1. Write `<structure>_process_lpdf(x, mean, ...)` in `R/distributions.R`, returning 1 total, and a matching `<structure>_process_draw()`.
 2. Add 1 entry to `process_structures` at the bottom of `R/distributions.R`, keyed by its `re_structure` name.
 3. Add the term to `is_random_term()` and `parse_random_term()` in `R/processes.R`, so `add_process()` can write it.
+4. Test known values of `<structure>_process_lpdf()` in a file from `FIMS:::use_testthat_template()`, and fit a model with the structure added by `add_process()` through `initialize_fims()` and `fit_fims()`.
 
 # Adding a growth type
 

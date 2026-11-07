@@ -16,8 +16,7 @@
 #' * `condition_number`: the condition number of the Hessian is at or below
 #'   1e5.
 #'
-#' The checks are read from the fit rather than recomputed, so this works
-#' after [clear()].
+#' The checks are read from the fit rather than recomputed.
 #'
 #' @param fit An object of class `FIMSFit` returned by [fit_fims()].
 #' @return

@@ -52,7 +52,7 @@ test_that("`is.FIMSFit()` works with a fit without optimization", {
   expect_equal(fit_big_unoptimized@run_time[["time_total"]], 0)
 })
 
-test_that("`fit_fims()` passes `getReportCovariance` to `TMB::sdreport()`", {
+test_that("`fit_fims()` passes `getReportCovariance` to `RTMB::sdreport()`", {
   # The first 5 years of data_big keep the covariance matrix small; weight at
   # age needs 1 more year than the other data
   yearly_types <- c("catch", "index", "age_comp", "length_comp")

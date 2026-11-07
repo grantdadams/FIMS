@@ -10,8 +10,7 @@
 #' It performs various checks to ensure that the estimates provided by the FIMS
 #' are within acceptable tolerance compared to the operating model values.
 #'
-#' @param report A TMB report where anything that is flagged as reportable in the
-#' C++ code from running `get_report()`.
+#' @param report The report from `get_report()`.
 #' @param estimates A tibble of parameter values and their uncertainties from a
 #' fitted model from running `get_estimates()`.
 #' @param om_input A list containing the operating model inputs, such as years,
@@ -263,8 +262,7 @@ validate_fims <- function(
 #' as recruitment, fishing mortality, biomass, spawning biomass, and expected
 #' catch.
 #'
-#' @param report A TMB report where anything that is flagged as reportable in the
-#' C++ code from running `get_report()`.
+#' @param report The report from `get_report()`.
 #' @param estimates A tibble of parameter values and their uncertainties from a
 #' fitted model from running `get_estimates()`.
 #' @param om_input A list containing the operating model inputs, such as years,
@@ -473,8 +471,7 @@ verify_fims_deterministic <- function(
 #' NLL, including recruitment, fishery catch, survey index, age composition,
 #' and length composition. It only works for deterministic runs.
 #'
-#' @param report A TMB report where anything that is flagged as reportable in the
-#' C++ code from running `get_report()`.
+#' @param report The report from `get_report()`.
 #' @param om_input A list containing the operating model inputs, such as years,
 #' ages, and other parameters.
 #' @param om_output A list containing the operating model outputs, including metrics
@@ -549,8 +546,8 @@ verify_fims_nll <- function(report,
   survey_lengthcomp_expected <- 0.0 + (1.0 - 0.0 * om_input[["nlengths"]]) * om_output[["survey_length_comp"]][["survey1"]] / rowSums(om_output[["survey_length_comp"]][["survey1"]])
   lengthcomp_nll_fleet <- lengthcomp_nll_survey <- 0
   for (y in 1:om_input[["nyr"]]) {
-    # test using FIMS_dmultinom which matches the TMB dmultinom calculation and differs from R
-    # by NOT rounding obs to the nearest integer.
+    # test using FIMS_dmultinom, which matches multinomial_lpmf(). Both differ
+    # from R by NOT rounding obs to the nearest integer.
     lengthcomp_nll_fleet <- lengthcomp_nll_fleet -
       FIMS_dmultinom(
         fishing_lengthcomp_observed[y, ] * em_input[["n.L.lengthcomp"]][["fleet1"]],

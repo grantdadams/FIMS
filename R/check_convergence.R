@@ -81,7 +81,7 @@ convergence_tibble <- function(
 #' to name the 3 parameters with the largest absolute gradients. The default
 #' of `NULL` leaves the names out of the messages.
 #' @param parameter_names A character vector of fixed-effect names, e.g.,
-#' `"Fleet.fleet1.log_Fmort[3]"`, in the same order as `gradient`. If `NULL`,
+#' `"Fleet.fleet1.log_Fmort.6"`, in the same order as `gradient`. If `NULL`,
 #' labels such as `"p[2]"` are used.
 #' @return
 #' A tibble from `convergence_tibble()` with the rows `"optimizer"` and
@@ -228,7 +228,7 @@ check_mle_convergence <- function(
 #' @param sdreport The output of [RTMB::sdreport()], containing standard
 #' errors and Hessian information.
 #' @param random_effects_names A character vector of random-effect names,
-#' e.g., `"Recruitment.log_devs[2]"`, in the same order as the random effects
+#' e.g., `"Recruitment.log_devs.40"`, in the same order as the random effects
 #' in `sdreport`. If `NULL`, labels such as `"re[2]"` are used.
 #' @return
 #' A tibble from `convergence_tibble()` with the row `"hessian"` and, when the
@@ -669,9 +669,8 @@ check_nll_convergence <- function(opt, report, model_data) {
   if (length(component_labels) != length(nll_components)) {
     component_labels <- sprintf("nll[%d]", seq_along(nll_components))
   }
-  objective <- if (is.null(opt[["objective"]])) NA_real_ else opt[["objective"]]
   not_finite <- c(
-    objective = !is.finite(objective),
+    objective = !is.finite(opt[["objective"]]),
     jnll = !is.finite(report[["jnll"]]),
     stats::setNames(!is.finite(nll_components), component_labels)
   )
@@ -689,7 +688,7 @@ check_nll_convergence <- function(opt, report, model_data) {
   convergence_tibble(
     check = "nll",
     severity = if (length(not_finite_labels) > 0) "FAIL" else "OK",
-    value = objective,
+    value = opt[["objective"]],
     parameter = if (length(not_finite_labels) > 0) {
       paste(not_finite_labels, collapse = ", ")
     } else {

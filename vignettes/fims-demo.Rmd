@@ -35,10 +35,6 @@ library(stockplotr)
 
 Use `?` for help on any function, e.g., `?FIMS::fit_fims`.
 
-### Memory
-
-Each call to `initialize_fims()` starts a new model, and FIMS keeps nothing in memory between fits, so `clear()` is not needed.
-
 ## Data
 
 Data for a FIMS model must be stored in a single data frame using a long format, e.g., `data("data_big", package = "FIMS")`. The design is similar to running a linear model where you pass a single data frame to `lm()`.

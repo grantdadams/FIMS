@@ -31,8 +31,7 @@ above 1000.
 1e5.
 }
 
-The checks are read from the fit rather than recomputed, so this works
-after \code{\link[=clear]{clear()}}.
+The checks are read from the fit rather than recomputed.
 }
 \examples{
 \dontrun{
