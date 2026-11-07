@@ -40,6 +40,11 @@ test_that("`default_population_edges()` returns correct error messages", {
     ),
     regexp = "narrower than 1 length unit"
   )
+  #' @description Test that `default_population_edges()` errors when no fleet has length bins, because growth that models length needs them.
+  expect_error(
+    object = FIMS:::default_population_edges(list()),
+    regexp = "no\\s+fleet\\s+has\\s+any"
+  )
 })
 
 # edges_from_lower_edges ----

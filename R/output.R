@@ -31,17 +31,17 @@ estimates_table <- function(input, obj, report, gradient, sdreport) {
   values <- assemble_split_parameters(
     parameter_list, input[["model_data"]][["split_parameters"]]
   )
-  population <- model_predictions(
-    parameter_list, input[["model_data"]]
-  )[["population"]]
+  model <- model_predictions(parameter_list, input[["model_data"]])
   fleets <- names(input[["model_data"]][["fleets"]])
   dplyr::bind_rows(
     parameter_rows(input, obj, gradient, sdreport, values),
-    derived_quantity_rows(input, report, sdreport),
+    derived_quantity_rows(
+      input, report, sdreport, names(population_quantities(model))
+    ),
     weight_at_age_rows(input)
   ) |>
-    add_data_rows(input, report, values) |>
-    add_process_rows(input, values, population) |>
+    fill_data_columns(input, report, values) |>
+    fill_process_columns(input, values, model[["population"]]) |>
     dplyr::mutate(
       # Fleet rows, and the rows of each fleet's selectivity and data
       # modules, are numbered by fleet order. The model has 1 population, so
@@ -152,7 +152,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
 #' objective, but its rows are left NA. Other process structures have no
 #' density for 1 value on its own, so their rows are left NA too.
 #' @noRd
-add_process_rows <- function(estimates, input, values, population) {
+fill_process_columns <- function(estimates, input, values, population) {
   for (density_entry in input[["model_data"]][["densities"]]) {
     target <- which(estimates[["name"]] %in% density_entry[["target"]])
     if (density_entry[["distribution_type"]] != "process" ||
@@ -185,8 +185,11 @@ add_process_rows <- function(estimates, input, values, population) {
 #'
 #' Each reported quantity is a list with 1 element per population or fleet
 #' (report_model()).
+#'
+#' @param population_names The names of the population quantities, from
+#'   population_quantities(). Every other reported quantity is by fleet.
 #' @noRd
-derived_quantity_rows <- function(input, report, sdreport) {
+derived_quantity_rows <- function(input, report, sdreport, population_names) {
   model_data <- input[["model_data"]]
   fleets <- names(model_data[["fleets"]])
   has_se <- length(sdreport) > 0
@@ -200,7 +203,7 @@ derived_quantity_rows <- function(input, report, sdreport) {
   )
   rows <- list()
   for (name in setdiff(names(report), skip)) {
-    is_fleet <- !name %in% population_quantity_names
+    is_fleet <- !name %in% population_names
     groups <- if (is_fleet) fleets else NA_character_
     standard_errors <- if (has_se && name %in% names(sdreport[["value"]])) {
       sdreport[["sd"]][names(sdreport[["value"]]) == name]
@@ -233,16 +236,6 @@ derived_quantity_rows <- function(input, report, sdreport) {
   }
   dplyr::bind_rows(rows)
 }
-
-# Population quantities in the report, 1 element per population.
-population_quantity_names <- c(
-  "biomass", "expected_recruitment", "mortality_F", "mortality_M",
-  "mortality_Z", "numbers_at_age", "proportion_mature_at_age",
-  "spawning_biomass", "sum_selectivity", "total_catch_numbers",
-  "total_catch_weight", "unfished_biomass", "unfished_numbers_at_age",
-  "unfished_spawning_biomass", "spawning_biomass_ratio", "growth_mean_LAA",
-  "growth_sd_LAA"
-)
 
 #' 1 row per empirical weight at age
 #'
@@ -286,9 +279,12 @@ population_dimensions <- function(n_values, n_years, ages) {
     }
   }
   cli::cli_abort(c(
-    "x" = "A population quantity has {n_values} values, which match no dimensions.",
+    "x" = "A population quantity has {.val {n_values}} values, which match no
+    dimensions.",
     "i" = "Population quantities are by year, or by year and age, for
-    {n_years} or {n_years + 1} years."
+    {.val {n_years}} or {.val {n_years + 1}} years.",
+    "i" = "Check the lengths of the population quantities with
+    {.code str(get_report(fit))}."
   ))
 }
 
@@ -342,7 +338,7 @@ estimate_row_for_link <- c(
 #' each observation and `lpdf` the total for the data set. Missing
 #' observations are shown as -999.
 #' @noRd
-add_data_rows <- function(estimates, input, report, values) {
+fill_data_columns <- function(estimates, input, report, values) {
   estimates <- dplyr::mutate(
     estimates,
     expected = NA_real_, observed = NA_real_, lpdf = NA_real_,
@@ -369,9 +365,13 @@ add_data_rows <- function(estimates, input, report, values) {
     link_rows <- which(estimates[["label"]] == link & is_fleet)
     if (length(target) != n_observations || length(link_rows) != n_observations) {
       cli::cli_abort(c(
-        "x" = "There are {length(target)} {.val {row_label}} rows for
-        {.val {component[['fleet']]}}, but {n_observations} observations.",
-        "i" = "Compare the fleet's data with its {.val {row_label}} report."
+        "x" = "There are {.val {length(target)}} {.val {row_label}} rows for
+        {.val {component[['fleet']]}}, but {.val {n_observations}}
+        observations.",
+        "i" = "Each observation needs 1 expected value in the report.",
+        "i" = "Compare the fleet's data, from
+        {.code dplyr::count(get_data(data), fleet, type)}, with its
+        {.val {row_label}} report."
       ))
     }
     estimates[["expected"]][target] <- estimates[["estimated"]][link_rows]

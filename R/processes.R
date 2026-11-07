@@ -54,7 +54,7 @@
 #' @param estimation_type,estimation_status Estimation type of the target's
 #'   per-year rows when there is a random term.
 #' @param sd,rho Starting value and estimation type of the process SD (on the
-#'   natural scale) and AR1 correlation.
+#'   natural scale, > 0) and AR1 correlation (between -1 and 1).
 #' @return The parameter tibble with the target's rows replaced and the
 #'   process's hyperparameter rows added.
 #' @keywords setup_default_parameters
@@ -87,6 +87,23 @@ add_process <- function(parameters,
   estimation_type <- standard_estimation_type(estimation_type)
   sd[["estimation_type"]] <- hyperparameter_estimation_type(sd)
   rho[["estimation_type"]] <- hyperparameter_estimation_type(rho)
+  # The sd is written as log(sd) and rho as logit_rho, which are finite only
+  # for an sd above 0 and a rho between -1 and 1.
+  if (!is_single_number(sd[["value"]]) || sd[["value"]] <= 0) {
+    cli::cli_abort(c(
+      "x" = "The process sd is {.val {sd[['value']]}}.",
+      "i" = "The sd must be 1 number > 0. It is estimated as its log.",
+      "i" = "Give it as {.code sd = list(value = 0.5)}."
+    ))
+  }
+  if (!is_single_number(rho[["value"]]) || abs(rho[["value"]]) >= 1) {
+    cli::cli_abort(c(
+      "x" = "The process rho is {.val {rho[['value']]}}.",
+      "i" = "rho must be 1 number between -1 and 1. It is estimated on the
+      logit scale bounded by -1 and 1.",
+      "i" = "Give it as {.code rho = list(value = 0.5)}."
+    ))
+  }
   parameters <- add_process_columns(parameters)
   formula_terms <- parse_process_formula(formula)
   target <- formula_terms[["target"]]
@@ -273,6 +290,14 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
   # The mean and sd may name variables from where the formula was written.
   prior_mean <- eval(prior_arguments[["mean"]], environment(formula))
   prior_sd <- eval(prior_arguments[["sd"]], environment(formula))
+  # The prior sd is written as its log, which is finite only above 0.
+  if (!is_single_number(prior_sd) || prior_sd <= 0) {
+    cli::cli_abort(c(
+      "x" = "The prior sd of {.val {target}} is {.val {prior_sd}}.",
+      "i" = "The prior sd must be 1 number > 0.",
+      "i" = "Give it as {.code {target} ~ normal(mean = 0, sd = 0.5)}."
+    ))
+  }
   is_target <- prior_target_rows(parameters, target, module_name, fleet)
   target_fleets <- unique(parameters[["fleet"]][is_target])
   if (has_prior(parameters, target, module_name, target_fleets)) {
@@ -350,6 +375,12 @@ growth_prior_target <- function(parameters, target, in_module) {
 }
 
 # Helpers ----------------------------------------------------------------------
+
+#' Is a value 1 finite number?
+#' @noRd
+is_single_number <- function(value) {
+  is.numeric(value) && length(value) == 1 && is.finite(value)
+}
 
 #' "not_estimated" is another name for "constant"
 #' @noRd

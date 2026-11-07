@@ -96,7 +96,9 @@ edges_from_lower_edges <- function(lower_edges, fleet) {
       "x" = "Fleet {.val {fleet}} has {n_bins} length bin{?s}:
       {.val {lower_edges}}.",
       "i" = "A fleet with length data needs at least 2 length bins, because
-      the width of the last bin is set from the bin before it."
+      the width of the last bin is set from the bin before it.",
+      "i" = "Check the fleet's lengths with {.code dplyr::count(get_data(data),
+      fleet, type, length)}."
     ))
   }
   c(
@@ -126,7 +128,9 @@ default_population_edges <- function(fleet_edges) {
       "x" = "Growth that models length needs length bins, but no fleet has
       any.",
       "i" = "Add {.val length_comp} or {.val length_bin} rows for at least 1
-      fleet, e.g., check with {.code dplyr::count(data, fleet, type)}."
+      fleet.",
+      "i" = "Check the data types of each fleet with
+      {.code dplyr::count(get_data(data), fleet, type)}."
     ))
   }
   narrowest_bin <- vapply(

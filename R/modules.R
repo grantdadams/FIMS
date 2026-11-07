@@ -20,7 +20,9 @@ call_module <- function(functions, module_type, ..., parameters = list()) {
   if (is.null(module_function)) {
     cli::cli_abort(c(
       "x" = "There is no function for module type {.val {module_type}}.",
-      "i" = "Available types: {.val {names(functions)}}."
+      "i" = "The module types in this family are {.val {names(functions)}}.",
+      "i" = "Check the module types with
+      {.code dplyr::distinct(parameters, module_name, fleet, module_type)}."
     ))
   }
   do.call(module_function, c(list(...), parameters))
@@ -63,22 +65,14 @@ evaluate_by_year <- function(functions, module_type, ages, parameters,
 #' A value that is either the same in every year or 1 per year, as a vector
 #' with 1 value per year
 #'
+#' initialize_fims() checks the number of values, with
+#' check_fleet_parameter_sizes().
+#'
 #' @param value The parameter values.
 #' @param n_years Number of model years.
-#' @param name The parameter's flat name, e.g., "Fleet.survey1.log_q", for
-#'   the error message.
 #' @noRd
-per_year <- function(value, n_years, name) {
-  value <- as.vector(value)
-  if (!length(value) %in% c(1, n_years)) {
-    cli::cli_abort(c(
-      "x" = "{.val {name}} has {length(value)} value{?s}.",
-      "i" = "It needs 1 value, or 1 value per year ({.val {n_years}}).",
-      "i" = "Count its rows with
-      {.code dplyr::count(parameters, module_name, fleet, label)}."
-    ))
-  }
-  rep_len(value, n_years)
+per_year <- function(value, n_years) {
+  rep_len(as.vector(value), n_years)
 }
 
 #' Can the model take 1 value of this parameter per year?

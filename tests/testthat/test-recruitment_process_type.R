@@ -24,9 +24,9 @@ test_that("`recruitment_process_type()` works with correct inputs", {
 # No edge cases to test.
 
 ## Error handling ----
-test_that("`recruitment_process_type()` returns correct messages", {
-  #' @description Test that `recruitment_process_type()` gives a message when both log_devs and log_r are given.
-  expect_message(
+test_that("`recruitment_process_type()` returns correct warning messages", {
+  #' @description Test that `recruitment_process_type()` warns when both log_devs and log_r are given.
+  expect_warning(
     object = FIMS:::recruitment_process_type(
       c("log_rzero", "log_devs", "log_r")
     ),
@@ -34,7 +34,7 @@ test_that("`recruitment_process_type()` returns correct messages", {
   )
   #' @description Test that `recruitment_process_type()` uses log_devs when both log_devs and log_r are given.
   expect_equal(
-    object = suppressMessages(FIMS:::recruitment_process_type(
+    object = suppressWarnings(FIMS:::recruitment_process_type(
       c("log_rzero", "log_devs", "log_r")
     )),
     expected = "log_devs"

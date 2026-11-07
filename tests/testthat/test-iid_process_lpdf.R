@@ -67,7 +67,15 @@ test_that("`ar1_process_lpdf()` works with correct inputs", {
 # No edge cases to test.
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`ar1_process_lpdf()` returns correct error messages", {
+  # 3 years by 2 ages.
+  by_age_and_year <- matrix(c(0.1, -0.3, 0.2, 0.4, 0, -0.1), nrow = 3)
+  #' @description Test that `ar1_process_lpdf()` errors for a parameter that varies by age and year, because an AR1 process is by year only.
+  expect_error(
+    object = FIMS:::ar1_process_lpdf(by_age_and_year, 0, log(0.3), 0),
+    regexp = "by\\s+year\\s+only"
+  )
+})
 
 # random_walk_process_lpdf ----
 ## Setup ----
@@ -81,10 +89,25 @@ test_that("`random_walk_process_lpdf()` works with correct inputs", {
     object = FIMS:::random_walk_process_lpdf(process_values, 0, log(0.2)),
     expected = sum(stats::dnorm(diff(process_values), 0, 0.2, log = TRUE))
   )
+  #' @description Test that `random_walk_process_lpdf()` ignores the mean, because a random walk has none.
+  expect_equal(
+    object = FIMS:::random_walk_process_lpdf(
+      process_values, c(5, -3, 2, 0.5), log(0.2)
+    ),
+    expected = FIMS:::random_walk_process_lpdf(process_values, 0, log(0.2))
+  )
 })
 
 ## Edge handling ----
 # No edge cases to test.
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`random_walk_process_lpdf()` returns correct error messages", {
+  # 3 years by 2 ages.
+  by_age_and_year <- matrix(c(1, 1.2, 0.9, 1.1, 1, 0.8), nrow = 3)
+  #' @description Test that `random_walk_process_lpdf()` errors for a parameter that varies by age and year, because a random walk is by year only.
+  expect_error(
+    object = FIMS:::random_walk_process_lpdf(by_age_and_year, 0, log(0.2)),
+    regexp = "by\\s+year\\s+only"
+  )
+})

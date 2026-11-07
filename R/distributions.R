@@ -9,9 +9,9 @@
 # Missing observations are NA and contribute 0. Which observations are missing
 # is data, so skipping them does not branch on an estimated value.
 #
-# Process and prior log densities take (x, mean, ...): the parameter values,
-# their mean, then the density's parameters (log_sd, logit_rho) by name, and
-# return 1 total.
+# Process and prior log densities take (values, expected_mean, ...): the
+# parameter values, their mean, then the density's parameters (log_sd,
+# logit_rho) by name, and return 1 total.
 #
 # RTMB::dnorm() and the other RTMB:: densities are written out in full: they
 # work on both AD values and ordinary numbers, while stats::dnorm() fails on
@@ -140,21 +140,25 @@ multinomial_draw <- function(observed, prob) {
 
 # Process and prior log densities --------------------------------------------
 #
-# x is a parameter that varies by year (a vector, or a years-by-ages matrix
-# for iid), and mean is its expected value with the same shape (or 0). The SD
-# is the year-to-year (innovation) SD in every case. Correlation rho is
-# estimated as logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So rho is
-# between -1 and 1, and logit_rho = log(3) gives rho = 0.5.
+# `values` is a parameter that varies by year (a vector, or a years-by-ages
+# matrix for iid), and `expected_mean` is its mean with the same shape (or
+# 0). The SD is the year-to-year (innovation) SD in every case. Correlation
+# rho is estimated as logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So
+# rho is between -1 and 1, and logit_rho = log(3) gives rho = 0.5.
 
 #' Independent normal deviations around the mean (iid)
 #'
 #' x_t ~ Normal(m_t, sd), independently for every value (each year, or each
 #' age and year).
+#'
+#' @param values The process values.
+#' @param expected_mean Their mean, the same shape or 1 value.
+#' @param log_sd Log of the SD.
 #' @noRd
-iid_process_lpdf <- function(x, mean, log_sd) {
-  mean <- rep_len(as.vector(mean), length(x))
-  standard_deviation <- rep_len(exp(log_sd), length(x))
-  sum(RTMB::dnorm(x, mean, standard_deviation, log = TRUE))
+iid_process_lpdf <- function(values, expected_mean, log_sd) {
+  expected_mean <- rep_len(as.vector(expected_mean), length(values))
+  standard_deviation <- rep_len(exp(log_sd), length(values))
+  sum(RTMB::dnorm(values, expected_mean, standard_deviation, log = TRUE))
 }
 
 #' First-order autoregressive process around the mean (AR1)
@@ -162,20 +166,29 @@ iid_process_lpdf <- function(x, mean, log_sd) {
 #' x_t - m_t = rho (x_(t-1) - m_(t-1)) + e_t, e_t ~ Normal(0, sd). The first
 #' year comes from the stationary distribution, x_1 ~ Normal(m_1,
 #' sd / sqrt(1 - rho^2)). With rho = 0 this is the iid process.
+#'
+#' @inheritParams iid_process_lpdf
+#' @param logit_rho The correlation on the logit scale bounded by -1 and 1.
 #' @noRd
-ar1_process_lpdf <- function(x, mean, log_sd, logit_rho) {
-  if (is.matrix(x) && ncol(x) > 1) {
+ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho) {
+  if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
-      "x" = "An AR1 process is for parameters that vary by year only.",
-      "i" = "This parameter varies by age and year. Use an iid process,
-      {.code (1 | age:year)}."
+      "x" = "An AR1 process is for parameters that vary by year only, but
+      this one has {.val {ncol(values)}} columns (ages).",
+      "i" = "Use an iid process, {.code (1 | age:year)}, for a parameter that
+      varies by age and year.",
+      "i" = "Check the target rows with {.code dplyr::filter(parameters,
+      re_structure == \"ar1\")}."
     ))
   }
-  deviation <- x - rep_len(as.vector(mean), length(x))
+  deviation <- values - rep_len(as.vector(expected_mean), length(values))
   standard_deviation <- exp(log_sd)
   rho <- inv_logit(-1, 1, logit_rho)
   n_years <- length(deviation)
-  RTMB::dnorm(deviation[1], 0, standard_deviation / sqrt(1 - rho^2), log = TRUE) +
+  RTMB::dnorm(
+    deviation[1], 0, standard_deviation / sqrt(1 - rho^2),
+    log = TRUE
+  ) +
     sum(RTMB::dnorm(
       deviation[-1], rho * deviation[-n_years], standard_deviation,
       log = TRUE
@@ -185,30 +198,40 @@ ar1_process_lpdf <- function(x, mean, log_sd, logit_rho) {
 #' Random walk
 #'
 #' x_t = x_(t-1) + e_t, e_t ~ Normal(0, sd). A random walk has no mean, so
-#' `mean` is not used. The first year has no density term because it is a
-#' fixed effect (add_process() makes it one).
+#' `expected_mean` is ignored. It is an argument only so every process
+#' density is called the same way. The first year has no density term
+#' because it is a fixed effect (add_process() makes it one).
+#'
+#' @inheritParams iid_process_lpdf
 #' @noRd
-random_walk_process_lpdf <- function(x, mean, log_sd) {
-  if (is.matrix(x) && ncol(x) > 1) {
+random_walk_process_lpdf <- function(values, expected_mean, log_sd) {
+  if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
-      "x" = "A random walk is for parameters that vary by year only.",
-      "i" = "This parameter varies by age and year."
+      "x" = "A random walk is for parameters that vary by year only, but
+      this one has {.val {ncol(values)}} columns (ages).",
+      "i" = "Use an iid process, {.code (1 | age:year)}, for a parameter that
+      varies by age and year.",
+      "i" = "Check the target rows with {.code dplyr::filter(parameters,
+      re_structure == \"rw\")}."
     ))
   }
-  n_years <- length(x)
-  sum(RTMB::dnorm(x[-1], x[-n_years], exp(log_sd), log = TRUE))
+  n_years <- length(values)
+  sum(RTMB::dnorm(values[-1], values[-n_years], exp(log_sd), log = TRUE))
 }
 
-# Draws from the process densities, for simulation. Each returns new values
-# the same shape as x.
+# Draws from the process densities, for simulation. Each takes the arguments
+# of its log density and returns new values the same shape as `values`.
 
-iid_process_draw <- function(x, mean, log_sd) {
-  x[] <- stats::rnorm(length(x), rep_len(as.vector(mean), length(x)), exp(log_sd))
-  x
+iid_process_draw <- function(values, expected_mean, log_sd) {
+  values[] <- stats::rnorm(
+    length(values), rep_len(as.vector(expected_mean), length(values)),
+    exp(log_sd)
+  )
+  values
 }
 
-ar1_process_draw <- function(x, mean, log_sd, logit_rho) {
-  n_years <- length(x)
+ar1_process_draw <- function(values, expected_mean, log_sd, logit_rho) {
+  n_years <- length(values)
   standard_deviation <- exp(log_sd)
   rho <- inv_logit(-1, 1, logit_rho)
   deviation <- numeric(n_years)
@@ -217,16 +240,17 @@ ar1_process_draw <- function(x, mean, log_sd, logit_rho) {
     deviation[year] <- rho * deviation[year - 1] +
       stats::rnorm(1, 0, standard_deviation)
   }
-  x[] <- rep_len(as.vector(mean), n_years) + deviation
-  x
+  values[] <- rep_len(as.vector(expected_mean), n_years) + deviation
+  values
 }
 
 #' The first year is a fixed effect and keeps its value.
 #' @noRd
-random_walk_process_draw <- function(x, mean, log_sd) {
-  n_years <- length(x)
-  x[] <- x[1] + c(0, cumsum(stats::rnorm(n_years - 1, 0, exp(log_sd))))
-  x
+random_walk_process_draw <- function(values, expected_mean, log_sd) {
+  n_years <- length(values)
+  values[] <- values[1] +
+    c(0, cumsum(stats::rnorm(n_years - 1, 0, exp(log_sd))))
+  values
 }
 
 # Families and structures -----------------------------------------------------

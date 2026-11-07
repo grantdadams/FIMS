@@ -129,9 +129,10 @@ von_bertalanffy_schnute_growth <- function(age,
   length_probability <- length_distribution(
     mean_length, sd_length, length_edges
   )
-  bin_centers <- (length_edges[-1] + length_edges[-length(length_edges)]) / 2
+  length_bin_midpoints <- (length_edges[-1] +
+    length_edges[-length(length_edges)]) / 2
   weight_at_bin <- weight_at_length(
-    bin_centers, length_weight_a, length_weight_b
+    length_bin_midpoints, length_weight_a, length_weight_b
   )
   mean_weight <- as.vector(length_probability %*% weight_at_bin)
 
@@ -256,18 +257,6 @@ weight_at_length <- function(fish_length, length_weight_a, length_weight_b) {
   length_weight_a * ad_max(fish_length, 1e-8)^length_weight_b
 }
 
-# Smooth versions of abs() and max(), used as numerical guards. Unlike abs()
-# and max(), they have derivatives everywhere. The cost is a small shift even
-# where no guard is needed: ad_fabs(x) = sqrt(x^2 + C), about
-# |x| + C / (2 |x|), with C = 1e-5.
-ad_fabs <- function(x, C = 1e-5) {
-  sqrt(x * x + C)
-}
-
-ad_max <- function(a, b, C = 1e-5) {
-  (a + b + ad_fabs(a - b, C)) * 0.5
-}
-
 # Inputs ----------------------------------------------------------------------
 #
 # Each takes the FIMSFrame, the parameter tibble and the population length
@@ -277,11 +266,12 @@ ad_max <- function(a, b, C = 1e-5) {
 #' Weight at age from the data, years (n_years + 1) by ages
 #' @noRd
 ewaa_growth_inputs <- function(data, parameters, population_edges) {
-  n_years <- get_n_years(data) + 1
+  # The model years and the year after the last model year.
+  n_rows <- get_n_years(data) + 1
   weight_at_age <- model_weight_at_age(data)
-  check_weight_at_age_dimensions(weight_at_age, n_years, get_n_ages(data))
+  check_weight_at_age_dimensions(weight_at_age, n_rows, get_n_ages(data))
   list(weight_at_age = matrix(
-    weight_at_age, n_years, get_n_ages(data),
+    weight_at_age, n_rows, get_n_ages(data),
     byrow = TRUE
   ))
 }
@@ -297,11 +287,16 @@ von_bertalanffy_schnute_growth_inputs <- function(data, parameters,
         "reference_age_for_length_young", "reference_age_for_length_old"
       )
     )
-  if (any(reference_rows[["estimation_type"]] %in% c("fixed_effects", "random_effects"))) {
+  is_estimated <- reference_rows[["estimation_type"]] %in%
+    c("fixed_effects", "random_effects")
+  if (any(is_estimated)) {
     cli::cli_abort(c(
-      "x" = "Reference ages must be constant.",
+      "x" = "Reference ages must be constant, but
+      {.val {reference_rows[['label']][is_estimated]}} {?is/are} estimated.",
       "i" = "Length at age switches form at the young reference age, and the
-      switch cannot depend on an estimated value."
+      switch cannot depend on an estimated value.",
+      "i" = "Check them with {.code dplyr::filter(parameters, module_name ==
+      \"Growth\", grepl(\"reference_age\", label))}."
     ))
   }
   reference_age <- function(label) {

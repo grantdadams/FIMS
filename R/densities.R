@@ -42,7 +42,10 @@ prior_densities <- function(parameter_table) {
     if (nrow(target_rows) == 0) {
       cli::cli_abort(c(
         "x" = "The prior on {.val {target}} has no target in the model.",
-        "i" = "Write priors with {.fn add_priors}, which checks the name."
+        "i" = "A prior's {.var target_label} names a parameter of the same
+        module and fleet. {.fn add_priors} writes priors and checks the name.",
+        "i" = "Find the prior rows with {.code dplyr::filter(parameters,
+        distribution_type == \"prior\")}."
       ))
     }
     check_estimated_target(target_rows, "prior", target)
@@ -101,7 +104,9 @@ process_densities <- function(parameter_table) {
     if (length(distribution) > 0 && !distribution %in% "Dnorm") {
       cli::cli_abort(c(
         "x" = "The process on {.val {target}} is {.val {distribution}}.",
-        "i" = "Only Dnorm processes and priors are implemented."
+        "i" = "Only {.val Dnorm} processes and priors are implemented.",
+        "i" = "Check the {.var distribution} column with
+        {.code dplyr::filter(parameters, distribution_type == \"process\")}."
       ))
     }
     process_structure <- unique(stats::na.omit(rows[["re_structure"]]))
@@ -125,13 +130,20 @@ process_densities <- function(parameter_table) {
     if (is.na(hyperparameter_name["log_sd"])) {
       cli::cli_abort(c(
         "x" = "The process on {.val {target}} has no {.val log_sd} row.",
-        "i" = "Write processes with {.fn add_process}, which adds it."
+        "i" = "Every process needs a {.val log_sd} row whose
+        {.var target_label} is the target. {.fn add_process} adds it.",
+        "i" = "Find the process rows with {.code dplyr::filter(parameters,
+        distribution_type == \"process\")}."
       ))
     }
     if (process_structure == "ar1" && is.na(hyperparameter_name["logit_rho"])) {
       cli::cli_abort(c(
-        "x" = "The AR1 process on {.val {target}} has no {.val logit_rho} row.",
-        "i" = "Write processes with {.fn add_process}, which adds it."
+        "x" = "The AR1 process on {.val {target}} has no {.val logit_rho}
+        row.",
+        "i" = "An AR1 process needs a {.val logit_rho} row whose
+        {.var target_label} is the target. {.fn add_process} adds it.",
+        "i" = "Find the process rows with {.code dplyr::filter(parameters,
+        distribution_type == \"process\")}."
       ))
     }
     density_mean <- if (!is.na(hyperparameter_name["expected_mean"])) {
@@ -165,8 +177,12 @@ check_estimated_target <- function(rows, density_type, target) {
   if (all(rows[["estimation_type"]] == "constant")) {
     cli::cli_abort(c(
       "x" = "The {density_type} on {.val {target}} has no estimated values.",
-      "i" = "Estimate them ({.val random_effects} or {.val fixed_effects}),
-      or remove the {density_type}."
+      "i" = "A {density_type} needs estimated values ({.val random_effects}
+      or {.val fixed_effects}). With every value constant, an estimated sd
+      can go to 0. Estimate the values or remove the {density_type}.",
+      "i" = "Check the estimation types with
+      {.code dplyr::distinct(parameters, module_name, fleet, label,
+      estimation_type)}."
     ))
   }
 }

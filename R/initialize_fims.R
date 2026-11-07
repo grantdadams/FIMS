@@ -34,7 +34,11 @@
 #' }
 initialize_fims <- function(parameters, data) {
   if (missing(parameters) || !tibble::is_tibble(parameters)) {
-    cli::cli_abort("The {.var parameters} argument must be a tibble.")
+    cli::cli_abort(c(
+      "x" = "The {.var parameters} argument must be a tibble.",
+      "i" = "{.fn setup_default_parameters} returns the parameter tibble.",
+      "i" = "Check what was given with {.code class(parameters)}."
+    ))
   }
   if (!methods::is(data, "FIMSFrame")) {
     data <- FIMSFrame(data)
@@ -110,17 +114,21 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
     n_log_q <- count("log_q")
     if (!n_log_q %in% c(1, n_years)) {
       cli::cli_abort(c(
-        "x" = "Fleet log_q size mismatch. Fleet log_q has {n_log_q} values,
-        but it needs 1 value or 1 value per year ({n_years}).",
-        "i" = "Fleet {.val {fleet}}."
+        "x" = "Fleet {.val {fleet}} has a log_q size mismatch:
+        {.val {n_log_q}} log_q value{?s}.",
+        "i" = "log_q needs 1 value, or 1 value per year ({.val {n_years}}).",
+        "i" = "Count the rows with {.code dplyr::count(parameters, module_name,
+        fleet, label)}."
       ))
     }
     n_log_fmort <- count("log_Fmort")
     if (n_log_fmort != n_years) {
       cli::cli_abort(c(
-        "x" = "Fleet log_Fmort size mismatch. Fleet log_Fmort is of size
-        {n_log_fmort} and the number of years is {n_years}.",
-        "i" = "Fleet {.val {fleet}}."
+        "x" = "Fleet {.val {fleet}} has a log_Fmort size mismatch:
+        {.val {n_log_fmort}} log_Fmort value{?s}.",
+        "i" = "log_Fmort needs 1 value per year ({.val {n_years}}).",
+        "i" = "Count the rows with {.code dplyr::count(parameters, module_name,
+        fleet, label)}."
       ))
     }
   }
@@ -140,8 +148,10 @@ check_initialize_inputs <- function(parameters, data) {
     stats::na.omit()
   if (length(invalid_estimation_types) > 0) {
     cli::cli_abort(c(
-      "The `estimation_type` must be one of: {valid_estimation_types}.",
-      i = "Invalid values found: {invalid_estimation_types}."
+      "x" = "The `estimation_type` must be one of: {valid_estimation_types}.",
+      "i" = "Invalid values found: {.val {invalid_estimation_types}}.",
+      "i" = "Count the values with
+      {.code dplyr::count(parameters, estimation_type)}."
     ))
   }
 
@@ -202,15 +212,19 @@ check_initialize_inputs <- function(parameters, data) {
 #' @noRd
 validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
   value <- function(label) growth[["value"]][growth[["label"]] == label]
+  check_growth_rows <- "Check the Growth rows with
+    {.code dplyr::filter(parameters, module_name == \"Growth\")}."
   missing_reference_labels <- setdiff(
     c("reference_age_for_length_young", "reference_age_for_length_old"),
     growth[["label"]]
   )
   if (length(missing_reference_labels) > 0) {
     cli::cli_abort(c(
-      "VonBertalanffySchnute growth requires reference-age inputs.",
-      "i" = "Missing labels: {toString(missing_reference_labels)}",
-      "i" = "Use {.fn setup_default_Growth} or supply both reference ages explicitly."
+      "x" = "VonBertalanffySchnute growth requires reference-age inputs, but
+      {.val {missing_reference_labels}} {?is/are} missing.",
+      "i" = "{.fn setup_default_parameters} writes both reference ages. Give
+      both when you write the Growth rows yourself.",
+      "i" = check_growth_rows
     ))
   }
   delta_method_labels <- c(
@@ -226,38 +240,54 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
   present_delta <- intersect(delta_method_labels, growth[["label"]])
   if (length(present_delta) > 0 && length(present_delta) < length(delta_method_labels)) {
     cli::cli_abort(c(
-      "VonBertalanffy delta-method variability inputs must be supplied as a complete set.",
-      "i" = "Provide all of: {toString(delta_method_labels)}"
+      "x" = "VonBertalanffySchnute delta-method variability inputs are
+      incomplete: {.val {setdiff(delta_method_labels, present_delta)}}
+      {?is/are} missing.",
+      "i" = "The delta-method option needs all 6 of
+      {.val {delta_method_labels}}.",
+      "i" = check_growth_rows
     ))
   }
   if (has_interpolation && length(present_delta) == length(delta_method_labels)) {
     cli::cli_abort(c(
-      "VonBertalanffy growth requires exactly one variability path.",
-      "i" = "The default setup uses interpolation via {.var length_at_age_sd_young} and {.var length_at_age_sd_old}.",
-      "i" = "If you use the delta-method path, supply the full delta block and omit interpolation rows."
+      "x" = "VonBertalanffySchnute growth has rows for both length
+      variability options: interpolation and the delta method.",
+      "i" = "Use exactly 1 option. The default setup uses interpolation, with
+      {.val length_at_age_sd_young} and {.val length_at_age_sd_old}. To use
+      the delta method, remove those 2 rows.",
+      "i" = check_growth_rows
     ))
   }
   if (!has_interpolation && length(present_delta) == 0) {
     cli::cli_abort(c(
-      "VonBertalanffy growth requires exactly one variability path.",
-      "i" = "Supply both {.var length_at_age_sd_young} and {.var length_at_age_sd_old}, or the full delta-method block."
+      "x" = "VonBertalanffySchnute growth has no length variability rows.",
+      "i" = "Use exactly 1 option: {.val length_at_age_sd_young} and
+      {.val length_at_age_sd_old} (interpolation), or all 6 delta-method
+      rows.",
+      "i" = check_growth_rows
     ))
   }
   if (has_interpolation &&
     (nrow(sd_rows) != 2 || !setequal(sd_rows[["label"]], interpolation_labels) ||
       any(!is.na(sd_rows[["age"]])))) {
     cli::cli_abort(c(
-      "VonBertalanffySchnute interpolation-based variability inputs are malformed.",
-      "i" = "Supply exactly one {.var length_at_age_sd_young} row and one {.var length_at_age_sd_old} row.",
-      "i" = "Set their {.var age} entries to NA; their ages come from the Growth reference-age parameters."
+      "x" = "VonBertalanffySchnute interpolation-based variability inputs are
+      malformed: {.val {nrow(sd_rows)}} row{?s} with labels
+      {.val {sd_rows[['label']]}}.",
+      "i" = "Give exactly 1 {.val length_at_age_sd_young} row and 1
+      {.val length_at_age_sd_old} row, each with an {.var age} of NA. Their
+      ages are the reference ages.",
+      "i" = check_growth_rows
     ))
   }
   if (value("reference_age_for_length_old") <= value("reference_age_for_length_young")) {
     cli::cli_abort(c(
-      "x" = "VonBertalanffySchnute growth: reference_age_for_length_old must
-      be > reference_age_for_length_young.",
-      "i" = "The values are {.val {value('reference_age_for_length_young')}}
-      (young) and {.val {value('reference_age_for_length_old')}} (old)."
+      "x" = "The VonBertalanffySchnute reference ages are
+      {.val {value('reference_age_for_length_young')}} (young) and
+      {.val {value('reference_age_for_length_old')}} (old).",
+      "i" = "reference_age_for_length_old must be >
+      reference_age_for_length_young.",
+      "i" = check_growth_rows
     ))
   }
   for (label in c(
@@ -266,16 +296,20 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
   )) {
     if (!all(is.finite(value(label))) || any(value(label) <= 0)) {
       cli::cli_abort(c(
-        "x" = "{label} must be > 0",
-        "i" = "Its value is {.val {value(label)}}."
+        "x" = "The VonBertalanffySchnute {.val {label}} is
+        {.val {value(label)}}.",
+        "i" = "{label} must be > 0.",
+        "i" = check_growth_rows
       ))
     }
   }
   if (value("mean_length_old") <= value("mean_length_young")) {
     cli::cli_abort(c(
-      "x" = "VonBertalanffySchnute growth: mean_length_old must be > mean_length_young.",
-      "i" = "The values are {.val {value('mean_length_young')}} (young) and
-      {.val {value('mean_length_old')}} (old)."
+      "x" = "The VonBertalanffySchnute mean lengths are
+      {.val {value('mean_length_young')}} (young) and
+      {.val {value('mean_length_old')}} (old).",
+      "i" = "mean_length_old must be > mean_length_young.",
+      "i" = check_growth_rows
     ))
   }
   invisible(TRUE)
@@ -286,6 +320,8 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
 #' @inheritParams initialize_fims
 #' @noRd
 check_recruitment_process <- function(parameters) {
+  check_recruitment_rows <- "Check the Recruitment rows with
+    {.code dplyr::filter(parameters, module_name == \"Recruitment\")}."
   process_rows <- dplyr::filter(
     parameters,
     .data[["module_name"]] == "Recruitment",
@@ -301,17 +337,16 @@ check_recruitment_process <- function(parameters) {
     process_parameter_name <- unique(process_parameter[["label"]])
     if (any(process_parameter[["estimation_type"]] %in% c("fixed_effects", "random_effects"))) {
       cli::cli_abort(c(
-        x = "Missing required inputs for recruitment process random or
-        fixed effects.",
-        i = "There is no distribution process specified for the
-        {.var {process_parameter_name}} variable in the recruitment module.",
-        i = "Implement either one of the following options to resolve this
-        error:",
-        i = "1. Set a distribution and distribution_type for the Recruitment
-        {.var module_name} in configurations tibble.",
-        i = "2. Set the estimation_type for the recruitment
-        {.var {process_parameter_name}} variable in the parameter tibble to
-        {.var constant}."
+        "x" = "Missing required inputs for recruitment process random or
+        fixed effects. {.val {process_parameter_name}} is estimated, but no
+        Recruitment row has a process.",
+        "i" = "An estimated {.val {process_parameter_name}} needs a process.
+        Set {.var distribution_type} to {.val process} and
+        {.var distribution} to {.val Dnorm} on its rows and on the
+        Recruitment {.val log_sd} row of the parameter tibble, or add a
+        process with {.fn add_process}. Otherwise set its
+        {.var estimation_type} to {.val constant}.",
+        "i" = check_recruitment_rows
       ))
     }
     return(invisible(TRUE))
@@ -319,34 +354,28 @@ check_recruitment_process <- function(parameters) {
   process_label <- unique(setdiff(process_rows[["label"]], "log_sd"))
   if (length(process_label) == 0) {
     cli::cli_abort(c(
-      x = "Missing required inputs for recruitment process random or
-      fixed effects.",
-      i = "There is a distribution specified for the Recruitment
-      {.var module_name} in the configurations tibble, but no parameters are
-      specified for the recruitment process in the parameters tibble.",
-      i = "Implement either one of the following options to resolve this
-      error:",
-      i = "1. Add parameter, {.var log_devs} or {.var log_r}, for the
-      recruitment process in the parameters tibble with an estimation_type of
-      random_effects or fixed_effects.",
-      i = "2. Set the distribution for the Recruitment distribution and
-      distribution_type to {.var NA} in the configurations tibble."
+      "x" = "Missing required inputs for recruitment process random or
+      fixed effects. The Recruitment rows with a process are
+      {.val {process_rows[['label']]}} only.",
+      "i" = "A recruitment process needs {.val log_devs} or {.val log_r} rows
+      with an {.var estimation_type} of {.val random_effects} or
+      {.val fixed_effects}. Otherwise set {.var distribution_type} and
+      {.var distribution} to {.code NA} on the Recruitment rows of the
+      parameter tibble.",
+      "i" = check_recruitment_rows
     ))
   }
   if (any(process_rows[["estimation_type"]][process_rows[["label"]] != "log_sd"] %in% "constant")) {
     cli::cli_abort(c(
-      x = "Missing required inputs for recruitment process random or
-      fixed effects.",
-      i = "The estimation type for {.var {process_label}} is constant, but
-      there is a distribution specified for the Recruitment
-      {.var module_name} in the configurations tibble.",
-      i = "Implement either one of the following options to resolve this
-      error:",
-      i = "1. Set the distribution for the Recruitment distribution and
-      distribution_type to {.var NA} in the configurations tibble.",
-      i = "2. Set the estimation_type for the recruitment
-      {.var {process_label}} in the parameter tibble to
-      {.var random_effects} or {.var fixed_effects}."
+      "x" = "Missing required inputs for recruitment process random or
+      fixed effects. {.val {process_label}} has a process, but its
+      {.var estimation_type} is {.val constant}.",
+      "i" = "A process needs estimated values. Set the
+      {.var estimation_type} of {.val {process_label}} to
+      {.val random_effects} or {.val fixed_effects}, or set
+      {.var distribution_type} and {.var distribution} to {.code NA} on the
+      Recruitment rows of the parameter tibble.",
+      "i" = check_recruitment_rows
     ))
   }
   # The process density covers every value of the parameter, including
@@ -363,9 +392,10 @@ check_recruitment_process <- function(parameters) {
       "!" = "{n_constant} of the {length(process_estimation_types)}
       {.var {process_label}} values in the recruitment module are constant,
       but the recruitment process distribution includes all of them.",
-      i = "The constant values still add to the negative log-likelihood and
-      affect the estimate of {.var log_sd} (biased low when they are fixed at
-      0) and, for {.var log_r}, the stock-recruit parameters."
+      "i" = "The constant values still add to the negative log-likelihood
+      and affect the estimate of {.var log_sd} (biased low when they are
+      fixed at 0) and, for {.var log_r}, the stock-recruit parameters.",
+      "i" = check_recruitment_rows
     ))
   }
   invisible(TRUE)

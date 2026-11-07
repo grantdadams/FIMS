@@ -28,6 +28,22 @@
 #'   (the model's predictions at those values).
 #' @keywords diagnostics
 #' @export
+#' @examples
+#' \dontrun{
+#' data("data_big")
+#' data_4_model <- FIMSFrame(data_big)
+#' fit <- setup_default_parameters(data = data_4_model) |>
+#'   initialize_fims(data = data_4_model) |>
+#'   fit_fims(optimize = TRUE)
+#'
+#' # 2 data sets, with the random effects held at their fitted values
+#' simulations <- simulate_fims(fit, number_of_simulations = 2)
+#'
+#' # Refit the model to the first data set
+#' refit <- FIMSFrame(simulations[[1]][["data"]]) |>
+#'   initialize_fims(parameters = get_input(fit)[["tibble"]]) |>
+#'   fit_fims(optimize = TRUE)
+#' }
 simulate_fims <- function(fit, number_of_simulations = 1,
                           random_effects = c("keep", "redraw")) {
   random_effects <- match.arg(random_effects)
@@ -67,8 +83,9 @@ redraw_random_effects <- function(parameters, input) {
     if (density_entry[["mean"]][["kind"]] == "derived") {
       cli::cli_abort(c(
         "x" = "Cannot redraw {.val {target}}.",
-        "i" = "Its mean depends on the population it drives. Use
-        {.code random_effects = \"keep\"}."
+        "i" = "Its mean depends on the population it drives, so it cannot be
+        drawn before the population.",
+        "i" = "Use {.code simulate_fims(fit, random_effects = \"keep\")}."
       ))
     }
     inputs <- density_inputs(density_entry, whole, population = NULL)
@@ -171,6 +188,18 @@ write_simulated_data <- function(input, simulated) {
 #'   largest relative error in spawning biomass over all years.
 #' @keywords diagnostics
 #' @export
+#' @examples
+#' \dontrun{
+#' data("data_big")
+#' data_4_model <- FIMSFrame(data_big)
+#' fit <- setup_default_parameters(data = data_4_model) |>
+#'   initialize_fims(data = data_4_model) |>
+#'   fit_fims(optimize = TRUE)
+#'
+#' # Simulate and refit 5 data sets, then look at the relative errors
+#' self_test <- run_fims_self_test(fit, number_of_simulations = 5)
+#' summary(self_test[["relative_error_terminal_spawning_biomass"]])
+#' }
 run_fims_self_test <- function(fit, number_of_simulations = 10,
                                random_effects = c("keep", "redraw"), seed = 20261106) {
   random_effects <- match.arg(random_effects)

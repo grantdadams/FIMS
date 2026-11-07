@@ -147,6 +147,56 @@ test_that("`add_priors()` works on any parameter, named as the model names it", 
   )
 })
 
+test_that("`add_priors()` adds the prior's negative log density to the objective", {
+  data_4_model <- FIMSFrame(data_big)
+  # The survey log_q and the recruitment log_sd are estimated, so each can
+  # take a prior.
+  parameters <- parameters_big |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      (label == "log_q" & fleet %in% "survey1") |
+        (module_name == "Recruitment" & label == "log_sd"),
+      "fixed_effects", estimation_type
+    ))
+  get_jnll <- function(parameters) {
+    fit <- parameters |>
+      initialize_fims(data = data_4_model) |>
+      fit_fims(optimize = FALSE)
+    get_report(fit)[["jnll"]]
+  }
+  jnll_without_prior <- get_jnll(parameters)
+
+  log_q_start <- dplyr::filter(
+    parameters, label == "log_q", fleet %in% "survey1"
+  )[["value"]]
+  jnll_with_log_q_prior <- parameters |>
+    add_priors(
+      log_q ~ normal(mean = log(0.5), sd = 0.2),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    get_jnll()
+  #' @description Test that a normal prior on log_q adds its negative log density at the starting value to the joint negative log-likelihood.
+  expect_equal(
+    object = jnll_with_log_q_prior - jnll_without_prior,
+    expected = -stats::dnorm(log_q_start, log(0.5), 0.2, log = TRUE)
+  )
+
+  log_sd_start <- dplyr::filter(
+    parameters, module_name == "Recruitment", label == "log_sd"
+  )[["value"]]
+  jnll_with_log_sd_prior <- parameters |>
+    add_priors(
+      log_sd ~ normal(mean = log(0.6), sd = 0.2),
+      module_name = "Recruitment"
+    ) |>
+    get_jnll()
+  #' @description Test that a normal prior on the recruitment log_sd adds its negative log density at the starting value to the joint negative log-likelihood.
+  expect_equal(
+    object = jnll_with_log_sd_prior - jnll_without_prior,
+    expected = -stats::dnorm(log_sd_start, log(0.6), 0.2, log = TRUE)
+  )
+})
+
 ## Edge handling ----
 # No edge cases to test.
 
@@ -179,5 +229,44 @@ test_that("`add_priors()` returns correct error messages", {
       module_name = "Recruitment"
     ),
     regexp = "has a process"
+  )
+  #' @description Test that `add_priors()` errors for a prior that is not `normal()`.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_q ~ uniform(min = -5, max = 0),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "priors\\s+are\\s+implemented"
+  )
+  #' @description Test that `add_priors()` errors for a target with no rows in the module.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_rzero ~ normal(mean = 10, sd = 1),
+      module_name = "Recruitment"
+    ),
+    regexp = "There are no"
+  )
+  #' @description Test that `add_priors()` errors for a prior sd of 0, which has no log.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_q ~ normal(mean = log(0.5), sd = 0),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "must\\s+be\\s+1\\s+number\\s+>\\s+0"
+  )
+  #' @description Test that `add_priors()` errors for a prior with no sd.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_q ~ normal(mean = log(0.5)),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "must\\s+be\\s+1\\s+number\\s+>\\s+0"
   )
 })

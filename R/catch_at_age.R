@@ -28,8 +28,8 @@
 #   year (Baranov).
 # - Recruitment in year y comes from spawning biomass in year y - 1.
 # - Catch and index are computed for model years only.
-# - Selectivity is not rescaled to a maximum of 1, so annual F is the fully
-#   selected F only when selectivity reaches 1.
+# - Annual F is the fully selected F only when selectivity reaches 1 (see
+#   R/selectivity.R).
 
 #' Predictions of the catch-at-age model
 #'
@@ -98,8 +98,7 @@ population_biology <- function(module_parameters, model_data, population_data) {
       module_parameters[["Selectivity"]][[fleet]], n_years
     )
     annual_f <- per_year(
-      exp(module_parameters[["Fleet"]][[fleet]][["log_Fmort"]]), n_years,
-      name = paste0("Fleet.", fleet, ".log_Fmort")
+      exp(module_parameters[["Fleet"]][[fleet]][["log_Fmort"]]), n_years
     )
     fishing_mortality_at_age[[fleet]] <- annual_f * selectivity[[fleet]]
   }
@@ -259,8 +258,7 @@ fleet_predictions <- function(module_parameters, model_data, biology,
 
     # Index at the start of the year. q can vary by year.
     catchability <- per_year(
-      exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years,
-      name = paste0("Fleet.", fleet, ".log_q")
+      exp(module_parameters[["Fleet"]][[fleet]][["log_q"]]), n_years
     )
     index_numbers_at_age <- catchability * biology[["selectivity"]][[fleet]] *
       numbers
@@ -288,8 +286,7 @@ fleet_predictions <- function(module_parameters, model_data, biology,
     quantities[["log_catch_expected"]] <- log(quantities[["catch_expected"]])
     quantities[["log_index_expected"]] <- log(quantities[["index_expected"]])
 
-    # Compositions: the age composition comes from the catch if the fleet has
-    # catch data, otherwise from the index.
+    # Compositions (evaluate_age_comp() says which numbers they come from).
     numbers_for_composition <- if (fleet_data[["has_catch"]]) {
       catch_numbers_at_age
     } else {
@@ -364,8 +361,3 @@ fleet_predictions <- function(module_parameters, model_data, biology,
   }
   predictions
 }
-
-# Model types, by `model_type` in the model data.
-model_functions <- list(
-  CatchAtAge = catch_at_age
-)

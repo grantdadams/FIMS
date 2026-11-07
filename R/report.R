@@ -8,8 +8,8 @@
 # quantities, with the fleets' values stacked into 1 vector per quantity.
 #
 # RTMB's REPORT() and ADREPORT() name each quantity after the variable passed
-# to them, so report_list() and adreport_list() create a variable with the
-# right name for each list element.
+# to them, so report_list() creates a variable with the right name for each
+# list element.
 
 #' Report the model's quantities
 #'
@@ -22,28 +22,9 @@
 report_model <- function(model_data, model, likelihood) {
   n_years <- model_data[["n_years"]]
   biology <- model[["biology"]]
-  population <- model[["population"]]
   fleets <- model[["fleets"]]
 
-  population_quantities <- list(
-    biomass = population[["biomass"]],
-    expected_recruitment = population[["expected_recruitment"]],
-    mortality_F = flatten_by_year(biology[["mortality_F"]]),
-    mortality_M = flatten_by_year(biology[["mortality_M"]]),
-    mortality_Z = flatten_by_year(biology[["mortality_Z"]]),
-    numbers_at_age = flatten_by_year(population[["numbers_at_age"]]),
-    proportion_mature_at_age =
-      flatten_by_year(biology[["proportion_mature_at_age"]]),
-    spawning_biomass = population[["spawning_biomass"]],
-    sum_selectivity = flatten_by_year(biology[["sum_selectivity"]]),
-    total_catch_numbers = Reduce(`+`, lapply(fleets, `[[`, "catch_numbers")),
-    total_catch_weight = Reduce(`+`, lapply(fleets, `[[`, "catch_weight")),
-    unfished_biomass = population[["unfished_biomass"]],
-    unfished_numbers_at_age =
-      flatten_by_year(population[["unfished_numbers_at_age"]]),
-    unfished_spawning_biomass = population[["unfished_spawning_biomass"]],
-    spawning_biomass_ratio = population[["spawning_biomass_ratio"]]
-  )
+  population_values <- population_quantities(model)
   # Growth by age, empty unless growth models length. Growth does not change
   # by year, but it is reported for every year, like the other at-age
   # quantities.
@@ -96,41 +77,73 @@ report_model <- function(model_data, model, likelihood) {
   }
   fleet_quantities[names(key_quantities)] <- key_quantities
 
-  report_list(lapply(c(population_quantities, growth_quantities), list))
+  report_list(lapply(c(population_values, growth_quantities), list))
   report_list(fleet_quantities)
   report_list(likelihood)
   report_list(list(
-    log_expected_recruitment = population[["log_expected_recruitment"]]
+    log_expected_recruitment =
+      model[["population"]][["log_expected_recruitment"]]
   ))
   if (isTRUE(model_data[["adreport"]])) {
     # Standard errors for the population and fleet quantities. The growth
     # quantities, the age-to-length keys and growth_derived_mean_WAA are
     # reported without them.
-    adreport_list(population_quantities)
-    adreport_list(lapply(
-      fleet_quantities[setdiff(names(fleet_quantities), c(
-        names(key_quantities), "growth_derived_mean_WAA"
-      ))],
-      function(by_fleet) do.call(c, by_fleet)
-    ))
+    report_list(population_values, reporter = "ADREPORT")
+    report_list(
+      lapply(
+        fleet_quantities[setdiff(names(fleet_quantities), c(
+          names(key_quantities), "growth_derived_mean_WAA"
+        ))],
+        function(by_fleet) do.call(c, by_fleet)
+      ),
+      reporter = "ADREPORT"
+    )
   }
 }
 
-#' REPORT() each element of a named list under its name
+#' The population quantities in the report
+#'
+#' 1 value per year, or per year and age flattened by year. get_estimates()
+#' reads the names to tell population quantities from fleet quantities.
+#'
+#' @param model Output of model_predictions().
+#' @return A named list of the population quantities.
 #' @noRd
-report_list <- function(quantities) {
-  for (name in names(quantities)) {
-    assign(name, quantities[[name]])
-    eval(call("REPORT", as.name(name)))
-  }
+population_quantities <- function(model) {
+  biology <- model[["biology"]]
+  population <- model[["population"]]
+  fleets <- model[["fleets"]]
+  list(
+    biomass = population[["biomass"]],
+    expected_recruitment = population[["expected_recruitment"]],
+    mortality_F = flatten_by_year(biology[["mortality_F"]]),
+    mortality_M = flatten_by_year(biology[["mortality_M"]]),
+    mortality_Z = flatten_by_year(biology[["mortality_Z"]]),
+    numbers_at_age = flatten_by_year(population[["numbers_at_age"]]),
+    proportion_mature_at_age =
+      flatten_by_year(biology[["proportion_mature_at_age"]]),
+    spawning_biomass = population[["spawning_biomass"]],
+    sum_selectivity = flatten_by_year(biology[["sum_selectivity"]]),
+    total_catch_numbers = Reduce(`+`, lapply(fleets, `[[`, "catch_numbers")),
+    total_catch_weight = Reduce(`+`, lapply(fleets, `[[`, "catch_weight")),
+    unfished_biomass = population[["unfished_biomass"]],
+    unfished_numbers_at_age =
+      flatten_by_year(population[["unfished_numbers_at_age"]]),
+    unfished_spawning_biomass = population[["unfished_spawning_biomass"]],
+    spawning_biomass_ratio = population[["spawning_biomass_ratio"]]
+  )
 }
 
-#' ADREPORT() each element of a named list under its name
+#' REPORT() or ADREPORT() each element of a named list under its name
+#'
+#' @param quantities A named list.
+#' @param reporter "REPORT", or "ADREPORT" for quantities that get standard
+#'   errors.
 #' @noRd
-adreport_list <- function(quantities) {
+report_list <- function(quantities, reporter = "REPORT") {
   for (name in names(quantities)) {
     assign(name, quantities[[name]])
-    eval(call("ADREPORT", as.name(name)))
+    eval(call(reporter, as.name(name)))
   }
 }
 

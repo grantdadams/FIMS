@@ -37,7 +37,9 @@ initialize_parameters <- function(parameters) {
     cli::cli_abort(c(
       "x" = "Fleet names cannot contain {.val .}: {.val {dotted_fleets}}.",
       "i" = "Parameter names are split on {.val .} to find the module and
-      fleet."
+      fleet.",
+      "i" = "Rename the fleets in the data and the parameter tibble. List them
+      with {.code unique(parameters[[\"fleet\"]])}."
     ))
   }
   parameter_table <- parameters |>
@@ -94,18 +96,23 @@ initialize_parameters <- function(parameters) {
         "x" = "Random effects in {.val {name}} cannot share values through
         {.var map_group}.",
         "i" = "A shared random effect would be scored once per row by its
-        process density."
+        process density.",
+        "i" = "Find the rows with {.code dplyr::filter(parameters,
+        estimation_type == \"random_effects\", !is.na(map_group))}."
       ))
     }
     # RTMB marks random effects by parameter name, so a parameter with both
     # random and other values is split into 2 RTMB parameters. The model puts
     # them back together (assemble_split_parameters()).
-    parts <- if (any(is_random) && !all(is_random)) {
+    is_split <- any(is_random) && !all(is_random)
+    if (is_split) {
       splits[[name]] <- list(
         length = length(value),
         random = position[is_random], fixed = position[!is_random],
         dim = dim(value)
       )
+    }
+    parts <- if (is_split) {
       list(
         list(name = paste0(name, "|random"), rows = which(is_random)),
         list(name = paste0(name, "|fixed"), rows = which(!is_random))
@@ -199,9 +206,12 @@ shape_parameter <- function(rows) {
   n_ages <- if (has_age) dplyr::n_distinct(rows[["age"]]) else 1
   if (n_years * n_ages != length(value)) {
     cli::cli_abort(c(
-      "x" = "Parameter {.val {rows[['name']][1]}} has {length(value)} row{?s}.",
+      "x" = "Parameter {.val {rows[['name']][1]}} has
+      {.val {length(value)}} row{?s}.",
       "i" = "It needs 1 row per year{if (has_age) ' and age' else ''}
-      ({n_years * n_ages})."
+      ({.val {n_years * n_ages}}).",
+      "i" = "Count its rows by year with {.code dplyr::count(parameters,
+      module_name, fleet, label, timing)}."
     ))
   }
   # Rows are sorted by timing, then age, so fill by row (year).
@@ -275,7 +285,8 @@ check_shared_values <- function(name, value, map_level) {
       "i" = "Map levels with different starting values:
       {.val {differing_levels}}. Level {.val {first_level}} has
       {.val {value[map_level %in% first_level]}}.",
-      "i" = "Use identical starting values to share a parameter."
+      "i" = "Use identical starting values to share a parameter. Compare
+      them with {.code dplyr::filter(parameters, !is.na(map_group))}."
     ))
   }
   invisible(value)
