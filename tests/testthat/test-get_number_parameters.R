@@ -19,7 +19,7 @@ test_that("`get_number_of_parameters()` works with correct inputs", {
     expect_equal(number_of_parameters, fit@number_of_parameters)
     expected <- c(
       fixed_effects = length(fit@obj[["par"]]),
-      random_effects = length(fit@obj[["env"]]$parList()[["re"]])
+      random_effects = length(fit@obj[["env"]][["random"]])
     )
     #' @description Test that `get_number_of_parameters()` counts fixed and random effects.
     expect_equal(number_of_parameters, expected)

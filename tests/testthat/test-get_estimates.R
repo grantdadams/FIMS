@@ -81,10 +81,12 @@ test_that("`get_estimates()` reports distribution parameters by id", {
     initialize_fims(data = data_4_model) |>
     fit_fims(optimize = FALSE)
   estimates <- get_estimates(fit)
-  log_sd_id <- names(get_parameter_names(get_obj(fit)[["par"]])) |>
-    grep(pattern = "^dnorm\\..*\\.log_sd\\.", value = TRUE) |>
-    sub(pattern = ".*\\.", replacement = "") |>
-    as.integer()
+  log_sd_id <- get_input(fit)[["parameter_table"]] |>
+    dplyr::filter(
+      .data[["module_name"]] == "Recruitment",
+      .data[["label"]] == "log_sd"
+    ) |>
+    dplyr::pull(.data[["parameter_id"]])
   log_sd_rows <- dplyr::filter(estimates, .data$parameter_id %in% log_sd_id)
   #' @description Test that `get_estimates()` returns one row for the estimated recruitment `log_sd`.
   expect_equal(object = nrow(log_sd_rows), expected = 1)

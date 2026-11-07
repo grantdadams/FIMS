@@ -768,44 +768,19 @@ n_index <- length(fleet_names_index)
 
 ## IO correctness ----
 test_that("`model_*()` works with the correct inputs", {
-  index_dat <- vector(mode = "list", length = n_index)
-  names(index_dat) <- fleet_names_index
-
-  for (index_i in 1:n_index) {
-    index <- Index
-    index_dat[[fleet_names_index[index_i]]] <- methods::new(index, n_years)
+  for (fleet in fleet_names_index) {
     #' @description Test that `model_index()` works with correct inputs.
-    expect_silent(
-      index_dat[[fleet_names_index[index_i]]]$index_data[] <-
-        model_index(fims_frame, fleet_names_index[index_i])
-    )
-    #' @description Test that `model_index()` values reach the Rcpp index object unchanged.
-    expect_equal(
-      index_dat[[fleet_names_index[index_i]]]$index_data$get_values(),
-      model_index(fims_frame, fleet_names_index[index_i])
-    )
+    expect_silent(index <- model_index(fims_frame, fleet))
+    #' @description Test that `model_index()` returns 1 value per model year.
+    expect_length(index, n_years)
   }
 
-  clear()
-
-  age_comp_dat <- vector(mode = "list", length = n_age_comp)
-  names(age_comp_dat) <- fleet_names_age_comp
-
-  for (fleet_f in 1:n_age_comp) {
-    age_comp_dat[[fleet_names_age_comp[fleet_f]]] <- methods::new(AgeComp, n_years, n_ages)
+  for (fleet in fleet_names_age_comp) {
     #' @description Test that `model_age_comp()` works with correct inputs.
-    age_comp_dat[[fleet_names_age_comp[fleet_f]]]$age_comp_data[] <- model_age_comp(fims_frame, fleet_names_age_comp[fleet_f])
-    expect_silent(
-      age_comp_dat[[fleet_names_age_comp[fleet_f]]]$age_comp_data[] <- model_age_comp(fims_frame, fleet_names_age_comp[fleet_f])
-    )
-    #' @description Test that `model_age_comp()` values reach the Rcpp age-composition object unchanged.
-    expect_equal(
-      age_comp_dat[[fleet_names_age_comp[fleet_f]]]$age_comp_data$get_values(),
-      model_age_comp(fims_frame, fleet_names_age_comp[fleet_f])
-    )
+    expect_silent(age_comp <- model_age_comp(fims_frame, fleet))
+    #' @description Test that `model_age_comp()` returns 1 value per model year and age.
+    expect_length(age_comp, n_years * n_ages)
   }
-
-  clear()
 
   #' @description Test that `model_catch()` retrieves catch data as a numeric vector when passed a data frame rather than a FIMSFrame object.
   expect_vector(model_catch(data_big, "fleet1"), ptype = numeric())

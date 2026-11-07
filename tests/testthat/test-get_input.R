@@ -18,8 +18,14 @@ test_that("`get_input()` works with correct inputs", {
     input <- get_input(fit)
     #' @description Test that `get_input()` returns the FIMSFit input slot.
     expect_equal(input, fit@input)
-    #' @description Test that `get_input()` returns parameter and model entries.
-    expect_named(input, c("parameters", "model", "tmb_mapping"))
+    #' @description Test that `get_input()` returns the entries from `initialize_fims()`.
+    expect_named(
+      input,
+      c(
+        "parameters", "map", "random", "model_data", "parameter_table",
+        "tibble", "frame", "model"
+      )
+    )
   }
 })
 

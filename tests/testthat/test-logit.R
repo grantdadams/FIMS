@@ -28,11 +28,16 @@ test_that("`logit()` works with correct inputs", {
     object = inv_logit(0.0, 1.0, logit(0.0, 1.0, 0.5)),
     expected = 0.5
   )
+  #' @description Test that `logit()` works element-wise on a vector of values.
+  expect_equal(
+    object = logit(0, 1, c(0.5, 0.75)),
+    expected = c(0, log(3))
+  )
 })
 
 ## Edge handling ----
 test_that("`logit()` returns correct outputs for edge cases", {
-  #' @description Test that `logit(0, 1L, 0.5)` returns 0 even if an integer is passed to the maximum value, i.e., `b` parameter, because the logit function in the C++ code is typed and the Rcpp interface only exports the double version of the function but users might pass integers.
+  #' @description Test that `logit(0, 1L, 0.5)` returns 0 even if an integer is passed to the maximum value, i.e., `b` parameter.
   expect_equal(
     object = logit(0, 1L, 0.5),
     expected = 0
@@ -45,23 +50,7 @@ test_that("`logit()` returns correct outputs for edge cases", {
 })
 
 ## Error handling ----
-test_that("`logit()` returns correct error messages", {
-  #' @description Test that `logit(x)` returns expected error when passed a vector input rather than a double to `x`.
-  expect_error(
-    object = logit(0, 1, c(0.5, 0.5)),
-    regexp = "Expecting a single value"
-  )
-  #' @description Test that `logit(x)` returns expected error when passed a vector input rather than a double to `a`.
-  expect_error(
-    object = logit(-2:-1, 1, 0.5),
-    regexp = "Expecting a single value"
-  )
-  #' @description Test that `logit(x)` returns expected error when passed a vector input rather than a double to `b`.
-  expect_error(
-    object = logit(0, 1:2, 0.5),
-    regexp = "Expecting a single value"
-  )
-})
+# No built-in errors to test.
 
 # inv_logit ----
 ## Setup ----
@@ -79,11 +68,16 @@ test_that("`inv_logit()` works with correct inputs", {
     object = inv_logit(0.2, 1.0, -1.94591015),
     expected = 0.3
   )
+  #' @description Test that `inv_logit()` works element-wise on a vector of values.
+  expect_equal(
+    object = inv_logit(0, 1, c(0, log(3))),
+    expected = c(0.5, 0.75)
+  )
 })
 
 ## Edge handling ----
 test_that("`inv_logit()` returns correct outputs for edge cases", {
-  #' @description Test that `inv_logit(0, 1L, 0.0)` returns 0.5 even if an integer is passed to the maximum value, i.e., `b` parameter, because the inv_logit function in the C++ code is typed and the Rcpp interface only exports the double version of the function but users might pass integers.
+  #' @description Test that `inv_logit(0, 1L, 0.0)` returns 0.5 even if an integer is passed to the maximum value, i.e., `b` parameter.
   expect_equal(
     object = inv_logit(0, 1L, 0.0),
     expected = 0.5
@@ -96,20 +90,4 @@ test_that("`inv_logit()` returns correct outputs for edge cases", {
 })
 
 ## Error handling ----
-test_that("`inv_logit()` returns correct error messages", {
-  #' @description Test that `inv_logit(x)` returns expected error when passed a vector input rather than a double to `x`.
-  expect_error(
-    object = inv_logit(0, 1, c(0.5, 0.5)),
-    regexp = "Expecting a single value"
-  )
-  #' @description Test that `inv_logit(x)` returns expected error when passed a vector input rather than a double to `a`.
-  expect_error(
-    object = inv_logit(-2:-1, 1, 0.5),
-    regexp = "Expecting a single value"
-  )
-  #' @description Test that `inv_logit(x)` returns expected error when passed a vector input rather than a double to `b`.
-  expect_error(
-    object = inv_logit(0, 1:2, 0.5),
-    regexp = "Expecting a single value"
-  )
-})
+# No built-in errors to test.
