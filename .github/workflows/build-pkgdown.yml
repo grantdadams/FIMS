@@ -11,7 +11,6 @@ on:
       - 'man/**'
       - 'vignettes/**'
       - 'inst/**'
-      - 'doxygen/**'
       - 'README.md'
       - 'CONTRIBUTING.md'
       - 'pkgdown/**'
@@ -70,24 +69,6 @@ jobs:
         run: |
           pkgdown::build_site(override = list(destination = "docs"))
         shell: Rscript {0}
-
-      - name: Installing build dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y coreutils grep findutils
-          sudo apt install cmake doxygen gcc git ninja-build
-
-      - name: Building HTML documentation with Doxygen
-        # Do not run -DDOXYGEN_WARN_AS_ERROR=YES locally
-        # FIX? run cmake --build build --parallel 16
-        run: |
-          doxygen --version
-          cmake -S . -B build -G Ninja -DDOXYGEN_WARN_AS_ERROR=FAIL_ON_WARNINGS
-          cmake --build build
-
-      - name: Stage Doxygen documentation
-        run: |
-          mkdir -p docs/doxygen
-          cp -a doxygen/html/. docs/doxygen/
 
       - name: Check local site links
         id: local-links
