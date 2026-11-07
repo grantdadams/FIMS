@@ -1,17 +1,18 @@
 # Parameters: from the parameter tibble to RTMB and back
 #
-# RTMB needs a flat list of parameters. initialize_parameters() names each 1
-# "module.fleet.label" (or "module.label" when there is no fleet), builds the
-# map (which values are fixed or shared) and the list of random effects.
-# Inside the model, group_parameters() undoes the naming, so module code reads
-# module_parameters$Selectivity$fleet1$slope. assemble_split_parameters()
-# undoes the 1 other change RTMB needs (see initialize_parameters()).
+# RTMB needs a flat list of parameters. initialize_parameters() names each
+# parameter "module.fleet.label" (or "module.label" when there is no fleet),
+# builds the map (which values are fixed or shared) and the list of random
+# effects. Inside the model, group_parameters() undoes the naming, so module
+# code reads module_parameters$Selectivity$fleet1$slope.
+# assemble_split_parameters() rejoins parameters that initialize_parameters()
+# split into random and fixed parts.
 
 #' Turn the parameter tibble into a flat RTMB parameter list
 #'
 #' Every row with a value becomes a parameter value. A process or prior
 #' hyperparameter row (expected_mean, log_sd, logit_rho) with a
-#' `target_label` is named after its target, e.g.
+#' `target_label` is named after its target, e.g.,
 #' "Fleet.survey1.log_q_log_sd". Constant values are parameters too, but
 #' fixed with `map`, so the model reads all values the same way.
 #'
@@ -147,7 +148,8 @@ initialize_parameters <- function(parameters) {
 #' A row's label is its tibble label, except for a process's or prior's own
 #' parameters. A process's own parameters are named after its target
 #' (log_q_log_sd), and a prior's after its target and "prior"
-#' (log_q_prior_log_sd), so a target can have both.
+#' (log_q_prior_log_sd). So a prior on a process's own parameter, such as the
+#' recruitment log_sd, does not share its name (log_sd_prior_log_sd).
 #'
 #' @param parameters The parameter tibble, with a `target_label` column.
 #' @return A character vector with 1 label per row.
@@ -352,7 +354,7 @@ group_parameters <- function(parameters, skip = character(0)) {
 #' Put back together parameters that mix random and fixed effects
 #'
 #' RTMB marks random effects by parameter name, so initialize_parameters()
-#' splits a parameter whose values mix the 2 (e.g. a random walk, whose first
+#' splits a parameter whose values mix the 2 (e.g., a random walk, whose first
 #' year is a fixed effect) into "name|random" and "name|fixed". This rebuilds
 #' the original parameter, in its original shape, before the model uses it.
 #'

@@ -22,7 +22,7 @@ The value on the logit scale (\code{logit()}), or between \code{a} and \code{b}
 }
 \description{
 FIMS estimates parameters bounded between \code{a} and \code{b} on this logit scale,
-e.g. steepness between 0.2 and 1:
+e.g., steepness between 0.2 and 1:
 logit(a, b, x) = log(x - a) - log(b - x),
 inv_logit(a, b, logit_x) = a + (b - a) / (1 + exp(-logit_x)).
 }

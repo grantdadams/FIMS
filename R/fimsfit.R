@@ -245,15 +245,9 @@ methods::setMethod("get_convergence", "FIMSFit", function(x) {
 
 #' @return
 #' [get_estimates()] returns a tibble of parameter values and their
-#' uncertainties from a fitted model. The `year` column contains calendar
-#' years; the `age` and `length` columns are the ages and length bins
-#' from the data. `age` is `NA` if populations have different ages, and both
-#' are `NA` for fits saved before they were added to the output. `observed` is
-#' `NA` for missing observations. The likelihood skips a composition year with
-#' any missing bin, so `observed` and `estimated` are `NA` for every bin of
-#' that year, and for every year of a fleet without composition data. The
-#' proportions are reported as `agecomp_proportion` and
-#' `lengthcomp_proportion`.
+#' uncertainties from a fitted model. The `year_i` column is a position that
+#' starts at 1, and the `age` and `length` columns are the ages and length bins
+#' from the data. `age` is `NA` if populations have different ages.
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -537,26 +531,14 @@ FIMSFit <- function(
 #' * [FIMSFit()]
 #' @details This function is a beta version still and subject to change
 #'   without warning.
-#' Mapped parameters are expanded to their full FIMS vectors for reporting.
-#' Shared parameters receive the same estimate and standard error in
-#' [get_estimates()]. Mapped-off parameters retain their starting values and
-#' have `NA` standard errors. Gradients describe reduced fixed-effect
-#' optimization variables and are reported only on the first full parameter
-#' in each shared level. Parameter counts describe the reduced vectors.
-#' With no active fixed effects, RTMB evaluates the random-effects model without
-#' running an outer optimizer. If no parameters remain active, use
-#' `optimize = FALSE`.
 #'
-#' A fit with random effects can need several GB of memory for a long time
-#' series. If FIMS was installed with TMB 1.9.18 or later, running
-#' `TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "FIMS")` after
-#' loading FIMS and before `fit_fims()` uses less memory but takes longer.
-#' With 60 years of data built from `data_big`, peak memory fell from 2.2 GB
-#' to 0.6 GB and the fit took twice as long. At the same parameter values the
-#' objective, gradient and standard errors are the same to about 1e-12, but
-#' the optimizer can stop at a slightly different point, so the convergence
-#' checks can change. The setting lasts for the R session and does not reach
-#' parallel workers.
+#' [get_estimates()] keeps every parameter row and gives shared values the
+#' same estimate and standard error. Constant values keep their starting
+#' values and have `NA` standard errors. Gradients are reported only on the
+#' first row of each shared value. Parameter counts refer to the values that
+#' are estimated. If all fixed effects are held constant, the random-effects
+#' model is evaluated without an outer optimizer. If every value is held
+#' constant, use `optimize = FALSE`.
 #' @keywords fit_fims
 #' @export
 fit_fims <- function(input,
@@ -920,7 +902,7 @@ name_by_parameter_id <- function(sdreport, parameter_table) {
   sdreport
 }
 
-#' Label each value of a parameter, e.g. `"Fleet.fleet1.log_Fmort[3]"`
+#' Label each value of a parameter, e.g., `"Fleet.fleet1.log_Fmort[3]"`
 #'
 #' @param parameter_names RTMB parameter names, 1 per value.
 #' @noRd

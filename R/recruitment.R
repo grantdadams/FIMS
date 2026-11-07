@@ -1,12 +1,13 @@
 # Recruitment modules
 #
 # A recruitment module has 2 parts:
-# - a stock-recruitment function giving mean (expected) recruitment from
-#   spawning biomass, such as beverton_holt_recruitment().
+# - a stock-recruit function giving median recruitment from spawning biomass,
+#   such as beverton_holt_recruitment(). The log deviations have no bias
+#   correction, so the curve is the median, not the mean.
 # - a recruitment process giving log recruitment in each year from the log of
-#   expected recruitment, such as log_devs_recruitment_process().
+#   the stock-recruit curve, such as log_devs_recruitment_process().
 
-#' Beverton-Holt stock-recruitment, steepness form
+#' Beverton-Holt stock-recruit function, steepness form
 #'
 #' R = 0.8 R0 h S / (0.2 phi0 R0 (1 - h) + S (h - 0.2))
 #'
@@ -60,16 +61,18 @@ spawning_biomass_per_recruit <- function(mortality_M, proportion_female,
 # Recruitment processes
 #
 # A process gives log recruitment in a year from that year's value of its
-# parameter (`process_value`) and the log of expected recruitment. The mean
-# of the process density is 0 for deviations and log E[R] for log
-# recruitment (see recruitment_process_means below).
+# parameter (`process_value`) and the log of median recruitment from the
+# stock-recruit curve, R_hat. The mean of the process density is 0 for
+# deviations and log R_hat for log recruitment (see recruitment_process_means
+# below).
 
-#' Recruitment process: log deviations from the stock-recruitment curve
+#' Recruitment process: log deviations from the stock-recruit curve
 #'
-#' `log R_y = log E[R_y] + log_devs_y`, with `log_devs_y ~ Normal(0, sd)`.
+#' `log R_y = log R_hat_y + log_devs_y`, with `log_devs_y ~ Normal(0, sd)`,
+#' where R_hat_y is median recruitment from the stock-recruit curve.
 #'
-#' @param log_expected_recruitment Log of mean recruitment from the
-#'   stock-recruitment function.
+#' @param log_expected_recruitment Log of median recruitment from the
+#'   stock-recruit curve, log R_hat_y.
 #' @param process_value The log deviation for the same year.
 #' @noRd
 log_devs_recruitment_process <- function(log_expected_recruitment,
@@ -79,7 +82,12 @@ log_devs_recruitment_process <- function(log_expected_recruitment,
 
 #' Recruitment process: log recruitment as the parameter
 #'
-#' `log R_y = log_r_y`, with `log_r_y ~ Normal(log E[R_y], sd)`.
+#' `log R_y = log_r_y`, with `log_r_y ~ Normal(log R_hat_y, sd)`.
+#' `log_expected_recruitment` is not used here, because log R_hat_y enters as
+#' the mean of the process density.
+#'
+#' @inheritParams log_devs_recruitment_process
+#' @param process_value Log recruitment for the same year.
 #' @noRd
 log_r_recruitment_process <- function(log_expected_recruitment,
                                       process_value) {

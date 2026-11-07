@@ -3,7 +3,7 @@
 # fims_model() is what RTMB tapes. It puts the parameters into module groups,
 # calls the model's predictions (catch_at_age() for a catch-at-age model),
 # adds the negative log-likelihood of priors, processes and data, and
-# reports. A new model type (e.g. surplus production) needs only its own
+# reports. A new model type (e.g., surplus production) needs only its own
 # predictions function and an entry in model_functions. The likelihood and
 # reporting are shared. model_functions is at the bottom of
 # R/catch_at_age.R.
@@ -11,7 +11,7 @@
 #' Joint negative log-likelihood of a FIMS model
 #'
 #' @param parameters The flat RTMB parameter list ("module.fleet.label").
-#' @param model_data The `data` element of initialize_fims().
+#' @param model_data The `model_data` element of initialize_fims().
 #' @return The joint negative log-likelihood.
 #' @noRd
 fims_model <- function(parameters, model_data) {
@@ -53,7 +53,7 @@ model_predictions <- function(parameters, model_data) {
 #' hyperparameters (log_sd, logit_rho), looked up by flat name
 #'
 #' The mean is 0, a parameter (expected_mean), or a population quantity
-#' (log expected recruitment, for log_r).
+#' (log_expected_recruitment, the log of the stock-recruit curve, for log_r).
 #'
 #' @param density_entry 1 entry of `model_data$densities`.
 #' @param parameters The flat parameter list.
@@ -87,7 +87,7 @@ density_inputs <- function(density_entry, parameters, population) {
 #'
 #' @param parameters The flat parameter list. Densities name their parameters
 #'   by flat name ("Fleet.survey1.log_q").
-#' @param model_data The `data` element of initialize_fims().
+#' @param model_data The `model_data` element of initialize_fims().
 #' @param model Output of model_predictions().
 #' @return A list with `jnll`, `nll_components` (1 per density, then 1 per
 #'   data set) and `observation_lpdf` (the log density of each observation).
@@ -135,7 +135,7 @@ model_likelihood <- function(parameters, model_data, model) {
 
 #' A data set's family parameters
 #'
-#' They come from the data's uncertainty column (e.g. log_sd), unless the
+#' They come from the data's uncertainty column (e.g., log_sd), unless the
 #' parameter tibble has a row for them, which lets them be estimated.
 #'
 #' @param component 1 entry of `model_data$likelihoods`.

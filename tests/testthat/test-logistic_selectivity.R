@@ -57,6 +57,17 @@ test_that("`double_logistic_selectivity()` works with correct inputs", {
     object = FIMS:::double_logistic_selectivity(5, 5, 1, 5, 1),
     expected = 0.25
   )
+  #' @description Test that `double_logistic_selectivity()` with different ascending and descending slopes returns the ascending limb times 1 minus the descending limb, about 0.2716.
+  expect_equal(
+    object = FIMS:::double_logistic_selectivity(34.5, 10.5, 0.2, 15, 0.05),
+    expected = stats::plogis(0.2 * (34.5 - 10.5)) *
+      (1 - stats::plogis(0.05 * (34.5 - 15)))
+  )
+  #' @description Test that swapping the ascending and descending slopes changes `double_logistic_selectivity()`.
+  expect_false(isTRUE(all.equal(
+    FIMS:::double_logistic_selectivity(34.5, 10.5, 0.2, 15, 0.05),
+    FIMS:::double_logistic_selectivity(34.5, 10.5, 0.05, 15, 0.2)
+  )))
 })
 
 ## Edge handling ----
