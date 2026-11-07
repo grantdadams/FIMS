@@ -5,8 +5,8 @@
 
 # FIMS dmultinorm function ----
 #' FIMS dmultinom()
-#' This function matches the dmultinom() function in TMB and differs from R
-#' by NOT rounding obs to the nearest integer. The function is evaluated in
+#' This function matches multinomial_lpmf(). Both differ from R by NOT
+#' rounding obs to the nearest integer. The function is evaluated in
 #' log space and returns the log probability mass function.
 #'
 #' @param x A vector of length K of numeric values.

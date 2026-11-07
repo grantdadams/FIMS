@@ -19,7 +19,8 @@ A \code{\link[tibble:tibble]{tibble::tibble()}} with one row and the following c
 \item{\code{AIC}}{Akaike information criterion (marginal, fixed effects only).}
 \item{\code{BIC}}{Bayesian information criterion (marginal, fixed effects only).}
 \item{\code{nobs}}{Total number of data observations (rows with both an
-observed and an expected value in \code{\link[=get_estimates]{get_estimates()}}).}
+observed and an expected value in \code{\link[=get_estimates]{get_estimates()}}). Missing
+observations (-999) are not counted.}
 \item{\code{npar_fixed}}{Number of fixed-effect parameters.}
 \item{\code{npar_random}}{Number of random-effect parameters.}
 \item{\code{marginal_nll}}{Marginal negative log-likelihood
