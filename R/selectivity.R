@@ -52,9 +52,12 @@ age_specific_selectivity <- function(age, logit_sel_at_age) {
   }
   if (length(logit_sel_at_age) != length(age)) {
     cli::cli_abort(c(
-      "x" = "Age-specific selectivity has {length(logit_sel_at_age)} values
-      of {.var logit_sel_at_age}.",
-      "i" = "It needs 1 value per age ({length(age)}), or 1 for all ages."
+      "x" = "Age-specific selectivity has {.val {length(logit_sel_at_age)}}
+      value{?s} of {.var logit_sel_at_age}.",
+      "i" = "It needs 1 value per age ({.val {length(age)}}), or 1 for all
+      ages.",
+      "i" = "Count the values with {.code dplyr::count(parameters, fleet,
+      label, timing)}."
     ))
   }
   inv_logit(0, 1, logit_sel_at_age)

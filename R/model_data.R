@@ -27,22 +27,24 @@ initialize_model_data <- function(parameters, data) {
   if (is.null(growth_modules[[growth_type]])) {
     cli::cli_abort(c(
       "x" = "There is no growth module {.val {growth_type}}.",
-      "i" = "Available types: {.val {names(growth_modules)}}."
+      "i" = "The growth modules are {.val {names(growth_modules)}}.",
+      "i" = "Check the Growth rows with {.code dplyr::distinct(parameters,
+      module_name, module_type)}."
     ))
   }
   # When growth models length, fleets' age-to-length keys come from growth,
   # otherwise from the fixed key in the data.
-  growth_derived_key <- growth_modules[[growth_type]][["models_length"]]
+  growth_models_length <- growth_modules[[growth_type]][["models_length"]]
   length_bins <- resolve_fleet_length_bins(
     get_data(data),
-    allow_global_conversion_fallback = !growth_derived_key
+    allow_global_conversion_fallback = !growth_models_length
   )
   # Only fleets with length bins set the range of the population length grid.
   fleets_with_bins <- Filter(function(bins) length(bins) > 0, length_bins)
   fleet_edges <- Map(
     edges_from_lower_edges, fleets_with_bins, names(fleets_with_bins)
   )
-  population_edges <- if (growth_derived_key) {
+  population_edges <- if (growth_models_length) {
     default_population_edges(fleet_edges)
   }
   recruitment_labels <- parameters |>
@@ -65,7 +67,7 @@ initialize_model_data <- function(parameters, data) {
     edges <- fleet_edges[[fleet]]
     initialize_fleet(
       data, parameters, fleet, length_bins[[fleet]], edges,
-      rebin = if (growth_derived_key && !is.null(edges)) {
+      rebin = if (growth_models_length && !is.null(edges)) {
         rebin_weights(population_edges, edges)
       }
     )
@@ -110,12 +112,15 @@ module_type <- function(parameters, module_name, fleet = NA) {
 recruitment_process_type <- function(recruitment_labels) {
   process <- intersect(names(recruitment_process_functions), recruitment_labels)
   if (all(c("log_devs", "log_r") %in% process)) {
-    cli::cli_alert_warning(c(
-      "x" = "Both {.var log_devs} and {.var log_r} are specified in the model
-      but there can be only one!",
-      "!" = "Currently the default model will use {.var log_devs}.",
-      "!" = "When fitting an AR1 to recruitment, use {.var log_r} for
-      improved performance."
+    cli::cli_warn(c(
+      "!" = "Both {.val log_devs} and {.val log_r} are in the Recruitment
+      rows, but there can be only one recruitment process. The model uses
+      {.val log_devs}.",
+      "i" = "When fitting an AR1 to recruitment, use {.val log_r} for
+      improved performance.",
+      "i" = "Remove the unused rows. Find them with
+      {.code dplyr::filter(parameters, label %in% c(\"log_devs\",
+      \"log_r\"))}."
     ))
     process <- "log_devs"
   }
@@ -195,8 +200,10 @@ initialize_fleet <- function(data, parameters, fleet, length_bins, edges,
       cli::cli_abort(c(
         "x" = "Fleet {.val {fleet}} has conditional age-at-length data but no
         length bins.",
-        "i" = "Add an age-to-length conversion or a length-based growth
-        module."
+        "i" = "Conditional age-at-length needs length bins, from an
+        age-to-length conversion or a growth module that models length.",
+        "i" = "Check the data types of each fleet with
+        {.code dplyr::count(get_data(data), fleet, type)}."
       ))
     }
     fleet_data[["conditional_age_at_length"]] <- read_conditional_age_at_length(
@@ -267,7 +274,9 @@ initialize_likelihoods <- function(data, fleet, fleet_data) {
       cli::cli_abort(c(
         "x" = "There is no likelihood for family {.val {likelihood_family}}
         ({.val {fleet}} {data_type}).",
-        "i" = "Available families: {.val {names(likelihood_families)}}."
+        "i" = "The families are {.val {names(likelihood_families)}}.",
+        "i" = "Check the {.var uncertainty} column with
+        {.code dplyr::distinct(get_data(data), fleet, type, uncertainty)}."
       ))
     }
     list(
@@ -325,11 +334,12 @@ read_length_comp <- function(data, fleet, length_bins) {
     out_of_bin_lengths <- sort(unique(out_of_bin[["length"]]))
     out_of_bin_timings <- sort(unique(out_of_bin[["timing"]]))
     cli::cli_warn(c(
-      "Fleet `{fleet}` has `length_comp` rows outside its resolved length bins.",
-      "i" = "Ignoring {nrow(out_of_bin)} non-missing out-of-bin rows.",
-      "i" = "Out-of-bin non-missing lengths: {toString(out_of_bin_lengths)}",
-      "i" = "Affected timings: {toString(out_of_bin_timings)}",
-      "i" = "Only rows matching the resolved fleet bins will be used."
+      "!" = "Fleet {.val {fleet}} has {.val {nrow(out_of_bin)}}
+      {.val length_comp} row{?s} outside its resolved length bins, at lengths
+      {.val {out_of_bin_lengths}} in timings {.val {out_of_bin_timings}}.",
+      "i" = "Only rows in the fleet's length bins are used.",
+      "i" = "Find the rows with {.code dplyr::filter(get_data(data),
+      type == \"length_comp\", fleet == \"{fleet}\")}."
     ))
   }
   rows <- rows |>
@@ -377,12 +387,14 @@ check_comp_dimensions <- function(values, n_years, n_columns, data_type,
     dplyr::filter(.data[["n"]] != n_columns) |>
     dplyr::pull(.data[["timing"]])
   cli::cli_abort(c(
-    "The length of the `{data_type}`-composition data for fleet `{fleet}`
-    does not match the expected dimensions.",
-    "i" = "Expected length: {expected_length}",
-    "i" = "Actual length: {length(values)}",
-    "i" = "Number of -999 values: {sum(values == -999)}",
-    "i" = "Timings with invalid data: {toString(bad_data_years)}"
+    "x" = "The length of the {.val {data_type}} data for fleet
+    {.val {fleet}} does not match the expected dimensions:
+    {.val {length(values)}} values, {.val {sum(values == -999)}} of them
+    -999, in timings {.val {bad_data_years}}.",
+    "i" = "The data need 1 value per year and age or length bin
+    ({.val {expected_length}}). Use -999 for a missing value.",
+    "i" = "Count the rows in each year with
+    {.code dplyr::count(get_data(data), fleet, type, timing)}."
   ))
 }
 
@@ -409,9 +421,9 @@ check_weight_at_age_dimensions <- function(values, n_years, n_ages,
     cli::format_inline("fleet {.val {fleet}}")
   }
   cli::cli_abort(c(
-    "x" = "Weight at age for {owner} has {length(values)} values, which is
-    not 1 per year and age.",
-    "i" = "Give 1 weight for each of the {n_ages} ages in each year.",
+    "x" = "Weight at age for {owner} has {.val {length(values)}} values,
+    which is not 1 per year and age.",
+    "i" = "Give 1 weight for each of the {.val {n_ages}} ages in each year.",
     "i" = "Count the weight-at-age rows in each year with
     {.code dplyr::count(get_data(data), type, fleet, timing)}."
   ))
@@ -437,7 +449,9 @@ read_conditional_age_at_length <- function(fleet_rows, ages, length_bins,
       "x" = "Conditional age-at-length lengths
       {.val {setdiff(rows[['length']], length_bins)}} are not the fleet's
       length bins.",
-      "i" = "Use the fleet's length bins: {.val {length_bins}}."
+      "i" = "Use the fleet's length bins: {.val {length_bins}}.",
+      "i" = "Find the rows with {.code dplyr::filter(get_data(data),
+      type == \"conditional_age_at_length\")}."
     ))
   }
   size <- unlist(parse_data_distribution(rows[["uncertainty"]])[["size"]])

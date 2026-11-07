@@ -1,12 +1,9 @@
 # The objective function
 #
 # fims_model() is what RTMB tapes. It puts the parameters into module groups,
-# calls the model's predictions (catch_at_age() for a catch-at-age model),
-# adds the negative log-likelihood of priors, processes and data, and
-# reports. A new model type (e.g., surplus production) needs only its own
-# predictions function and an entry in model_functions. The likelihood and
-# reporting are shared. model_functions is at the bottom of
-# R/catch_at_age.R.
+# calls the model's predictions (catch_at_age() for a catch-at-age model,
+# looked up in model_functions), adds the negative log-likelihood of priors,
+# processes and data, and reports.
 
 #' Joint negative log-likelihood of a FIMS model
 #'
@@ -46,6 +43,11 @@ model_predictions <- function(parameters, model_data) {
   )
   c(list(parameters = parameters), predictions)
 }
+
+# Model types, by `model_type` in the model data.
+model_functions <- list(
+  CatchAtAge = catch_at_age
+)
 
 # Likelihood -----------------------------------------------------------------
 

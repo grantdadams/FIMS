@@ -26,4 +26,21 @@ FIMSFrame()), \code{parameters} (the flat parameter list used) and \code{truth}
 \description{
 Simulate data sets from a fitted model
 }
+\examples{
+\dontrun{
+data("data_big")
+data_4_model <- FIMSFrame(data_big)
+fit <- setup_default_parameters(data = data_4_model) |>
+  initialize_fims(data = data_4_model) |>
+  fit_fims(optimize = TRUE)
+
+# 2 data sets, with the random effects held at their fitted values
+simulations <- simulate_fims(fit, number_of_simulations = 2)
+
+# Refit the model to the first data set
+refit <- FIMSFrame(simulations[[1]][["data"]]) |>
+  initialize_fims(parameters = get_input(fit)[["tibble"]]) |>
+  fit_fims(optimize = TRUE)
+}
+}
 \keyword{diagnostics}

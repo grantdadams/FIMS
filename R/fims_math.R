@@ -39,3 +39,25 @@ inv_logit <- function(a, b, logit_x) {
 logistic <- function(inflection_point, slope, x) {
   1 / (1 + exp(-slope * (x - inflection_point)))
 }
+
+#' Smooth absolute value and maximum
+#'
+#' Numerical guards with derivatives everywhere, unlike abs() and max().
+#' `ad_fabs(x) = sqrt(x^2 + C)` is about `|x| + C / (2 |x|)`, and
+#' `ad_max(a, b) = (a + b + ad_fabs(a - b)) / 2`. The cost is a small shift
+#' even where no guard is needed.
+#'
+#' @param x,a,b Values.
+#' @param C The smoothing constant.
+#' @return The smooth absolute value of `x` (`ad_fabs()`), or the smooth
+#'   maximum of `a` and `b` (`ad_max()`).
+#' @noRd
+ad_fabs <- function(x, C = 1e-5) {
+  sqrt(x * x + C)
+}
+
+#' @rdname ad_fabs
+#' @noRd
+ad_max <- function(a, b, C = 1e-5) {
+  (a + b + ad_fabs(a - b, C)) * 0.5
+}
