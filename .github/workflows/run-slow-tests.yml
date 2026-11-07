@@ -101,8 +101,8 @@ jobs:
       # The {snowfall} workers in test-slow-parallel-caa-mle-wrappers.R call
       # library(FIMS), so FIMS must be installed from this checkout.
       # devtools::test() only loads it in the main R process.
-      # quick = TRUE builds in src/, so load_all() in the next step reuses this
-      # build and the serial and parallel runs use the same compiled FIMS.
+      # quick = TRUE skips the vignettes and manual, which the workers do not
+      # need.
       - name: Install FIMS for Parallel Workers
         if: matrix.test_type == 'slow'
         shell: Rscript {0}
@@ -113,11 +113,6 @@ jobs:
           TEST_FILTER: ${{ matrix.test_type }}
         shell: Rscript {0}
         run: |
-          # Windows-specific fix for the "files too big" error
-          if (Sys.info()[["sysname"]] == "Windows") {
-            withr::local_options(pkg.build_extra_flags = FALSE)
-          }
-
           filter_pattern <- Sys.getenv("TEST_FILTER")
           message(paste("Running test suite matching filter:", filter_pattern))
           # stop_on_failure = TRUE fails the job when an expectation fails.

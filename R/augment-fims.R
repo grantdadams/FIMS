@@ -54,8 +54,6 @@ augment.FIMSFit <- function(x, include_weights = TRUE, ...) {
   # this function only selects the
   # data-fit rows (where both observed and expected are non-NA) and maps
   # column names to the yardstick convention (.truth, .pred, .weight).
-  # After applying fimsfit-patches.R the gradient is stored in x@gradient at
-  # fit time, so this call is safe after clear().
   estimates <- get_estimates(x)
 
   # Keep only rows that are data-fit rows: both observed and expected must be

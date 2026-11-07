@@ -110,8 +110,6 @@ tidy.FIMSFit <- function(
   # tidy() is a filtered, renamed view of get_estimates().
   # this function only selects the
   # parameter rows and maps column names to the generics/broom convention.
-  # After applying fimsfit-patches.R the gradient is stored in x@gradient at
-  # fit time, so this call is safe after clear().
   estimates <- get_estimates(x)
 
   # Metadata columns to carry through (drop index columns and data columns
