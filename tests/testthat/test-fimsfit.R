@@ -427,6 +427,66 @@ test_that("`fit_fims()` holds constant values at their starting values", {
   )
 })
 
+test_that("`fit_fims()` gives the same values as RTMB's default tape settings", {
+  # The recruitment deviations are random effects, so the Laplace
+  # approximation and its Hessian are part of the comparison.
+  fit <- default_parameters |>
+    initialize_fims(data = data_10_years) |>
+    fit_fims()
+  obj <- get_obj(fit)
+  starting_values <- obj[["par"]]
+  objective <- obj[["fn"]](starting_values)
+  gradient <- obj[["gr"]](starting_values)
+  # fit_fims() restored the session's settings, which are RTMB's defaults
+  # here, so retaping records the same model without atomic matrix products.
+  obj[["retape"]]()
+  #' @description Test that `fit_fims()` gives the same objective as a tape with RTMB's default settings.
+  expect_equal(
+    object = obj[["fn"]](starting_values),
+    expected = objective
+  )
+  # The gradient is compared at the starting values, where it is far from 0,
+  # so a relative difference is meaningful.
+  #' @description Test that `fit_fims()` gives the same gradient as a tape with RTMB's default settings.
+  expect_equal(
+    object = obj[["gr"]](starting_values),
+    expected = gradient
+  )
+  par <- get_opt(fit)[["par"]]
+  # fn() moves last.par.best, which FIMSFit() reports from, to the estimates
+  obj[["fn"]](par)
+  default_tape_fit <- FIMSFit(
+    input = get_input(fit),
+    obj = obj,
+    opt = get_opt(fit),
+    sdreport = RTMB::sdreport(obj, par.fixed = par)
+  )
+  # The gradient at the estimates is close to 0, so its relative differences
+  # are large and it is left out here.
+  #' @description Test that `fit_fims()` gives the same estimates and standard errors as a tape with RTMB's default settings.
+  expect_equal(
+    object = get_estimates(default_tape_fit) |>
+      dplyr::select(-"gradient"),
+    expected = get_estimates(fit) |>
+      dplyr::select(-"gradient")
+  )
+})
+
+test_that("`fit_fims()` restores the user's tape settings", {
+  default_tape_config <- RTMB::TapeConfig()
+  withr::defer(RTMB::TapeConfig(default_tape_config))
+  # Plain products, which fit_fims() changes, and a plain multivariate normal,
+  # which is not RTMB's default, so both a reset to the defaults and leaving
+  # fit_fims()'s setting would fail
+  user_tape_config <- RTMB::TapeConfig(atomic = "disable")
+  fit_fims(all_constant_input, optimize = FALSE)
+  #' @description Test that `fit_fims()` puts back the user's `RTMB::TapeConfig()` settings when it returns.
+  expect_equal(
+    object = RTMB::TapeConfig(),
+    expected = user_tape_config
+  )
+})
+
 ## Edge handling ----
 test_that("`fit_fims()` returns correct outputs for edge cases", {
   random_effects_only_fit <- default_parameters |>
