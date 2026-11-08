@@ -9,9 +9,7 @@
 
 # integration_properties_dynamics ----
 ## Setup ----
-# Each test changes a few inputs, runs the model without optimizing, and
-# compares the output to a value worked out in R from the inputs, or from
-# other model outputs through a closed form. The helpers are in
+# The approach and the helpers are described in
 # helper-integration-tests-properties.R.
 data("data_big")
 data_4_model <- FIMSFrame(data_big)
@@ -26,33 +24,53 @@ weight_at_age <- weight_at_age_matrix(data_big)
 fleet_names <- unique(stats::na.omit(default_parameters[["fleet"]]))
 fleet_number <- stats::setNames(seq_along(fleet_names), fleet_names)
 
+# Unfished quantities from the default inputs. The closed forms assume 1
+# natural mortality and 1 set of weights at age, which the first test checks.
+r0 <- exp(pull_input(default_parameters, "Recruitment", "log_rzero"))
+natural_mortality <- exp(unique(
+  pull_input(default_parameters, "Population", "log_M")
+))
+# The FIMS logistic with slope s is the logistic distribution function with
+# scale 1 / s.
+maturity <- stats::plogis(
+  ages,
+  location = pull_input(default_parameters, "Maturity", "inflection_point"),
+  scale = 1 / pull_input(default_parameters, "Maturity", "slope")
+)
+proportion_female <- pull_input(
+  default_parameters, "Population", "proportion_female"
+)
+equilibrium_numbers <- equilibrium_numbers_at_age(
+  r0, rep(natural_mortality, n_ages)
+)
+# Unfished spawning biomass SB0 is R0 times spawning biomass per recruit,
+# using the first-year weight and maturity.
+unfished_spawning_biomass <- sum(
+  equilibrium_numbers * weight_at_age[1, ] * proportion_female * maturity
+)
+
+# A fished run shared by the spawning biomass ratio and scaling tests. F
+# changes by year, the deviations are distinct and nonzero, and initial
+# numbers are half of their default, so spawning biomass starts below SB0 and
+# changes every year.
+fished_parameters <- default_parameters |>
+  dplyr::mutate(
+    value = dplyr::case_when(
+      label == "log_Fmort" & fleet == "fleet1" ~
+        log(seq(0.05, 0.6, length.out = n_years))[timing],
+      label == "log_devs" ~ 0.3 * sin(timing),
+      label == "log_init_naa" ~ value + log(0.5),
+      .default = value
+    )
+  )
+fished_report <- run_deterministic(fished_parameters, data_4_model)
+
 ## IO correctness ----
 test_that("an unfished population stays at its equilibrium age structure", {
-  r0 <- exp(pull_input(default_parameters, "Recruitment", "log_rzero"))
-  natural_mortality <- exp(unique(
-    pull_input(default_parameters, "Population", "log_M")
-  ))
   #' @description Test that the setup has a single natural mortality, which the closed form assumes.
   expect_length(natural_mortality, 1)
   #' @description Test that the setup has a single set of weights at age, which the closed form assumes.
   expect_equal(nrow(unique(weight_at_age)), 1)
-
-  equilibrium_numbers <- equilibrium_numbers_at_age(
-    r0, rep(natural_mortality, n_ages)
-  )
-  # The FIMS logistic with slope s is the logistic distribution function with
-  # scale 1 / s.
-  maturity <- stats::plogis(
-    ages,
-    location = pull_input(default_parameters, "Maturity", "inflection_point"),
-    scale = 1 / pull_input(default_parameters, "Maturity", "slope")
-  )
-  proportion_female <- pull_input(
-    default_parameters, "Population", "proportion_female"
-  )
-  unfished_spawning_biomass <- sum(
-    equilibrium_numbers * weight_at_age[1, ] * proportion_female * maturity
-  )
 
   # FIMS represents a fleet that does not fish with log_Fmort = -200, as in
   # the default survey. Starting at equilibrium with no recruitment
@@ -156,6 +174,142 @@ test_that("catch at age follows the Baranov equation with 2 fishing fleets", {
   expect_equal(
     object = numbers_at_age[fished_years + 1, -1],
     expected = expected_numbers
+  )
+})
+
+test_that("an unfished population with M by age stays at its equilibrium", {
+  # M falls with age, so survival that used the M of the wrong age would
+  # change both numbers at age and spawning biomass per recruit.
+  natural_mortality_at_age <- seq(0.6, 0.15, length.out = n_ages)
+  equilibrium_numbers_m_at_age <- equilibrium_numbers_at_age(
+    r0, natural_mortality_at_age
+  )
+  unfished_spawning_biomass_m_at_age <- sum(
+    equilibrium_numbers_m_at_age * weight_at_age[1, ] * proportion_female *
+      maturity
+  )
+
+  parameters <- default_parameters |>
+    dplyr::mutate(
+      value = dplyr::case_when(
+        label == "log_M" ~ log(natural_mortality_at_age)[match(age, ages)],
+        label == "log_Fmort" ~ -200,
+        label == "log_devs" ~ 0,
+        label == "log_init_naa" ~
+          log(equilibrium_numbers_m_at_age)[match(age, ages)],
+        .default = value
+      )
+    )
+  report <- run_deterministic(parameters, data_4_model)
+
+  #' @description Test that numbers at age with M by age equal the closed-form equilibrium, including the plus group, in every year.
+  expect_equal(
+    object = pull_output(report, "numbers_at_age"),
+    expected = rep(equilibrium_numbers_m_at_age, n_years + 1)
+  )
+  #' @description Test that unfished numbers at age with M by age equal the closed-form equilibrium in every year.
+  expect_equal(
+    object = pull_output(report, "unfished_numbers_at_age"),
+    expected = rep(equilibrium_numbers_m_at_age, n_years + 1)
+  )
+  #' @description Test that unfished spawning biomass with M by age equals R0 times the closed-form spawning biomass per recruit.
+  expect_equal(
+    object = pull_output(report, "unfished_spawning_biomass"),
+    expected = rep(unfished_spawning_biomass_m_at_age, n_years + 1)
+  )
+  #' @description Test that spawning biomass with M by age equals unfished spawning biomass in every year when there is no fishing.
+  expect_equal(
+    object = pull_output(report, "spawning_biomass"),
+    expected = rep(unfished_spawning_biomass_m_at_age, n_years + 1)
+  )
+})
+
+test_that("biomass is N times weight, and SB when all are mature females", {
+  # A steep logistic centered at age 0 is 1 at every model age to machine
+  # precision. With the default fishing the population is not at equilibrium.
+  parameters <- default_parameters |>
+    dplyr::mutate(
+      value = dplyr::case_when(
+        module_name == "Maturity" & label == "inflection_point" ~ 0,
+        module_name == "Maturity" & label == "slope" ~ 50,
+        label == "proportion_female" ~ 1,
+        .default = value
+      )
+    )
+  report <- run_deterministic(parameters, data_4_model)
+  numbers_at_age <- pull_output(report, "numbers_at_age") |>
+    matrix(ncol = n_ages, byrow = TRUE)
+  biomass <- pull_output(report, "biomass")
+
+  #' @description Test that the setup makes every age mature in every year.
+  expect_equal(
+    object = pull_output(report, "proportion_mature_at_age"),
+    expected = rep(1, n_ages * (n_years + 1))
+  )
+  #' @description Test that biomass in each year is the sum over ages of numbers times weight at age.
+  expect_equal(
+    object = biomass,
+    expected = rowSums(numbers_at_age * weight_at_age)
+  )
+  #' @description Test that spawning biomass equals biomass when maturity and proportion female are 1 at every age.
+  expect_equal(
+    object = pull_output(report, "spawning_biomass"),
+    expected = biomass
+  )
+})
+
+test_that("spawning biomass ratio is SB / SB0 in every year of a fished run", {
+  # The fished run keeps the default R0, M, weight, and maturity, so its SB0 is
+  # the one from the setup.
+  spawning_biomass <- pull_output(fished_report, "spawning_biomass")
+
+  #' @description Test that the setup starts spawning biomass away from SB0, so a ratio over first-year spawning biomass would differ.
+  expect_lt(spawning_biomass[1], unfished_spawning_biomass)
+  #' @description Test that the spawning biomass ratio is spawning biomass over the closed-form SB0 in every year of a fished run.
+  expect_equal(
+    object = pull_output(fished_report, "spawning_biomass_ratio"),
+    expected = spawning_biomass / unfished_spawning_biomass
+  )
+})
+
+test_that("R0 and initial numbers times k scale N, SB, and catch by k", {
+  # Beverton-Holt recruitment scales by k when R0 and spawning biomass do,
+  # because SB0 also scales by k. F and the deviations are fixed, so the whole
+  # population scales by k. A constant that ties the dynamics to an absolute
+  # scale would break this.
+  scale_factor <- 3
+  scaled_parameters <- fished_parameters |>
+    dplyr::mutate(
+      value = dplyr::if_else(
+        label %in% c("log_rzero", "log_init_naa"),
+        value + log(scale_factor),
+        value
+      )
+    )
+  scaled_report <- run_deterministic(scaled_parameters, data_4_model)
+
+  #' @description Test that numbers at age scale by k when R0 and initial numbers scale by k.
+  expect_equal(
+    object = pull_output(scaled_report, "numbers_at_age"),
+    expected = scale_factor * pull_output(fished_report, "numbers_at_age")
+  )
+  #' @description Test that spawning biomass scales by k when R0 and initial numbers scale by k.
+  expect_equal(
+    object = pull_output(scaled_report, "spawning_biomass"),
+    expected = scale_factor * pull_output(fished_report, "spawning_biomass")
+  )
+  #' @description Test that fleet1 catch in numbers scales by k when R0 and initial numbers scale by k.
+  expect_equal(
+    object = pull_output(
+      scaled_report, "catch_numbers", fleet_number[["fleet1"]]
+    ),
+    expected = scale_factor *
+      pull_output(fished_report, "catch_numbers", fleet_number[["fleet1"]])
+  )
+  #' @description Test that the spawning biomass ratio does not change when R0 and initial numbers scale by k.
+  expect_equal(
+    object = pull_output(scaled_report, "spawning_biomass_ratio"),
+    expected = pull_output(fished_report, "spawning_biomass_ratio")
   )
 })
 
