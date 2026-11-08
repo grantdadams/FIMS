@@ -399,23 +399,12 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
       log = TRUE
     )
   )
-  simulated <- withr::with_seed(
-    1,
-    simulate_fims(fit, number_of_simulations = 1)
-  )[[1]][["data"]]
-  #' @description Test that `simulate_fims()` draws normal compositions, 1 per observed cell.
-  expect_equal(
-    object = simulated |>
-      dplyr::filter(type == "age_comp", fleet == "survey1") |>
-      dplyr::pull(observed) |>
-      is.na() |>
-      sum(),
-    expected = 0
-  )
+})
 
+test_that("`get_estimates()` pairs a conditional age-at-length sd with its own cell", {
   # Conditional age-at-length for fleet1 in years 1 to 3 and length bins 300
-  # and 400, as counts with a normal likelihood whose sd differs by age and
-  # length bin.
+  # and 400, as counts with a normal likelihood whose sd differs by year, age
+  # and length bin.
   caal_rows <- tidyr::expand_grid(
     timing = 1:3,
     length = c(300, 400),
@@ -428,7 +417,7 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
       unit = "number",
       uncertainty = paste0(
         "~ dnorm(mean = conditional_age_at_length_proportion, sd = ",
-        1 + 0.1 * age + length / 1000, ")"
+        1 + 0.1 * age + length / 1000 + 0.01 * timing, ")"
       )
     )
   caal_data <- suppressWarnings(
@@ -446,9 +435,29 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
     object = caal_estimates[["likelihood"]],
     expected = stats::dnorm(
       caal_estimates[["observed"]], caal_estimates[["expected"]],
-      1 + 0.1 * caal_estimates[["age"]] + caal_estimates[["length"]] / 1000,
+      1 + 0.1 * caal_estimates[["age"]] + caal_estimates[["length"]] / 1000 +
+        0.01 * caal_estimates[["year_i"]],
       log = TRUE
     )
+  )
+
+  # Age 5 in year 2 and length 300 given twice, and age 6 left out, so the
+  # number of rows still matches the number of cells.
+  repeated_rows <- caal_rows |>
+    dplyr::filter(!(timing == 2 & length == 300 & age == 6)) |>
+    dplyr::bind_rows(dplyr::filter(
+      caal_rows, timing == 2, length == 300, age == 5
+    ))
+  repeated_data <- suppressWarnings(
+    FIMSFrame(dplyr::bind_rows(data_big, repeated_rows))
+  )
+  #' @description Test that `initialize_fims()` errors for a repeated conditional age-at-length row, whose sd would otherwise pair with another cell.
+  expect_error(
+    object = initialize_fims(
+      setup_default_parameters(repeated_data),
+      data = repeated_data
+    ),
+    regexp = "more than 1\\s+conditional age-at-length row"
   )
 })
 

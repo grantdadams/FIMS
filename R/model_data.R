@@ -147,6 +147,7 @@ initialize_fleet <- function(data, parameters, fleet, length_bins, edges,
   n_ages <- get_n_ages(data)
   fleet_rows <- dplyr::filter(get_data(data), .data[["fleet"]] %in% .env[["fleet"]])
   data_types <- unique(fleet_rows[["type"]])
+  check_composition_sizes(fleet_rows, fleet)
   fleet_data <- list(
     module_types = list(
       selectivity = module_type(parameters, "Selectivity", fleet)
@@ -407,6 +408,51 @@ read_length_comp <- function(data, fleet, length_bins) {
   counts
 }
 
+#' Stop when compositions given as proportions have no sample size
+#'
+#' Proportions are turned into counts with the `size` in the uncertainty
+#' column. Without it the counts would be NA, and the rows would add nothing
+#' to the likelihood.
+#'
+#' @param fleet_rows The fleet's data rows.
+#' @param fleet The fleet name.
+#' @noRd
+check_composition_sizes <- function(fleet_rows, fleet) {
+  proportions <- dplyr::filter(
+    fleet_rows,
+    .data[["type"]] %in%
+      c("age_comp", "length_comp", "conditional_age_at_length"),
+    .data[["unit"]] != "number",
+    .data[["observed"]] != -999
+  )
+  if (nrow(proportions) == 0) {
+    return(invisible(TRUE))
+  }
+  size <- unlist(
+    parse_data_distribution(proportions[["uncertainty"]])[["size"]],
+    use.names = FALSE
+  )
+  if (length(size) != nrow(proportions) || anyNA(size)) {
+    no_size <- if (length(size) == nrow(proportions)) {
+      proportions[is.na(size), ]
+    } else {
+      proportions
+    }
+    cli::cli_abort(c(
+      "x" = "Fleet {.val {fleet}} has {.val {unique(no_size[['type']])}}
+      rows given as proportions with no {.var size} in the uncertainty
+      column.",
+      "i" = "Proportions become counts with the multinomial sample size, as
+      in {.code ~ dmultinom(prob = agecomp_expected, size = 200)}. For
+      another likelihood, give the compositions as counts, with
+      {.var unit} {.val number}.",
+      "i" = "Find the rows with {.code dplyr::filter(get_data(data),
+      fleet == \"{fleet}\", unit != \"number\")}."
+    ))
+  }
+  invisible(TRUE)
+}
+
 #' Stop when compositions do not have 1 value per year and age or bin
 #'
 #' Without this check, R would recycle the values to fill the years-by-ages
@@ -495,6 +541,21 @@ read_conditional_age_at_length <- function(fleet_rows, ages, length_bins,
       "i" = "Use the fleet's length bins: {.val {length_bins}}.",
       "i" = "Find the rows with {.code dplyr::filter(get_data(data),
       type == \"conditional_age_at_length\")}."
+    ))
+  }
+  repeated <- dplyr::filter(
+    dplyr::count(rows, .data[["timing"]], .data[["length"]], .data[["age"]]),
+    .data[["n"]] > 1
+  )
+  if (nrow(repeated) > 0) {
+    cli::cli_abort(c(
+      "x" = "Fleet {.val {unique(rows[['fleet']])}} has more than 1
+      conditional age-at-length row for the same year, length and age, in
+      the year{?s} {.val {unique(repeated[['timing']])}}.",
+      "i" = "Each year, length bin and age needs 1 row. A repeated row would
+      replace the other, and its sd would be paired with another cell.",
+      "i" = "Find the rows with {.code dplyr::count(get_data(data), fleet,
+      type, timing, length, age) |> dplyr::filter(n > 1)}."
     ))
   }
   size <- unlist(parse_data_distribution(rows[["uncertainty"]])[["size"]])
