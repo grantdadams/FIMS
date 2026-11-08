@@ -154,6 +154,42 @@ test_that("`simulate_fims()` returns correct outputs for edge cases", {
   )
 })
 
+test_that("`simulate_fims()` draws normal compositions cell by cell", {
+  # survey1's age compositions as counts with a normal likelihood, so each
+  # simulated cell is centered on its own expected value.
+  normal_comps <- data_big |>
+    dplyr::mutate(
+      is_survey_comp = type == "age_comp" & fleet == "survey1",
+      observed = dplyr::if_else(is_survey_comp, observed * 200, observed),
+      unit = dplyr::if_else(is_survey_comp, "number", unit),
+      uncertainty = dplyr::if_else(
+        is_survey_comp, "~ dnorm(mean = agecomp_expected, sd = 1)", uncertainty
+      )
+    ) |>
+    dplyr::select(-"is_survey_comp") |>
+    FIMSFrame()
+  normal_fit <- setup_default_parameters(normal_comps) |>
+    initialize_fims(data = normal_comps) |>
+    fit_fims(optimize = FALSE)
+  expected <- get_estimates(normal_fit) |>
+    dplyr::filter(label == "agecomp_expected", fleet == "survey1") |>
+    dplyr::select(timing = "year_i", "age", "expected")
+  simulated_mean <- withr::with_seed(
+    1,
+    simulate_fims(normal_fit, number_of_simulations = 50)
+  ) |>
+    purrr::map(\(simulation) simulation[["data"]]) |>
+    dplyr::bind_rows() |>
+    dplyr::filter(type == "age_comp", fleet == "survey1") |>
+    dplyr::summarize(observed = mean(observed), .by = c("timing", "age")) |>
+    dplyr::inner_join(expected, by = c("timing", "age"))
+  #' @description Test that the mean of 50 normal composition draws in each cell is within 4 standard errors (sd 1) of that cell's expected value.
+  expect_lt(
+    object = max(abs(simulated_mean[["observed"]] - simulated_mean[["expected"]])),
+    expected = 4 / sqrt(50)
+  )
+})
+
 ## Error handling ----
 test_that("`simulate_fims()` returns correct error messages", {
   # A log_r process varies around the stock-recruit curve, which depends on

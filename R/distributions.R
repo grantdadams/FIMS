@@ -143,7 +143,7 @@ lognormal_draw <- function(observed, log_expected, log_sd) {
     n_observations, rep_len(log_expected, n_observations),
     rep_len(exp(log_sd), n_observations)
   ))
-  # Compositions keep their years-by-ages (or bins) shape.
+  # rnorm() returns a vector, so rebuild a composition matrix.
   if (is.matrix(observed)) {
     draws <- matrix(draws, nrow(observed), ncol(observed))
   }
@@ -156,7 +156,7 @@ normal_draw <- function(observed, expected, log_sd) {
     n_observations, rep_len(expected, n_observations),
     rep_len(exp(log_sd), n_observations)
   )
-  # Compositions keep their years-by-ages (or bins) shape.
+  # rnorm() returns a vector, so rebuild a composition matrix.
   if (is.matrix(observed)) {
     draws <- matrix(draws, nrow(observed), ncol(observed))
   }
