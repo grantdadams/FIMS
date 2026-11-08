@@ -298,6 +298,30 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
       "i" = check_growth_rows
     ))
   }
+  if (length(present_delta) == length(delta_method_labels)) {
+    # The 3 correlations are a valid correlation matrix only if its
+    # determinant is at least 0. The model would otherwise floor a negative
+    # variance at 0 and give a length distribution with no meaning.
+    correlation_value <- function(label) {
+      inv_logit(-1, 1, growth[["value"]][growth[["label"]] == label][1])
+    }
+    young_old <- correlation_value(delta_method_labels[4])
+    young_coefficient <- correlation_value(delta_method_labels[5])
+    old_coefficient <- correlation_value(delta_method_labels[6])
+    determinant <- 1 - young_old^2 - young_coefficient^2 -
+      old_coefficient^2 + 2 * young_old * young_coefficient * old_coefficient
+    if (determinant < 0) {
+      cli::cli_abort(c(
+        "x" = "VonBertalanffySchnute growth: the growth parameter
+        correlations {.val {signif(c(young_old, young_coefficient,
+        old_coefficient), 3)}} are not a valid correlation matrix.",
+        "i" = "The growth parameter covariance matrix must be positive
+        semi-definite, so its determinant must be at least 0. Here it is
+        {.val {signif(determinant, 3)}}.",
+        "i" = check_growth_rows
+      ))
+    }
+  }
   if (has_interpolation && length(present_delta) == length(delta_method_labels)) {
     cli::cli_abort(c(
       "x" = "VonBertalanffySchnute growth has rows for both length
