@@ -65,6 +65,22 @@ test_that("`initialize_parameters()` returns correct error messages", {
     object = as.vector(sorted[["parameters"]][["Fleet.fleet1.log_Fmort"]]),
     expected = -(1:6) / 10
   )
+  #' @description Test that `initialize_parameters()` errors for a second row of a parameter with 1 value, which would otherwise be recycled.
+  expect_error(
+    object = FIMS:::initialize_parameters(
+      dplyr::bind_rows(small_parameters, dplyr::slice(small_parameters, 1))
+    ),
+    regexp = "more than 1 row for the same\\s+year and age"
+  )
+  #' @description Test that `initialize_parameters()` errors for 2 rows of a parameter in the same year.
+  expect_error(
+    object = FIMS:::initialize_parameters(
+      dplyr::mutate(small_parameters, timing = dplyr::if_else(
+        timing %in% 2, 1, timing
+      ))
+    ),
+    regexp = "more than 1 row for the same\\s+year and age"
+  )
 })
 
 # map_levels ----

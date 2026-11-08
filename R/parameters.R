@@ -20,8 +20,10 @@
 #' year (1 column, or 1 column per age). By age only, it is a vector by age.
 #' Otherwise it is a vector in row order.
 #'
-#' `map`: constant rows are fixed (NA). Rows with the same `map_group` share
-#' 1 estimate. Every other estimated row has its own.
+#' `map`: constant rows are fixed (NA). Rows of 1 parameter with the same
+#' `map_group` share 1 estimate. Every other estimated row has its own.
+#' `map_group` numbers are per parameter, so the same number in 2 parameters
+#' does not share a value between them.
 #'
 #' @param parameters The parameter tibble.
 #' @return A list with `parameters`, `map`, `random`, `splits` and
@@ -67,6 +69,7 @@ initialize_parameters <- function(parameters) {
       )
     )
   check_row_order(parameter_table)
+  check_unique_rows(parameter_table)
   parameter_table <- parameter_table |>
     dplyr::arrange(
       factor(.data[["name"]], levels = unique(.data[["name"]])),
@@ -263,6 +266,32 @@ check_row_order <- function(parameter_table) {
       "i" = "The rows of {.val {unsorted}} are not in year and age order.",
       "i" = "They are sorted by {.var timing} and {.var age}, so each value
       goes with its own year and age."
+    ))
+  }
+  invisible(parameter_table)
+}
+
+#' Refuse 2 rows for the same value of a parameter
+#'
+#' Each value of a parameter is 1 row, found by its `timing` and `age`. A
+#' repeated row would otherwise be recycled over ages or put in the wrong
+#' year.
+#' @noRd
+check_unique_rows <- function(parameter_table) {
+  repeated <- parameter_table |>
+    dplyr::count(.data[["name"]], .data[["timing"]], .data[["age"]]) |>
+    dplyr::filter(.data[["n"]] > 1) |>
+    dplyr::pull(.data[["name"]]) |>
+    unique()
+  if (length(repeated) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.val {repeated}} {?has/have} more than 1 row for the same
+      year and age.",
+      "i" = "Each value needs its own row, with its {.var timing} and
+      {.var age}. Rows by age with no {.var timing} are read year by year:
+      every age of the first year, then the next year.",
+      "i" = "Find the repeated rows with {.code dplyr::count(parameters,
+      module_name, fleet, label, timing, age) |> dplyr::filter(n > 1)}."
     ))
   }
   invisible(parameter_table)

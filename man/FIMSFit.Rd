@@ -18,8 +18,10 @@ FIMSFit(
 \item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. Which values
 are estimated, held constant or shared comes from the \code{estimation_type}
 and \code{map_group} columns of the parameter tibble, which \code{\link[=initialize_fims]{initialize_fims()}}
-turns into \code{input[["map"]]}, 1 factor per model parameter. Shared values
-must have identical starting values.}
+turns into \code{input[["map"]]}, 1 factor per model parameter. Rows of 1
+parameter with the same \code{map_group} share 1 estimate, so they must have
+identical starting values. The same \code{map_group} in 2 parameters does not
+share a value between them.}
 
 \item{obj}{An object returned from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.}
 

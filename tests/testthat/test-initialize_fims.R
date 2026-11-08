@@ -555,6 +555,69 @@ test_that("`initialize_fims()` returns correct error messages", {
     initialize_fims(parameters = parameters_wrong_type, data = data),
     "The `estimation_type` must be one of: constant, fixed_effects, and random_effects."
   )
+
+  #' @description Test that `initialize_fims()` errors for a `value` column that is not numeric.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(default_parameters, value = as.character(value)),
+      data = data
+    ),
+    "must be numbers"
+  )
+
+  #' @description Test that `initialize_fims()` errors for an estimated row with no starting value.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(
+        default_parameters,
+        value = dplyr::if_else(label == "log_rzero", NA_real_, value)
+      ),
+      data = data
+    ),
+    "has no value"
+  )
+
+  # The survey renamed in the data only, so its data have no rows in the
+  # parameter tibble and would be left out of the likelihood.
+  renamed_survey <- data_big |>
+    dplyr::mutate(fleet = dplyr::if_else(fleet == "survey1", "survey2", fleet)) |>
+    FIMSFrame()
+  #' @description Test that `initialize_fims()` errors for a fleet in the data that is not in the parameter tibble, rather than leaving its data out.
+  expect_error(
+    initialize_fims(parameters = default_parameters, data = renamed_survey),
+    "survey2"
+  )
+
+  # log_M by year and age with no timing, given age by age rather than year
+  # by year.
+  log_m_by_age <- default_parameters |>
+    dplyr::filter(label == "log_M") |>
+    dplyr::arrange(age, timing) |>
+    dplyr::mutate(timing = NA_real_)
+  #' @description Test that `initialize_fims()` errors for time-varying rows by age with no timing that are not in year-by-year order, rather than putting them in the wrong year.
+  expect_error(
+    initialize_fims(
+      parameters = default_parameters |>
+        dplyr::filter(label != "log_M") |>
+        dplyr::bind_rows(log_m_by_age),
+      data = data
+    ),
+    "more than 1 row for the same\\s+year and age"
+  )
+
+  #' @description Test that `initialize_fims()` errors for a random effect with no process or prior, which the Laplace approximation would integrate over a flat density.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(
+        default_parameters,
+        estimation_type = dplyr::if_else(
+          label == "log_rzero", "random_effects", estimation_type
+        )
+      ),
+      data = data
+    ),
+    "random effect with no process or prior"
+  )
 })
 
 test_that("`initialize_fims()` returns correct error messages for the recruitment process", {
@@ -601,6 +664,18 @@ test_that("`initialize_fims()` returns correct error messages for the recruitmen
     mismatch_error |>
       initialize_fims(data = data),
     "Missing required inputs for recruitment process"
+  )
+
+  # 1 deviation per year from year 1, rather than from year 2, so each
+  # deviation would be reported 1 year before the year it drives.
+  log_devs_from_year_1 <- default_parameters |>
+    dplyr::mutate(timing = dplyr::if_else(
+      label == "log_devs", timing - 1, timing
+    ))
+  #' @description Test that `initialize_fims()` errors for recruitment deviations that are not for the 2nd to the last model year.
+  expect_error(
+    initialize_fims(parameters = log_devs_from_year_1, data = data),
+    "needs 1 row for each year from the 2nd model\\s+year"
   )
 })
 
