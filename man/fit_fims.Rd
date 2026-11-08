@@ -86,6 +86,12 @@ first row of each shared value. Parameter counts refer to the values that
 are estimated. If all fixed effects are held constant, the random-effects
 model is evaluated without an outer optimizer. If every value is held
 constant, use \code{optimize = FALSE}.
+
+While it runs, \code{\link[=fit_fims]{fit_fims()}} records each matrix product as 1 atomic
+operation, with \code{RTMB::TapeConfig(atomic = "enable")}. This gives the same
+values with less memory and a faster \code{\link[RTMB:sdreport]{RTMB::sdreport()}}. The setting is
+global to the R session, so \code{\link[=fit_fims]{fit_fims()}} restores the previous setting
+when it returns.
 }
 \seealso{
 \itemize{
