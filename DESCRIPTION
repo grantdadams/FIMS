@@ -105,6 +105,7 @@ Suggests:
     remotes,
     rmarkdown,
     snowfall,
+    SparseNUTS,
     styler,
     testthat (>= 3.0.0),
     tidyr,
@@ -113,7 +114,8 @@ Suggests:
 VignetteBuilder:
     knitr
 Remotes:
-    github::nmfs-ost/stockplotr
+    github::nmfs-ost/stockplotr,
+    github::noaa-afsc/SparseNUTS
 Additional_repositories: 
     https://noaa-fisheries-integrated-toolbox.r-universe.dev
 Config/roxygen2/version: 8.1.1
