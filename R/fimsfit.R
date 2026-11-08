@@ -497,9 +497,9 @@ FIMSFit <- function(
 #' @param input Input list as returned by [initialize_fims()]. Which values
 #'   are estimated, held constant or shared comes from the `estimation_type`
 #'   and `map_group` columns of the parameter tibble, which [initialize_fims()]
-#'   turns into `input[["map"]]`, 1 factor per model parameter. Rows of 1
-#'   parameter with the same `map_group` share 1 estimate, so they must have
-#'   identical starting values. The same `map_group` in 2 parameters does not
+#'   turns into `input[["map"]]`, 1 factor per model parameter. Rows of the
+#'   same parameter (module, fleet and label) with the same `map_group` share
+#'   1 estimate, so they must have identical starting values. The same `map_group` in 2 parameters does not
 #'   share a value between them.
 #' @param get_sd A boolean specifying if the [RTMB::sdreport()] should be
 #'   calculated? It is skipped when the maximum gradient is above 0.01 or not
@@ -515,11 +515,11 @@ FIMSFit <- function(
 #' @param number_of_newton_steps The number of Newton steps using the inverse
 #'   Hessian to do after optimization. Not yet implemented.
 #' @param control A list of optimizer settings passed to [stats::nlminb()].
-#'   The default is a list of length three with `eval.max = 10000`,
+#'   The default is a list of 3: `eval.max = 10000`,
 #'   `iter.max = 10000`, and `trace = 0`.
 #' @param filename Character string giving a file name to save the fitted
-#'   object as an RDS object. Defaults to NULL, which does not save it. If
-#'   specified, it must end in .RDS. Not yet implemented.
+#'   object as an RDS object. Defaults to NULL. Not yet implemented: any
+#'   other value gives a warning and nothing is saved.
 #' @param getReportCovariance A logical passed to [RTMB::sdreport()], with the
 #'   default `FALSE`. Standard errors of all parameters and derived quantities
 #'   are calculated either way. If `TRUE`, the full covariance matrix of the
@@ -586,13 +586,15 @@ fit_fims <- function(input,
       "i" = "Build it with {.code initialize_fims(parameters, data)}."
     ))
   }
-  for (argument in c("get_sd", "save_sd", "optimize")) {
-    if (!rlang::is_bool(get(argument))) {
-      cli::cli_abort(c(
-        "x" = "{.arg {argument}} is {.code {deparse(get(argument))}}.",
-        "i" = "{.arg {argument}} must be {.code TRUE} or {.code FALSE}."
-      ))
-    }
+  # Checked before the fit, which can take minutes, rather than after it.
+  if (!rlang::is_bool(get_sd) || !rlang::is_bool(save_sd) ||
+    !rlang::is_bool(optimize)) {
+    cli::cli_abort(c(
+      "x" = "{.arg get_sd}, {.arg save_sd} and {.arg optimize} must each be
+      {.code TRUE} or {.code FALSE}.",
+      "i" = "They are {.code {deparse(get_sd)}}, {.code {deparse(save_sd)}}
+      and {.code {deparse(optimize)}}."
+    ))
   }
   if (!is_single_number(number_of_loops) || number_of_loops < 0) {
     cli::cli_abort(c(

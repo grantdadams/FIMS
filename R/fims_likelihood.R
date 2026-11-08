@@ -170,26 +170,21 @@ run_fims_likelihood <- function(
   }
 
   # Match the label get_estimates() shows, so the sd of a process on log_q is
-  # "log_q_log_sd" and a prior's own rows are not matched.
-  # `%in%` rather than `==` because `x == NULL` has length 0, which `filter()`
-  # rejects, so a NULL module_name matches every module
-  parameter_row <- parameters |>
+  # "log_q_log_sd" and a prior's own rows are not matched. With a NULL
+  # module_name, `%in%` gives FALSE for each row where `==` would give a
+  # vector of length 0, so `is.null(module_name) |` matches every module.
+  module_rows <- parameters |>
     dplyr::mutate(label = flat_label(add_process_columns(parameters))) |>
     dplyr::filter(
-      .data[["label"]] == .env$parameter_name,
-      is.null(.env$module_name) |
-        .data[["module_name"]] %in% .env$module_name
+      is.null(.env[["module_name"]]) |
+        .data[["module_name"]] %in% .env[["module_name"]]
     )
+  parameter_row <- dplyr::filter(
+    module_rows, .data[["label"]] == .env[["parameter_name"]]
+  )
 
   if (nrow(parameter_row) == 0) {
-    available_labels <- parameters |>
-      dplyr::mutate(label = flat_label(add_process_columns(parameters))) |>
-      dplyr::filter(
-        is.null(.env$module_name) |
-          .data[["module_name"]] %in% .env$module_name
-      ) |>
-      dplyr::pull(.data[["label"]]) |>
-      unique()
+    available_labels <- unique(module_rows[["label"]])
     where <- if (is.null(module_name)) "" else paste0(" in ", module_name)
     cli::cli_abort(c(
       "x" = "{.arg parameter_name} {.val {parameter_name}} did not match any

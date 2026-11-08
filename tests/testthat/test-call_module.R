@@ -22,6 +22,14 @@ test_that("`call_module()` works with correct inputs", {
     ),
     expected = FIMS:::logistic_selectivity(1:12, 4, 1)
   )
+  #' @description Test that `call_module()` gives logistic selectivity of 0.5 at the inflection point.
+  expect_equal(
+    object = FIMS:::call_module(
+      FIMS:::selectivity_functions, "Logistic",
+      age = 4, parameters = logistic_parameters
+    ),
+    expected = 0.5
+  )
 })
 
 ## Edge handling ----

@@ -452,6 +452,44 @@ test_that("`initialize_fims()` holds a process's own parameters constant when no
   prior_input <- initialize_fims(parameters = no_process, data = data)
   #' @description Test that `initialize_fims()` keeps estimating a parameter whose only use is a prior.
   expect_false(anyNA(prior_input[["map"]][["Recruitment.log_sd"]]))
+
+  # A process on fleet1's selectivity inflection point, then the process
+  # removed from the target rows but not its own mean and sd rows.
+  is_inflection_point <- function(parameters) {
+    parameters[["module_name"]] == "Selectivity" &
+      parameters[["label"]] == "inflection_point" &
+      parameters[["fleet"]] %in% "fleet1"
+  }
+  selectivity_parameters <- default_parameters |>
+    add_process(
+      inflection_point ~ 1 + (1 | year),
+      module_name = "Selectivity",
+      fleet = "fleet1"
+    )
+  selectivity_parameters <- selectivity_parameters |>
+    dplyr::mutate(
+      distribution_type = dplyr::if_else(
+        is_inflection_point(selectivity_parameters), NA_character_,
+        distribution_type
+      ),
+      distribution = dplyr::if_else(
+        is_inflection_point(selectivity_parameters), NA_character_,
+        distribution
+      ),
+      re_structure = dplyr::if_else(
+        is_inflection_point(selectivity_parameters), NA_character_,
+        re_structure
+      ),
+      estimation_type = dplyr::if_else(
+        is_inflection_point(selectivity_parameters), "fixed_effects",
+        estimation_type
+      )
+    )
+  selectivity_input <- suppressMessages(
+    initialize_fims(parameters = selectivity_parameters, data = data)
+  )
+  #' @description Test that `fit_fims()` does not pass the rows of a removed process to the selectivity module.
+  expect_no_error(fit_fims(selectivity_input, optimize = FALSE))
 })
 
 test_that("`initialize_fims()` treats a catch of 0 as a year with no fishing", {
@@ -565,6 +603,18 @@ test_that("`initialize_fims()` returns correct error messages", {
     "must be numbers"
   )
 
+  #' @description Test that `initialize_fims()` errors for a constant value of NA, which would make the objective NaN.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(
+        default_parameters,
+        value = dplyr::if_else(label == "logit_steep", NA_real_, value)
+      ),
+      data = data
+    ),
+    "no finite value"
+  )
+
   #' @description Test that `initialize_fims()` errors for an estimated row with no starting value.
   expect_error(
     initialize_fims(
@@ -574,7 +624,7 @@ test_that("`initialize_fims()` returns correct error messages", {
       ),
       data = data
     ),
-    "has no value"
+    "no finite value"
   )
 
   # The survey renamed in the data only, so its data have no rows in the
@@ -602,7 +652,7 @@ test_that("`initialize_fims()` returns correct error messages", {
         dplyr::bind_rows(log_m_by_age),
       data = data
     ),
-    "more than 1 row for the same\\s+year and age"
+    "more than 1 row with\\s+the\\s+same"
   )
 
   #' @description Test that `initialize_fims()` errors for a random effect with no process or prior, which the Laplace approximation would integrate over a flat density.
@@ -672,10 +722,21 @@ test_that("`initialize_fims()` returns correct error messages for the recruitmen
     dplyr::mutate(timing = dplyr::if_else(
       label == "log_devs", timing - 1, timing
     ))
-  #' @description Test that `initialize_fims()` errors for recruitment deviations that are not for the 2nd to the last model year.
+  #' @description Test that `initialize_fims()` errors for recruitment deviations that are not for the 2nd model year to the last.
   expect_error(
     initialize_fims(parameters = log_devs_from_year_1, data = data),
     "needs 1 row for each year from the 2nd model\\s+year"
+  )
+  #' @description Test that `initialize_fims()` errors for recruitment deviations with no timing, which could not be matched to their years.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(
+        default_parameters,
+        timing = dplyr::if_else(label == "log_devs", NA_real_, timing)
+      ),
+      data = data
+    ),
+    "with no timing"
   )
 })
 

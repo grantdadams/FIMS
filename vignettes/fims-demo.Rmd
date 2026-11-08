@@ -281,7 +281,7 @@ The list returned from `initialize_fims()` can be passed to the parameter of `fi
 
 ### Fixed and shared parameters
 
-Which values are estimated, held constant or shared comes from the parameter tibble. Set `estimation_type` to `"constant"` to hold a value at its starting value. Rows of 1 parameter with the same integer in the `map_group` column share 1 estimate, so they must have the same starting value. The same integer in 2 parameters does not share a value between them. `add_process()` writes `map_group` for time blocks.
+Which values are estimated, held constant or shared comes from the parameter tibble. Set `estimation_type` to `"constant"` to hold a value at its starting value. Rows of the same parameter (module, fleet and label) with the same integer in the `map_group` column share 1 estimate, so they must have the same starting value. The same integer in 2 parameters does not share a value between them. `add_process()` writes `map_group` for time blocks.
 
 For example, estimate 1 fishing mortality for fleet1 in years 1 and 2 and another for the remaining years:
 
