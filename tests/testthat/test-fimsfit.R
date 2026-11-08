@@ -297,14 +297,15 @@ test_that("fit_fims() errors when optimization fails to converge", {
   #' @description Test that fit_fims() returns a non-converged model when you know it is not supposed to converge. The warnings and messages are suppressed because {nlminb} uses backend code that we do not want to print to the screen during testing but we know will be there.
   data("data_big", package = "FIMS")
   data_4_model <- FIMSFrame(data_big)
-  # Create parameters
+  # initialize_fims() refuses a value that is not finite. exp(1000) overflows
+  # to Inf, so the objective is not finite at the start and nlminb fails.
   initialized_poor_model <- setup_default_parameters(data = data_4_model) |>
     dplyr::rows_update(
       tibble::tibble(
         module_name = "Population",
         label = c("log_init_naa"),
         age = 1,
-        value = -Inf
+        value = 1000
       ),
       by = c("module_name", "label", "age")
     ) |>
