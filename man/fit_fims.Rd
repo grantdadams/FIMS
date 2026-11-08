@@ -21,9 +21,9 @@ fit_fims(
 \item{input}{Input list as returned by \code{\link[=initialize_fims]{initialize_fims()}}. Which values
 are estimated, held constant or shared comes from the \code{estimation_type}
 and \code{map_group} columns of the parameter tibble, which \code{\link[=initialize_fims]{initialize_fims()}}
-turns into \code{input[["map"]]}, 1 factor per model parameter. Rows of 1
-parameter with the same \code{map_group} share 1 estimate, so they must have
-identical starting values. The same \code{map_group} in 2 parameters does not
+turns into \code{input[["map"]]}, 1 factor per model parameter. Rows of the
+same parameter (module, fleet and label) with the same \code{map_group} share
+1 estimate, so they must have identical starting values. The same \code{map_group} in 2 parameters does not
 share a value between them.}
 
 \item{get_sd}{A boolean specifying if the \code{\link[RTMB:sdreport]{RTMB::sdreport()}} should be
@@ -45,12 +45,12 @@ a list containing the obj and report slot.}
 Hessian to do after optimization. Not yet implemented.}
 
 \item{control}{A list of optimizer settings passed to \code{\link[stats:nlminb]{stats::nlminb()}}.
-The default is a list of length three with \code{eval.max = 10000},
+The default is a list of 3: \code{eval.max = 10000},
 \code{iter.max = 10000}, and \code{trace = 0}.}
 
 \item{filename}{Character string giving a file name to save the fitted
-object as an RDS object. Defaults to NULL, which does not save it. If
-specified, it must end in .RDS. Not yet implemented.}
+object as an RDS object. Defaults to NULL. Not yet implemented: any
+other value gives a warning and nothing is saved.}
 
 \item{getReportCovariance}{A logical passed to \code{\link[RTMB:sdreport]{RTMB::sdreport()}}, with the
 default \code{FALSE}. Standard errors of all parameters and derived quantities

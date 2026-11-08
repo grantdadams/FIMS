@@ -252,7 +252,7 @@ test_that("a hand-written prior mean for each value is matched by year", {
   #' @description Test that a prior with 1 mean per year scores every year of its target.
   expect_equal(object = prior[["positions"]], expected = 1:6)
 
-  #' @description Test that a prior with 1 mean per year but no timing errors, because the means could not be matched to their years.
+  #' @description Test that a prior with 1 mean per year but no timing errors, because its 6 means have the same timing and age.
   expect_error(
     object = FIMS:::initialize_parameters(
       dplyr::bind_rows(
@@ -260,7 +260,7 @@ test_that("a hand-written prior mean for each value is matched by year", {
         dplyr::mutate(mean_rows, timing = NA_real_)
       )
     ),
-    regexp = "more than 1 row for the same\\s+year and age"
+    regexp = "more than 1 row with\\s+the\\s+same"
   )
   #' @description Test that a prior with means for only 3 of the 6 years errors, because the means do not match the values.
   expect_error(

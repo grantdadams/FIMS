@@ -18,10 +18,10 @@
 #'
 #' Shapes: a parameter with rows by year (timing) is a matrix with 1 row per
 #' year (1 column, or 1 column per age). By age only, it is a vector by age.
-#' Otherwise it is a vector in row order.
+#' Otherwise it has 1 value (check_unique_rows()).
 #'
-#' `map`: constant rows are fixed (NA). Rows of 1 parameter with the same
-#' `map_group` share 1 estimate. Every other estimated row has its own.
+#' `map`: constant rows are fixed (NA). Rows of the same parameter (module,
+#' fleet and label) with the same `map_group` share 1 estimate. Every other estimated row has its own.
 #' `map_group` numbers are per parameter, so the same number in 2 parameters
 #' does not share a value between them.
 #'
@@ -284,14 +284,23 @@ check_unique_rows <- function(parameter_table) {
     dplyr::pull(.data[["name"]]) |>
     unique()
   if (length(repeated) > 0) {
+    first <- parameter_table[parameter_table[["name"]] == repeated[1], ][1, ]
+    fleet_filter <- if (is.na(first[["fleet"]])) {
+      "is.na(fleet)"
+    } else {
+      paste0("fleet == \"", first[["fleet"]], "\"")
+    }
     cli::cli_abort(c(
-      "x" = "{.val {repeated}} {?has/have} more than 1 row for the same
-      year and age.",
-      "i" = "Each value needs its own row, with its {.var timing} and
-      {.var age}. Rows by age with no {.var timing} are read year by year:
-      every age of the first year, then the next year.",
-      "i" = "Find the repeated rows with {.code dplyr::count(parameters,
-      module_name, fleet, label, timing, age) |> dplyr::filter(n > 1)}."
+      "x" = "{.val {repeated}} {?has/have} more than 1 row with the same
+      {.var timing} and {.var age}.",
+      "i" = "Each value needs its own row, with its year in {.var timing}
+      and its {.var age} when it varies by age. Rows by age with no
+      {.var timing} are read year by year: every age of the first year, then
+      the next year.",
+      "i" = "Find the rows of {.val {repeated[1]}} with
+      {.code dplyr::filter(parameters, module_name ==
+      \"{first[['module_name']]}\", {fleet_filter},
+      label == \"{first[['original_label']]}\")}."
     ))
   }
   invisible(parameter_table)

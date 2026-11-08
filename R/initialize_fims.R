@@ -74,6 +74,12 @@ initialize_fims <- function(parameters, data) {
       if (density[["distribution_type"]] == "prior") density[["target"]]
     }))
   ))
+  # The rows of a process that was removed from its target are kept out of
+  # the modules too. hold_unused_process_parameters() holds them constant.
+  model_data[["density_parameter_names"]] <- unique(c(
+    model_data[["density_parameter_names"]],
+    parameter_table[["name"]][!is.na(parameter_table[["target_label"]])]
+  ))
   held <- hold_unused_process_parameters(
     model_parameters[["map"]], parameter_table,
     model_data[["used_parameter_names"]]
@@ -193,8 +199,8 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
 #'
 #' Recruitment in the first year comes from the initial numbers at age, so
 #' log_devs (or log_r) has 1 value for each later year. The model reads the
-#' values in year order, so their years must be exactly the 2nd to the last
-#' model year. Otherwise a value would be reported for a year other than the
+#' values in year order, so their years must be exactly the 2nd model year
+#' to the last. Otherwise a value would be reported for a year other than the
 #' one it drives.
 #'
 #' @inheritParams initialize_fims
@@ -212,16 +218,24 @@ check_recruitment_deviation_years <- function(parameters, years) {
     }
     expected_years <- years[-1]
     has_wrong_years <- nrow(rows) != length(expected_years) ||
-      (!all(is.na(rows[["timing"]])) &&
-        !all(sort(rows[["timing"]]) == expected_years))
+      anyNA(rows[["timing"]]) ||
+      !all(sort(rows[["timing"]]) == expected_years)
     if (has_wrong_years) {
+      years_given <- if (anyNA(rows[["timing"]])) {
+        " with no timing in some rows"
+      } else {
+        cli::format_inline(
+          " for the {cli::qty(nrow(rows))}year{?s} {.val {rows[['timing']]}}"
+        )
+      }
       cli::cli_abort(c(
-        "x" = "Recruitment {.val {label}} has {.val {nrow(rows)}} row{?s}
-        for the years {.val {rows[['timing']]}}.",
+        "x" = "Recruitment {.val {label}} has {.val {nrow(rows)}}
+        row{?s}{years_given}.",
         "i" = "{.val {label}} needs 1 row for each year from the 2nd model
         year, {.val {expected_years[1]}} to
-        {.val {expected_years[length(expected_years)]}}. Recruitment in the
-        first year comes from the initial numbers at age.",
+        {.val {expected_years[length(expected_years)]}}, with the year in
+        {.var timing}. Recruitment in the first year comes from the initial
+        numbers at age.",
         "i" = "Check the rows with {.code dplyr::filter(parameters,
         module_name == \"Recruitment\", label == \"{label}\")}."
       ))
@@ -232,8 +246,8 @@ check_recruitment_deviation_years <- function(parameters, years) {
 
 #' Stop when a random effect has no process or prior
 #'
-#' The Laplace approximation integrates the random effects over their
-#' density. With no process or prior, that density is flat, and the
+#' The Laplace approximation integrates the joint likelihood over the random
+#' effects. With no process or prior, their density is flat, and the
 #' integral adds a term that depends on the data's curvature alone.
 #'
 #' @param random The names of the random effects from initialize_parameters().
@@ -314,20 +328,28 @@ check_initialize_inputs <- function(parameters, data) {
       as.numeric(value))} and check the rows that become {.code NA}."
     ))
   }
+  # The model reads every row except the EWAA weight_at_age placeholder and
+  # rows with neither a value nor an estimation type (initialize_parameters()).
+  # A value that is not finite there would make the objective NaN.
   missing_values <- parameters |>
     dplyr::filter(
-      is.na(.data[["value"]]),
-      .data[["estimation_type"]] %in% c("fixed_effects", "random_effects")
+      !is.finite(.data[["value"]]),
+      !(.data[["module_name"]] %in% "Growth" &
+        .data[["label"]] == "weight_at_age"),
+      !(is.na(.data[["value"]]) & is.na(.data[["estimation_type"]]))
     )
   if (nrow(missing_values) > 0) {
+    missing_labels <- unique(paste(
+      missing_values[["module_name"]], missing_values[["fleet"]],
+      missing_values[["label"]]
+    ))
     cli::cli_abort(c(
-      "x" = "{.val {nrow(missing_values)}} estimated row{?s} of
-      {.var parameters} {?has/have} no value:
-      {.val {unique(paste(missing_values[['module_name']],
-      missing_values[['label']]))}}.",
-      "i" = "Estimated values need a starting value.",
+      "x" = "{.val {nrow(missing_values)}} row{?s} of {.var parameters}
+      {?has/have} no finite value: {.val {missing_labels}}.",
+      "i" = "Every value the model reads, estimated or constant, must be a
+      finite number.",
       "i" = "Find the rows with {.code dplyr::filter(parameters,
-      is.na(value), estimation_type != \"constant\")}."
+      !is.finite(value))}."
     ))
   }
 
@@ -424,11 +446,15 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
       old_coefficient^2 + 2 * young_old * young_coefficient * old_coefficient
     if (determinant < 0) {
       cli::cli_abort(c(
-        "x" = "VonBertalanffySchnute growth: the growth parameter
-        correlations {.val {signif(c(young_old, young_coefficient,
-        old_coefficient), 3)}} are not a valid correlation matrix.",
-        "i" = "The growth parameter covariance matrix must be positive
-        semi-definite, so its determinant must be at least 0. Here it is
+        "x" = "VonBertalanffySchnute growth: the correlations of
+        mean_length_young and mean_length_old
+        ({.val {signif(young_old, 3)}}), mean_length_young and
+        growth_coefficient ({.val {signif(young_coefficient, 3)}}), and
+        mean_length_old and growth_coefficient
+        ({.val {signif(old_coefficient, 3)}}) are not a valid correlation
+        matrix.",
+        "i" = "The correlation matrix must be positive semi-definite, so its
+        determinant must be at least 0. Here it is
         {.val {signif(determinant, 3)}}.",
         "i" = check_growth_rows
       ))

@@ -17,7 +17,9 @@ initialize_densities <- function(parameter_table) {
 #' A prior is its 2 rows, expected_mean and log_sd, with distribution_type
 #' "prior" and the target's name in the model in `target_label`
 #' (add_priors()). The target's own rows are not changed, so a prior can be
-#' put on any parameter, including a process's own sd.
+#' put on any parameter, including a process's own sd. A prior on a fixed
+#' value is still scored, so a likelihood profile, which fixes the profiled
+#' parameter, compares the objective with its prior.
 #' @noRd
 prior_densities <- function(parameter_table) {
   prior_rows <- dplyr::filter(
@@ -192,9 +194,7 @@ process_densities <- function(parameter_table) {
 #'
 #' With every value constant, the process informs only its own
 #' hyperparameters. When the values equal the mean, e.g., deviations fixed at
-#' 0, an estimated sd goes to 0 and the objective is unbounded. A prior on
-#' constant values is allowed: it adds a constant to the objective, which a
-#' likelihood profile needs when it holds the parameter constant.
+#' 0, an estimated sd goes to 0 and the objective is unbounded.
 #' @noRd
 check_estimated_process <- function(rows, target) {
   if (all(rows[["estimation_type"]] == "constant")) {
