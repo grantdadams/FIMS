@@ -362,7 +362,7 @@ test_that("`get_estimates()` works with time-varying log_q", {
 
 test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
   # survey1's age compositions as counts with a normal likelihood whose sd
-  # differs by age and year, so a sd paired with the wrong cell would show.
+  # differs by age and year, so an sd paired with the wrong cell would show.
   normal_comps <- data_big |>
     dplyr::mutate(
       is_survey_comp = type == "age_comp" & fleet == "survey1",
@@ -396,6 +396,57 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
     expected = stats::dnorm(
       survey_comps[["observed"]], survey_comps[["expected"]],
       standard_deviation,
+      log = TRUE
+    )
+  )
+  simulated <- withr::with_seed(
+    1,
+    simulate_fims(fit, number_of_simulations = 1)
+  )[[1]][["data"]]
+  #' @description Test that `simulate_fims()` draws normal compositions, 1 per observed cell.
+  expect_equal(
+    object = simulated |>
+      dplyr::filter(type == "age_comp", fleet == "survey1") |>
+      dplyr::pull(observed) |>
+      is.na() |>
+      sum(),
+    expected = 0
+  )
+
+  # Conditional age-at-length for fleet1 in years 1 to 3 and length bins 300
+  # and 400, as counts with a normal likelihood whose sd differs by age and
+  # length bin.
+  caal_rows <- tidyr::expand_grid(
+    timing = 1:3,
+    length = c(300, 400),
+    age = 1:12
+  ) |>
+    dplyr::mutate(
+      type = "conditional_age_at_length",
+      fleet = "fleet1",
+      observed = 50 / 12,
+      unit = "number",
+      uncertainty = paste0(
+        "~ dnorm(mean = conditional_age_at_length_proportion, sd = ",
+        1 + 0.1 * age + length / 1000, ")"
+      )
+    )
+  caal_data <- suppressWarnings(
+    FIMSFrame(dplyr::bind_rows(data_big, caal_rows))
+  )
+  caal_estimates <- setup_default_parameters(caal_data) |>
+    initialize_fims(data = caal_data) |>
+    fit_fims(optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(
+      .data[["label"]] == "conditional_age_at_length_proportion"
+    )
+  #' @description Test that each conditional age-at-length cell's likelihood uses the sd given on its own data row.
+  expect_equal(
+    object = caal_estimates[["likelihood"]],
+    expected = stats::dnorm(
+      caal_estimates[["observed"]], caal_estimates[["expected"]],
+      1 + 0.1 * caal_estimates[["age"]] + caal_estimates[["length"]] / 1000,
       log = TRUE
     )
   )
