@@ -275,6 +275,14 @@ initialize_likelihoods <- function(data, fleet, fleet_data) {
           match(.data[["length"]], fleet_data[["length_bins"]])
         )
     }
+    if (data_type == "conditional_age_at_length") {
+      # The same order as the observed matrix: by year and length bin, then
+      # by age.
+      data_type_rows <- dplyr::arrange(
+        data_type_rows,
+        .data[["timing"]], .data[["length"]], .data[["age"]]
+      )
+    }
     uncertainty <- parse_data_distribution(data_type_rows[["uncertainty"]])
     likelihood_family <- unique(stats::na.omit(uncertainty[["family"]]))
     if (is.null(likelihood_families[[likelihood_family]])) {
