@@ -136,11 +136,21 @@ test_that("each fleet and year uses its own ageing error matrix", {
       base_run[["report"]], "agecomp_proportion", 2
     )[changed_year, ]
   )
+  # The default matrix is also given for the changed year, so every year of
+  # this run uses per-year matrices, as survey1 does in mixed_run. Per-year
+  # matrices multiply 1 row at a time and 1 shared matrix multiplies all rows
+  # at once. An optimized BLAS, such as OpenBLAS on Linux, can sum the 2 in a
+  # different order, which changes the last digits.
+  default_per_year_run <- run_at_initial_values(dplyr::bind_rows(
+    data_big,
+    ageing_error_rows(),
+    ageing_error_rows(timing = years[changed_year])
+  ))
   #' @description Test that the other years use the default matrix.
   expect_identical(
     survey[-changed_year, ],
     by_year_and_age(
-      blurred_run[["report"]], "agecomp_proportion", 2
+      default_per_year_run[["report"]], "agecomp_proportion", 2
     )[-changed_year, ]
   )
 })
