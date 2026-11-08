@@ -475,7 +475,6 @@ test_that("von bertalanffy growth estimates stay close to Model Comparison OM gr
     input = input,
     report_age_to_length_conversion_derived = TRUE,
     optimize = TRUE,
-    number_of_loops = 2,
     number_of_newton_steps = 0,
     get_sd = FALSE
   )

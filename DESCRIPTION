@@ -92,6 +92,7 @@ Imports:
     stats,
     stockplotr,
     tibble,
+    TMB (>= 1.9.18),
     utils,
     viridisLite,
     yardstick (>= 1.3.0)

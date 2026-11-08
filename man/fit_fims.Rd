@@ -87,11 +87,13 @@ are estimated. If all fixed effects are held constant, the random-effects
 model is evaluated without an outer optimizer. If every value is held
 constant, use \code{optimize = FALSE}.
 
-While it runs, \code{\link[=fit_fims]{fit_fims()}} records each matrix product as 1 atomic
-operation, with \code{RTMB::TapeConfig(atomic = "enable")}. This gives the same
-values with less memory and a faster \code{\link[RTMB:sdreport]{RTMB::sdreport()}}. The setting is
-global to the R session, so \code{\link[=fit_fims]{fit_fims()}} restores the previous setting
-when it returns.
+While it runs, \code{fit_fims()} records each matrix product as 1 atomic
+operation, with \code{RTMB::TapeConfig(atomic = "enable")}, and compresses the
+Hessian of the random effects, with
+\code{TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")}. These give
+the same values, to rounding, with much less memory when there are random
+effects. Both settings are global to the R session, so it restores the
+previous settings when it returns.
 }
 \seealso{
 \itemize{

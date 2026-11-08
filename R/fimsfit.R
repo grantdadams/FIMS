@@ -550,11 +550,13 @@ FIMSFit <- function(
 #' model is evaluated without an outer optimizer. If every value is held
 #' constant, use `optimize = FALSE`.
 #'
-#' While it runs, [fit_fims()] records each matrix product as 1 atomic
-#' operation, with `RTMB::TapeConfig(atomic = "enable")`. This gives the same
-#' values with less memory and a faster [RTMB::sdreport()]. The setting is
-#' global to the R session, so [fit_fims()] restores the previous setting
-#' when it returns.
+#' While it runs, `fit_fims()` records each matrix product as 1 atomic
+#' operation, with `RTMB::TapeConfig(atomic = "enable")`, and compresses the
+#' Hessian of the random effects, with
+#' `TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")`. These give
+#' the same values, to rounding, with much less memory when there are random
+#' effects. Both settings are global to the R session, so it restores the
+#' previous settings when it returns.
 #' @keywords fit_fims
 #' @export
 fit_fims <- function(input,
@@ -632,16 +634,26 @@ fit_fims <- function(input,
     cli::cli_abort("FIMS must have at least one parameter to optimize.")
   }
 
-  # Atomic matrix products tape each %*% as 1 operation rather than 1 per
-  # multiply and add. The tapes are smaller, and so is the Laplace
-  # approximation's Hessian of the random effects, which is taped from them.
-  # The values do not change. The setting is read whenever a tape is
-  # recorded, in RTMB::MakeADFun() and again in RTMB::sdreport(), so it stays
-  # on for the whole fit. It is global to the R session, not to this model,
-  # so the user's setting is restored on exit, even after an error.
+  # The Hessian tape of the random effects grows with the square of the
+  # number of years, because each recruitment deviation reaches every later
+  # year. Compression and atomic matrix products shrink it without changing
+  # values. Both settings are read whenever a tape is recorded, including in
+  # RTMB::sdreport(), so they stay on for the whole fit.
   user_tape_config <- RTMB::TapeConfig()
-  on.exit(RTMB::TapeConfig(user_tape_config), add = TRUE)
+  user_hessian_compress <-
+    TMB::config(DLL = "RTMB")[["tmbad.sparse_hessian_compress"]]
+  on.exit(
+    {
+      RTMB::TapeConfig(user_tape_config)
+      TMB::config(
+        tmbad.sparse_hessian_compress = user_hessian_compress,
+        DLL = "RTMB"
+      )
+    },
+    add = TRUE
+  )
   RTMB::TapeConfig(atomic = "enable")
+  TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")
 
   model_data <- input[["model_data"]]
   # Standard errors of derived quantities are only needed for an sdreport.
@@ -655,6 +667,10 @@ fit_fims <- function(input,
     random = if (length(input[["random"]]) > 0) input[["random"]],
     silent = TRUE
   )
+  # The Hessian of the random effects is taped the first time it is used.
+  # Taping it now, while compression is on, means that a model from
+  # optimize = FALSE keeps the small tape when it is evaluated later.
+  force(obj[["env"]][["spHess"]])
   parameter_names <- parameter_labels(
     names(obj[["par"]]),
     input[["parameter_table"]]
