@@ -70,7 +70,7 @@ test_that("`initialize_parameters()` returns correct error messages", {
     object = FIMS:::initialize_parameters(
       dplyr::bind_rows(small_parameters, dplyr::slice(small_parameters, 1))
     ),
-    regexp = "more than 1 row for the same\\s+year and age"
+    regexp = "more than 1 row with\\s+the\\s+same"
   )
   #' @description Test that `initialize_parameters()` errors for 2 rows of a parameter in the same year.
   expect_error(
@@ -79,7 +79,7 @@ test_that("`initialize_parameters()` returns correct error messages", {
         timing %in% 2, 1, timing
       ))
     ),
-    regexp = "more than 1 row for the same\\s+year and age"
+    regexp = "more than 1 row with\\s+the\\s+same"
   )
 })
 

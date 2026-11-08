@@ -55,12 +55,17 @@ run_modified_pars_fims <- function(
   }
 
   # Find the parameter by the label get_estimates() shows, so a prior's own
-  # rows are not matched. `%in%` rather than `==` because `x == NULL` has
-  # length 0, so a NULL module_name matches every module.
-  is_profiled <- flat_label(add_process_columns(parameters_to_use)) ==
-    parameter_name &
-    (is.null(module_name) | parameters_to_use[["module_name"]] %in% module_name)
-  parameter_row <- parameters_to_use[is_profiled, ]
+  # rows are not matched. With a NULL module_name, `%in%` gives FALSE for
+  # each row where `==` would give a vector of length 0, so
+  # `is.null(module_name) |` matches every module.
+  parameters_to_use <- parameters_to_use |>
+    dplyr::mutate(
+      is_profiled = flat_label(add_process_columns(parameters_to_use)) ==
+        .env[["parameter_name"]] &
+        (is.null(.env[["module_name"]]) |
+          .data[["module_name"]] %in% .env[["module_name"]])
+    )
+  parameter_row <- dplyr::filter(parameters_to_use, .data[["is_profiled"]])
   if (nrow(parameter_row) == 0) {
     cli::cli_abort(c(
       "Parameter with label {.val {parameter_name}}
@@ -82,14 +87,20 @@ run_modified_pars_fims <- function(
   }
 
   # Update the value of the matched row only
-  parameters_mod <- parameters_to_use
-  parameters_mod[["value"]][is_profiled] <- new_value
-  parameters_mod[["estimation_type"]][is_profiled] <- "constant"
+  parameters_mod <- parameters_to_use |>
+    dplyr::mutate(
+      value = dplyr::if_else(
+        .data[["is_profiled"]], new_value, .data[["value"]]
+      ),
+      estimation_type = dplyr::if_else(
+        .data[["is_profiled"]], "constant", .data[["estimation_type"]]
+      )
+    ) |>
+    dplyr::select(-"is_profiled")
 
-  data_model <- if (methods::is(data, "FIMSFrame")) data else FIMS::FIMSFrame(data)
-
+  # initialize_fims() takes a data frame or a FIMSFrame.
   new_fit <- parameters_mod |>
-    FIMS::initialize_fims(data = data_model) |>
+    FIMS::initialize_fims(data = data) |>
     FIMS::fit_fims(optimize = TRUE)
 
   return(new_fit)
