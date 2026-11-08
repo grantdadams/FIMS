@@ -38,8 +38,9 @@
 #'   Default is `NULL`. Required when the parameter label exists in more than 1
 #'   module, e.g., `"Maturity"` or `"Selectivity"` for `inflection_point`.
 #' @param parameter_name A character string specifying the parameter to profile.
-#'   Default is `"log_rzero"`. Must match a parameter name in the FIMS model.
-#'   Common options include `"log_rzero"`, `"log_sigma_recruit"`, `"logit_steep"`,
+#'   Default is `"log_rzero"`. Must match a label shown by [get_estimates()],
+#'   e.g., `"log_q_log_sd"` for the sd of a process on `log_q`.
+#'   Common options include `"log_rzero"`, `"log_sd"`, `"logit_steep"`,
 #'   or selectivity parameters.
 #' @param n_cores An integer specifying the number of CPU cores to use for
 #'   parallel processing. If `NULL` (default), uses `parallel::detectCores() - 1`.
