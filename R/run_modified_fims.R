@@ -53,14 +53,15 @@ run_modified_pars_fims <- function(
   } else {
     parameters_to_use <- parameters
   }
+  parameters_to_use <- dplyr::ungroup(parameters_to_use)
 
   # Find the parameter by the label get_estimates() shows, so a prior's own
-  # rows are not matched. With a NULL module_name, `%in%` gives FALSE for
-  # each row where `==` would give a vector of length 0, so
-  # `is.null(module_name) |` matches every module.
+  # rows are not matched. `module_name == NULL` has length 0, which mutate()
+  # rejects. `%in%` gives FALSE for each row, so `is.null(module_name) |`
+  # keeps every module.
   parameters_to_use <- parameters_to_use |>
     dplyr::mutate(
-      is_profiled = flat_label(add_process_columns(parameters_to_use)) ==
+      is_profiled = flat_label(add_process_columns(parameters_to_use)) %in%
         .env[["parameter_name"]] &
         (is.null(.env[["module_name"]]) |
           .data[["module_name"]] %in% .env[["module_name"]])

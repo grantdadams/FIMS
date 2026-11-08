@@ -25,15 +25,38 @@ test_that("`setup_default_AgeSpecific()` works with correct inputs", {
   )
   expect_equal(
     result[["value"]],
-    qlogis(1 / (1 + (exp(-1 * (ages - 2)))))
+    ages - 2
   )
 
   clear()
 })
 
 ## Edge handling ----
-# Please remove/comment out the test template below if no edge cases are being tested.
-# No edge cases to test.
+test_that("`setup_default_AgeSpecific()` returns correct outputs for edge cases", {
+  # 40 ages: data_big without length data, with ages 13 to 40 copied from
+  # age 12 (0 in the age compositions).
+  age_12 <- dplyr::filter(
+    data_big, type %in% c("age_comp", "weight_at_age"), age == 12
+  )
+  older_ages <- purrr::map(13:40, \(age) {
+    dplyr::mutate(
+      age_12,
+      age = .env[["age"]],
+      observed = dplyr::if_else(type == "age_comp", 0, observed)
+    )
+  }) |>
+    dplyr::bind_rows()
+  data_40_ages <- suppressWarnings(FIMSFrame(dplyr::bind_rows(
+    dplyr::filter(
+      data_big, !type %in% c("length_comp", "age_to_length_conversion")
+    ),
+    older_ages
+  )))
+  #' @description Test that `setup_default_AgeSpecific()` gives finite values at old ages, where the logit of a rounded logistic curve would be Inf.
+  expect_true(all(is.finite(
+    FIMS:::setup_default_AgeSpecific(data = data_40_ages)[["value"]]
+  )))
+})
 
 ## Error handling ----
 # Please remove/comment out the test template below if there are no built-in errors/warnings.

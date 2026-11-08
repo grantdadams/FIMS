@@ -453,41 +453,37 @@ test_that("`initialize_fims()` holds a process's own parameters constant when no
   #' @description Test that `initialize_fims()` keeps estimating a parameter whose only use is a prior.
   expect_false(anyNA(prior_input[["map"]][["Recruitment.log_sd"]]))
 
-  # A process on fleet1's selectivity inflection point, then the process
-  # removed from the target rows but not its own mean and sd rows.
-  is_inflection_point <- function(parameters) {
-    parameters[["module_name"]] == "Selectivity" &
-      parameters[["label"]] == "inflection_point" &
-      parameters[["fleet"]] %in% "fleet1"
-  }
+  # Add a process on fleet1's selectivity inflection point, then remove it
+  # from the target rows and keep its own mean and sd rows.
   selectivity_parameters <- default_parameters |>
     add_process(
       inflection_point ~ 1 + (1 | year),
       module_name = "Selectivity",
       fleet = "fleet1"
-    )
-  selectivity_parameters <- selectivity_parameters |>
+    ) |>
     dplyr::mutate(
-      distribution_type = dplyr::if_else(
-        is_inflection_point(selectivity_parameters), NA_character_,
-        distribution_type
-      ),
-      distribution = dplyr::if_else(
-        is_inflection_point(selectivity_parameters), NA_character_,
-        distribution
-      ),
-      re_structure = dplyr::if_else(
-        is_inflection_point(selectivity_parameters), NA_character_,
-        re_structure
+      is_target = module_name == "Selectivity" &
+        label == "inflection_point" & fleet %in% "fleet1",
+      dplyr::across(
+        c("distribution_type", "distribution", "re_structure"),
+        \(column) dplyr::if_else(is_target, NA_character_, column)
       ),
       estimation_type = dplyr::if_else(
-        is_inflection_point(selectivity_parameters), "fixed_effects",
-        estimation_type
+        is_target, "fixed_effects", estimation_type
       )
-    )
-  selectivity_input <- suppressMessages(
-    initialize_fims(parameters = selectivity_parameters, data = data)
+    ) |>
+    dplyr::select(-"is_target")
+  #' @description Test that `initialize_fims()` says the rows of a process removed from fleet1's inflection point are not used.
+  expect_message(
+    object = selectivity_input <- initialize_fims(
+      parameters = selectivity_parameters, data = data
+    ),
+    regexp = "not used by any process"
   )
+  #' @description Test that `initialize_fims()` holds the sd of the removed process at its starting value.
+  expect_true(all(is.na(
+    selectivity_input[["map"]][["Selectivity.fleet1.inflection_point_log_sd"]]
+  )))
   #' @description Test that `fit_fims()` does not pass the rows of a removed process to the selectivity module.
   expect_no_error(fit_fims(selectivity_input, optimize = FALSE))
 })
@@ -615,6 +611,52 @@ test_that("`initialize_fims()` returns correct error messages", {
     "no finite value"
   )
 
+  #' @description Test that `initialize_fims()` errors for a year of log_Fmort with no value and no estimation type, rather than dropping the row and moving the later years.
+  expect_error(
+    initialize_fims(
+      parameters = dplyr::mutate(
+        default_parameters,
+        is_year_5 = label == "log_Fmort" & fleet %in% "fleet1" & timing %in% 5,
+        value = dplyr::if_else(is_year_5, NA_real_, value),
+        estimation_type = dplyr::if_else(
+          is_year_5, NA_character_, estimation_type
+        )
+      ) |>
+        dplyr::select(-"is_year_5"),
+      data = data
+    ),
+    "no finite value"
+  )
+
+  # fleet1's inflection point by year, with year 7 left out.
+  missing_year <- default_parameters |>
+    add_process(
+      inflection_point ~ 1 + (1 | year),
+      module_name = "Selectivity",
+      fleet = "fleet1"
+    ) |>
+    dplyr::filter(
+      !(label == "inflection_point" & fleet %in% "fleet1" & timing %in% 7)
+    )
+  #' @description Test that `initialize_fims()` errors for a parameter by year with a year left out, rather than moving the later years.
+  expect_error(
+    initialize_fims(parameters = missing_year, data = data),
+    "needs rows for each year from model\\s+year"
+  )
+
+  proportions_no_size <- data_big |>
+    dplyr::mutate(uncertainty = dplyr::if_else(
+      type == "age_comp" & fleet == "survey1",
+      "~ dnorm(mean = agecomp_expected, sd = 1)",
+      uncertainty
+    )) |>
+    FIMSFrame()
+  #' @description Test that `initialize_fims()` errors for compositions given as proportions with no size, which would otherwise add nothing to the likelihood.
+  expect_error(
+    initialize_fims(parameters = default_parameters, data = proportions_no_size),
+    "proportions with no `size`"
+  )
+
   #' @description Test that `initialize_fims()` errors for an estimated row with no starting value.
   expect_error(
     initialize_fims(
@@ -725,7 +767,7 @@ test_that("`initialize_fims()` returns correct error messages for the recruitmen
   #' @description Test that `initialize_fims()` errors for recruitment deviations that are not for the 2nd model year to the last.
   expect_error(
     initialize_fims(parameters = log_devs_from_year_1, data = data),
-    "needs 1 row for each year from the 2nd model\\s+year"
+    "needs rows for each year from the 2nd model\\s+year"
   )
   #' @description Test that `initialize_fims()` errors for recruitment deviations with no timing, which could not be matched to their years.
   expect_error(

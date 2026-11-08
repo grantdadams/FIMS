@@ -493,7 +493,7 @@ test_that("`fit_fims()` returns correct error messages", {
   #' @description Test that `fit_fims()` errors for `get_sd = NA` before fitting.
   expect_error(
     object = fit_fims(all_constant_input, get_sd = NA),
-    regexp = "must each\\s+be `TRUE` or `FALSE`"
+    regexp = "`get_sd` is not `TRUE` or `FALSE`"
   )
   #' @description Test that `fit_fims()` errors for `number_of_loops = NA` before fitting.
   expect_error(

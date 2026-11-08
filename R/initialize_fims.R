@@ -47,7 +47,7 @@ initialize_fims <- function(parameters, data) {
   years <- get_start_year(data):get_end_year(data)
   parameters <- add_year_timing(parameters, years)
   check_fleet_parameter_sizes(parameters, length(years))
-  check_recruitment_deviation_years(parameters, years)
+  check_parameter_years(parameters, years)
   model_parameters <- initialize_parameters(parameters)
   parameter_table <- model_parameters[["parameter_table"]]
   model_data <- initialize_model_data(parameters, data)
@@ -74,9 +74,10 @@ initialize_fims <- function(parameters, data) {
       if (density[["distribution_type"]] == "prior") density[["target"]]
     }))
   ))
-  # The rows of a process that was removed from its target are kept out of
-  # the modules too. hold_unused_process_parameters() holds them constant.
-  model_data[["density_parameter_names"]] <- unique(c(
+  # Rows with a target_label belong to a prior or process, not a module. This
+  # includes a process removed from its target, whose rows
+  # hold_unused_process_parameters() holds constant.
+  model_data[["not_module_parameter_names"]] <- unique(c(
     model_data[["density_parameter_names"]],
     parameter_table[["name"]][!is.na(parameter_table[["target_label"]])]
   ))
@@ -195,49 +196,59 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
   invisible(TRUE)
 }
 
-#' Check the years of the recruitment deviations
+#' Check that a parameter given by year has a row for each model year
 #'
-#' Recruitment in the first year comes from the initial numbers at age, so
-#' log_devs (or log_r) has 1 value for each later year. The model reads the
-#' values in year order, so their years must be exactly the 2nd model year
-#' to the last. Otherwise a value would be reported for a year other than the
-#' one it drives.
+#' The model reads a parameter's values by year in order, so a missing year
+#' would move every later value to the year before. A parameter with 1 row
+#' has the same value in every year. Recruitment deviations
+#' (log_devs or log_r) start in the 2nd model year, because recruitment in
+#' the first year comes from the initial numbers at age. They need their years
+#' even when no other parameter is given by year.
 #'
 #' @inheritParams initialize_fims
 #' @param years The model years.
 #' @noRd
-check_recruitment_deviation_years <- function(parameters, years) {
-  for (label in c("log_devs", "log_r")) {
-    rows <- dplyr::filter(
-      parameters,
-      .data[["module_name"]] == "Recruitment",
-      .data[["label"]] == .env[["label"]]
+check_parameter_years <- function(parameters, years) {
+  parameters <- add_process_columns(parameters)
+  parameters[["name"]] <- dplyr::if_else(
+    is.na(parameters[["fleet"]]),
+    paste(parameters[["module_name"]], flat_label(parameters), sep = "."),
+    paste(parameters[["module_name"]], parameters[["fleet"]],
+      flat_label(parameters),
+      sep = "."
     )
-    if (nrow(rows) == 0) {
+  )
+  for (name in unique(parameters[["name"]])) {
+    rows <- parameters[parameters[["name"]] == name, ]
+    # The deviations and the rows of their process or prior, such as a
+    # process mean by year.
+    target <- dplyr::coalesce(rows[["target_label"]][1], rows[["label"]][1])
+    is_deviation <- rows[["module_name"]][1] == "Recruitment" &&
+      target %in% c("log_devs", "log_r")
+    is_deviation_value <- is_deviation && is.na(rows[["target_label"]][1])
+    # 1 value, with or without a timing, is the same in every year.
+    if (!is_deviation_value &&
+      (all(is.na(rows[["timing"]])) || nrow(rows) == 1)) {
       next
     }
-    expected_years <- years[-1]
-    has_wrong_years <- nrow(rows) != length(expected_years) ||
-      anyNA(rows[["timing"]]) ||
-      !all(sort(rows[["timing"]]) == expected_years)
-    if (has_wrong_years) {
-      years_given <- if (anyNA(rows[["timing"]])) {
-        " with no timing in some rows"
-      } else {
-        cli::format_inline(
-          " for the {cli::qty(nrow(rows))}year{?s} {.val {rows[['timing']]}}"
-        )
-      }
+    expected_years <- if (is_deviation) years[-1] else years
+    given_years <- sort(unique(stats::na.omit(rows[["timing"]])))
+    if (anyNA(rows[["timing"]]) ||
+      !identical(as.numeric(given_years), as.numeric(expected_years))) {
+      no_timing <- if (anyNA(rows[["timing"]])) ", some with no timing" else ""
+      first_year <- if (is_deviation) "the 2nd model year" else "model year"
       cli::cli_abort(c(
-        "x" = "Recruitment {.val {label}} has {.val {nrow(rows)}}
-        row{?s}{years_given}.",
-        "i" = "{.val {label}} needs 1 row for each year from the 2nd model
-        year, {.val {expected_years[1]}} to
+        "x" = "{.val {name}} has {.val {nrow(rows)}} row{?s} for the
+        year{?s} {.val {given_years}}{no_timing}.",
+        "i" = "It needs rows for each year from {first_year}
+        {.val {expected_years[1]}} to
         {.val {expected_years[length(expected_years)]}}, with the year in
-        {.var timing}. Recruitment in the first year comes from the initial
-        numbers at age.",
-        "i" = "Check the rows with {.code dplyr::filter(parameters,
-        module_name == \"Recruitment\", label == \"{label}\")}."
+        {.var timing}.{if (is_deviation) ' Recruitment in the first year
+        comes from the initial numbers at age.' else ''}",
+        "i" = "Count the rows by year with {.code dplyr::filter(parameters,
+        module_name == \"{rows[['module_name']][1]}\",
+        label == \"{rows[['label']][1]}\") |> dplyr::count(fleet,
+        timing)}."
       ))
     }
   }
@@ -328,31 +339,6 @@ check_initialize_inputs <- function(parameters, data) {
       as.numeric(value))} and check the rows that become {.code NA}."
     ))
   }
-  # The model reads every row except the EWAA weight_at_age placeholder and
-  # rows with neither a value nor an estimation type (initialize_parameters()).
-  # A value that is not finite there would make the objective NaN.
-  missing_values <- parameters |>
-    dplyr::filter(
-      !is.finite(.data[["value"]]),
-      !(.data[["module_name"]] %in% "Growth" &
-        .data[["label"]] == "weight_at_age"),
-      !(is.na(.data[["value"]]) & is.na(.data[["estimation_type"]]))
-    )
-  if (nrow(missing_values) > 0) {
-    missing_labels <- unique(paste(
-      missing_values[["module_name"]], missing_values[["fleet"]],
-      missing_values[["label"]]
-    ))
-    cli::cli_abort(c(
-      "x" = "{.val {nrow(missing_values)}} row{?s} of {.var parameters}
-      {?has/have} no finite value: {.val {missing_labels}}.",
-      "i" = "Every value the model reads, estimated or constant, must be a
-      finite number.",
-      "i" = "Find the rows with {.code dplyr::filter(parameters,
-      !is.finite(value))}."
-    ))
-  }
-
   fleets <- stats::na.omit(unique(parameters[["fleet"]]))
   if (length(fleets) == 0) {
     cli::cli_abort(c(

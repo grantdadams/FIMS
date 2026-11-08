@@ -21,7 +21,8 @@
 #' Otherwise it has 1 value (check_unique_rows()).
 #'
 #' `map`: constant rows are fixed (NA). Rows of the same parameter (module,
-#' fleet and label) with the same `map_group` share 1 estimate. Every other estimated row has its own.
+#' fleet and label) with the same `map_group` share 1 estimate. Every other
+#' estimated row has its own.
 #' `map_group` numbers are per parameter, so the same number in 2 parameters
 #' does not share a value between them.
 #'
@@ -49,12 +50,14 @@ initialize_parameters <- function(parameters) {
     # data, whatever its estimation type. Any other row with no estimation
     # type is a constant.
     dplyr::filter(
-      !(.data[["module_name"]] %in% "Growth" & .data[["label"]] == "weight_at_age"),
-      !(is.na(.data[["estimation_type"]]) & is.na(.data[["value"]]))
+      !(.data[["module_name"]] %in% "Growth" &
+        .data[["label"]] == "weight_at_age")
     ) |>
     dplyr::mutate(estimation_type = dplyr::coalesce(
       .data[["estimation_type"]], "constant"
-    )) |>
+    ))
+  check_finite_values(parameter_table)
+  parameter_table <- parameter_table |>
     growth_to_working_scale() |>
     add_process_columns()
   parameter_table[["flat_label"]] <- flat_label(parameter_table)
@@ -271,6 +274,34 @@ check_row_order <- function(parameter_table) {
   invisible(parameter_table)
 }
 
+#' Refuse values that are not finite
+#'
+#' The model reads every value, estimated or constant, so 1 that is not
+#' finite would make the objective NaN.
+#' @noRd
+check_finite_values <- function(parameter_table) {
+  not_finite <- dplyr::filter(parameter_table, !is.finite(.data[["value"]]))
+  if (nrow(not_finite) > 0) {
+    labels <- dplyr::if_else(
+      is.na(not_finite[["fleet"]]),
+      paste(not_finite[["module_name"]], not_finite[["label"]], sep = "."),
+      paste(not_finite[["module_name"]], not_finite[["fleet"]],
+        not_finite[["label"]],
+        sep = "."
+      )
+    )
+    cli::cli_abort(c(
+      "x" = "{.val {nrow(not_finite)}} row{?s} of {.var parameters}
+      {?has/have} no finite value: {.val {unique(labels)}}.",
+      "i" = "Every value the model reads, estimated or constant, must be a
+      finite number.",
+      "i" = "Find the rows with {.code dplyr::filter(parameters,
+      !is.finite(value), label != \"weight_at_age\")}."
+    ))
+  }
+  invisible(parameter_table)
+}
+
 #' Refuse 2 rows for the same value of a parameter
 #'
 #' Each value of a parameter is 1 row, found by its `timing` and `age`. A
@@ -300,7 +331,8 @@ check_unique_rows <- function(parameter_table) {
       "i" = "Find the rows of {.val {repeated[1]}} with
       {.code dplyr::filter(parameters, module_name ==
       \"{first[['module_name']]}\", {fleet_filter},
-      label == \"{first[['original_label']]}\")}."
+      label == \"{first[['original_label']]}\") |>
+      dplyr::count(timing, age) |> dplyr::filter(n > 1)}."
     ))
   }
   invisible(parameter_table)
