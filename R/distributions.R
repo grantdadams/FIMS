@@ -143,6 +143,10 @@ lognormal_draw <- function(observed, log_expected, log_sd) {
     n_observations, rep_len(log_expected, n_observations),
     rep_len(exp(log_sd), n_observations)
   ))
+  # Compositions keep their years-by-ages (or bins) shape.
+  if (is.matrix(observed)) {
+    draws <- matrix(draws, nrow(observed), ncol(observed))
+  }
   replace(draws, is.na(observed), NA)
 }
 
@@ -152,6 +156,10 @@ normal_draw <- function(observed, expected, log_sd) {
     n_observations, rep_len(expected, n_observations),
     rep_len(exp(log_sd), n_observations)
   )
+  # Compositions keep their years-by-ages (or bins) shape.
+  if (is.matrix(observed)) {
+    draws <- matrix(draws, nrow(observed), ncol(observed))
+  }
   replace(draws, is.na(observed), NA)
 }
 
