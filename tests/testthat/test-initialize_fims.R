@@ -650,6 +650,45 @@ test_that("`initialize_fims()` rejects malformed named von Bertalanffy SD inputs
   }
 })
 
+test_that("`initialize_fims()` rejects growth correlations that are not a correlation matrix", {
+  growth <- setup_default_Growth(
+    data = data,
+    module_type = "VonBertalanffySchnute"
+  )
+  interpolation_rows <- growth[["label"]] %in%
+    c("length_at_age_sd_young", "length_at_age_sd_old")
+  # The delta-method option: 3 sds on the log scale and 3 correlations on a
+  # logit scale bounded by -1 and 1.
+  delta_rows <- function(correlations) {
+    growth[rep(which(interpolation_rows)[1], 6), ] |>
+      dplyr::mutate(
+        label = c(
+          "log_sd_mean_length_young", "log_sd_mean_length_old",
+          "log_sd_growth_coefficient",
+          "mean_length_young_mean_length_old_logit_corr",
+          "mean_length_young_growth_coefficient_logit_corr",
+          "mean_length_old_growth_coefficient_logit_corr"
+        ),
+        value = c(log(c(0.05, 0.05, 0.05)), logit(-1, 1, correlations)),
+        estimation_type = "constant"
+      )
+  }
+  parameters_with <- function(correlations) {
+    default_parameters |>
+      dplyr::filter(module_name != "Growth") |>
+      dplyr::bind_rows(growth[!interpolation_rows, ], delta_rows(correlations))
+  }
+  #' @description Test that `initialize_fims()` accepts growth correlations that form a valid correlation matrix.
+  expect_no_error(
+    initialize_fims(parameters = parameters_with(c(0.5, 0.2, 0.1)), data = data)
+  )
+  #' @description Test that `initialize_fims()` errors for correlations of 0.9, 0.9 and -0.9, whose correlation matrix has a negative determinant.
+  expect_error(
+    initialize_fims(parameters = parameters_with(c(0.9, 0.9, -0.9)), data = data),
+    regexp = "positive\\s+semi-definite"
+  )
+})
+
 test_that("`initialize_fims()` errors when composition data do not match the expected dimensions", {
   bad_data <- data
   bad_data@data <- bad_data |>

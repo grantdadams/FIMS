@@ -360,6 +360,47 @@ test_that("`get_estimates()` works with time-varying log_q", {
   clear()
 })
 
+test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
+  # survey1's age compositions as counts with a normal likelihood whose sd
+  # differs by age and year, so a sd paired with the wrong cell would show.
+  normal_comps <- data_big |>
+    dplyr::mutate(
+      is_survey_comp = type == "age_comp" & fleet == "survey1",
+      observed = dplyr::if_else(is_survey_comp, observed * 200, observed),
+      unit = dplyr::if_else(is_survey_comp, "number", unit),
+      uncertainty = dplyr::if_else(
+        is_survey_comp,
+        paste0(
+          "~ dnorm(mean = agecomp_expected, sd = ",
+          0.5 + 0.2 * age + 0.1 * timing, ")"
+        ),
+        uncertainty
+      )
+    ) |>
+    dplyr::select(-"is_survey_comp")
+  data_4_model <- FIMSFrame(normal_comps)
+  fit <- setup_default_parameters(data_4_model) |>
+    initialize_fims(data = data_4_model) |>
+    fit_fims(optimize = FALSE)
+  survey_comps <- get_estimates(fit) |>
+    dplyr::filter(
+      .data[["label"]] == "agecomp_expected",
+      .data[["fleet"]] == "survey1",
+      .data[["observed"]] != -999
+    )
+  standard_deviation <- 0.5 + 0.2 * survey_comps[["age"]] +
+    0.1 * survey_comps[["year_i"]]
+  #' @description Test that each composition cell's likelihood uses the sd given on its own data row.
+  expect_equal(
+    object = survey_comps[["likelihood"]],
+    expected = stats::dnorm(
+      survey_comps[["observed"]], survey_comps[["expected"]],
+      standard_deviation,
+      log = TRUE
+    )
+  )
+})
+
 test_that("`get_estimates()` keeps non-finite values and column types", {
   estimates <- FIMS::estimates_big_optimized
   estimates[["likelihood"]][1:3] <- c(-Inf, Inf, NaN)
