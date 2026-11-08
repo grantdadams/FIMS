@@ -549,6 +549,12 @@ FIMSFit <- function(
 #' are estimated. If all fixed effects are held constant, the random-effects
 #' model is evaluated without an outer optimizer. If every value is held
 #' constant, use `optimize = FALSE`.
+#'
+#' While it runs, [fit_fims()] records each matrix product as 1 atomic
+#' operation, with `RTMB::TapeConfig(atomic = "enable")`. This gives the same
+#' values with less memory and a faster [RTMB::sdreport()]. The setting is
+#' global to the R session, so [fit_fims()] restores the previous setting
+#' when it returns.
 #' @keywords fit_fims
 #' @export
 fit_fims <- function(input,
@@ -625,6 +631,17 @@ fit_fims <- function(input,
   if (optimize && n_estimated == 0) {
     cli::cli_abort("FIMS must have at least one parameter to optimize.")
   }
+
+  # Atomic matrix products tape each %*% as 1 operation rather than 1 per
+  # multiply and add. The tapes are smaller, and so is the Laplace
+  # approximation's Hessian of the random effects, which is taped from them.
+  # The values do not change. The setting is read whenever a tape is
+  # recorded, in RTMB::MakeADFun() and again in RTMB::sdreport(), so it stays
+  # on for the whole fit. It is global to the R session, not to this model,
+  # so the user's setting is restored on exit, even after an error.
+  user_tape_config <- RTMB::TapeConfig()
+  on.exit(RTMB::TapeConfig(user_tape_config), add = TRUE)
+  RTMB::TapeConfig(atomic = "enable")
 
   model_data <- input[["model_data"]]
   # Standard errors of derived quantities are only needed for an sdreport.
