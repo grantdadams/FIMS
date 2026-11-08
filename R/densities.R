@@ -17,9 +17,9 @@ initialize_densities <- function(parameter_table) {
 #' A prior is its 2 rows, expected_mean and log_sd, with distribution_type
 #' "prior" and the target's name in the model in `target_label`
 #' (add_priors()). The target's own rows are not changed, so a prior can be
-#' put on any parameter, including a process's own sd. A prior on a fixed
-#' value is still scored, so a likelihood profile, which fixes the profiled
-#' parameter, compares the objective with its prior.
+#' put on any parameter, including a process's own sd. A prior on a constant
+#' value is still scored, so a likelihood profile, which holds the profiled
+#' parameter constant, includes the prior in its objective.
 #' @noRd
 prior_densities <- function(parameter_table) {
   prior_rows <- dplyr::filter(

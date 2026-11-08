@@ -499,8 +499,8 @@ FIMSFit <- function(
 #'   and `map_group` columns of the parameter tibble, which [initialize_fims()]
 #'   turns into `input[["map"]]`, 1 factor per model parameter. Rows of the
 #'   same parameter (module, fleet and label) with the same `map_group` share
-#'   1 estimate, so they must have identical starting values. The same `map_group` in 2 parameters does not
-#'   share a value between them.
+#'   1 estimate, so they must have identical starting values. The same
+#'   `map_group` in 2 parameters does not share a value between them.
 #' @param get_sd A boolean specifying if the [RTMB::sdreport()] should be
 #'   calculated? It is skipped when the maximum gradient is above 0.01 or not
 #'   finite, because standard errors far from the optimum are not meaningful.
@@ -587,13 +587,17 @@ fit_fims <- function(input,
     ))
   }
   # Checked before the fit, which can take minutes, rather than after it.
-  if (!rlang::is_bool(get_sd) || !rlang::is_bool(save_sd) ||
-    !rlang::is_bool(optimize)) {
+  true_or_false <- c(
+    get_sd = rlang::is_bool(get_sd), save_sd = rlang::is_bool(save_sd),
+    optimize = rlang::is_bool(optimize)
+  )
+  if (!all(true_or_false)) {
+    not_true_or_false <- names(true_or_false)[!true_or_false]
     cli::cli_abort(c(
-      "x" = "{.arg get_sd}, {.arg save_sd} and {.arg optimize} must each be
-      {.code TRUE} or {.code FALSE}.",
-      "i" = "They are {.code {deparse(get_sd)}}, {.code {deparse(save_sd)}}
-      and {.code {deparse(optimize)}}."
+      "x" = "{.arg {not_true_or_false}} {?is/are} not {.code TRUE} or
+      {.code FALSE}.",
+      "i" = "Set {.arg {not_true_or_false}} to {.code TRUE} or
+      {.code FALSE}."
     ))
   }
   if (!is_single_number(number_of_loops) || number_of_loops < 0) {

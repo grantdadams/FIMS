@@ -252,7 +252,7 @@ test_that("a hand-written prior mean for each value is matched by year", {
   #' @description Test that a prior with 1 mean per year scores every year of its target.
   expect_equal(object = prior[["positions"]], expected = 1:6)
 
-  #' @description Test that a prior with 1 mean per year but no timing errors, because its 6 means have the same timing and age.
+  #' @description Test that `initialize_parameters()` errors for a prior with 1 mean per year and no timing, because its 6 means share 1 timing and age.
   expect_error(
     object = FIMS:::initialize_parameters(
       dplyr::bind_rows(

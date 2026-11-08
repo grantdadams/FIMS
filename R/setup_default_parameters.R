@@ -663,7 +663,10 @@ setup_default_AgeSpecific <- function(
       module_type = "AgeSpecific",
       label = "logit_sel_at_age",
       age = get_ages(data),
-      value = qlogis(1 / (1 + (exp(-1 * (get_ages(data) - 2))))),
+      # The logit of a logistic curve with inflection point 2 and slope 1.
+      # Written directly, because plogis() rounds to 1 above age 38, which
+      # qlogis() turns into Inf.
+      value = get_ages(data) - 2,
       estimation_type = c(
         rep("fixed_effects", length(get_ages(data)) - 1),
         "constant"

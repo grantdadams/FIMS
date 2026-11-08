@@ -36,7 +36,7 @@ model_predictions <- function(parameters, model_data) {
   # by flat name, so they are not passed to the modules.
   module_parameters <- group_parameters(
     parameters,
-    skip = model_data[["density_parameter_names"]]
+    skip = model_data[["not_module_parameter_names"]]
   )
   predictions <- model_functions[[model_data[["model_type"]]]](
     module_parameters, model_data

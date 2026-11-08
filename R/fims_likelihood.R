@@ -170,9 +170,9 @@ run_fims_likelihood <- function(
   }
 
   # Match the label get_estimates() shows, so the sd of a process on log_q is
-  # "log_q_log_sd" and a prior's own rows are not matched. With a NULL
-  # module_name, `%in%` gives FALSE for each row where `==` would give a
-  # vector of length 0, so `is.null(module_name) |` matches every module.
+  # "log_q_log_sd" and a prior's own rows are not matched.
+  # `module_name == NULL` has length 0, which filter() rejects. `%in%` gives
+  # FALSE for each row, so `is.null(module_name) |` keeps every module.
   module_rows <- parameters |>
     dplyr::mutate(label = flat_label(add_process_columns(parameters))) |>
     dplyr::filter(

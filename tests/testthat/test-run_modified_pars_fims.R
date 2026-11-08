@@ -69,7 +69,8 @@ test_that("run_modified_pars_fims() profiles a parameter that has a prior", {
     new_value = log(0.5),
     parameter_name = "log_sd",
     module_name = "Recruitment",
-    parameters = parameters_with_prior,
+    # Grouped, as a user might leave it after dplyr::group_by().
+    parameters = dplyr::group_by(parameters_with_prior, module_name),
     data = data_10_years
   )
   log_sd <- get_estimates(fit) |>
