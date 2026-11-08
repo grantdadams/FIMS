@@ -485,4 +485,19 @@ test_that("`fit_fims()` returns correct error messages", {
     object = fit_fims(p_map_input, optimize = FALSE),
     regexp = "map_group"
   )
+  #' @description Test that `fit_fims()` errors for an input that did not come from `initialize_fims()`.
+  expect_error(
+    object = fit_fims(list(a = 1)),
+    regexp = "not a model from"
+  )
+  #' @description Test that `fit_fims()` errors for `get_sd = NA` before fitting.
+  expect_error(
+    object = fit_fims(all_constant_input, get_sd = NA),
+    regexp = "must be `TRUE` or `FALSE`"
+  )
+  #' @description Test that `fit_fims()` errors for `number_of_loops = NA` before fitting.
+  expect_error(
+    object = fit_fims(all_constant_input, number_of_loops = NA),
+    regexp = "must be 1 number >= 0"
+  )
 })

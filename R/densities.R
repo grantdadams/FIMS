@@ -48,7 +48,6 @@ prior_densities <- function(parameter_table) {
         distribution_type == \"prior\")}."
       ))
     }
-    check_estimated_target(target_rows, "prior", target)
     # Values that share 1 estimate (time blocks, a process mean) are scored
     # once, and each constant value is scored too. Positions are in the
     # parameter's own order (by column).
@@ -117,7 +116,7 @@ process_densities <- function(parameter_table) {
   for (target in unique(targets[["name"]])) {
     rows <- dplyr::filter(targets, .data[["name"]] == target)
     label <- rows[["label"]][1]
-    check_estimated_target(rows, "process", target)
+    check_estimated_process(rows, target)
     distribution <- unique(stats::na.omit(rows[["distribution"]]))
     if (length(distribution) > 0 && !distribution %in% "Dnorm") {
       cli::cli_abort(c(
@@ -189,20 +188,22 @@ process_densities <- function(parameter_table) {
   densities
 }
 
-#' Stop when a prior or process has no estimated values
+#' Stop when a process has no estimated values
 #'
-#' With every value constant, the density informs only its own
+#' With every value constant, the process informs only its own
 #' hyperparameters. When the values equal the mean, e.g., deviations fixed at
-#' 0, an estimated sd goes to 0 and the objective is unbounded.
+#' 0, an estimated sd goes to 0 and the objective is unbounded. A prior on
+#' constant values is allowed: it adds a constant to the objective, which a
+#' likelihood profile needs when it holds the parameter constant.
 #' @noRd
-check_estimated_target <- function(rows, density_type, target) {
+check_estimated_process <- function(rows, target) {
   if (all(rows[["estimation_type"]] == "constant")) {
     cli::cli_abort(c(
-      "x" = "The {density_type} on {.val {target}} has no estimated values.",
-      "i" = "A {density_type} needs estimated values ({.val random_effects}
-      or {.val fixed_effects}). On constant values it cannot inform the
+      "x" = "The process on {.val {target}} has no estimated values.",
+      "i" = "A process needs estimated values ({.val random_effects} or
+      {.val fixed_effects}). On constant values it cannot inform the
       estimates, and an estimated process sd can go to 0. Estimate the
-      values or remove the {density_type}.",
+      values or remove the process.",
       "i" = "Check the estimation types with
       {.code dplyr::distinct(parameters, module_name, fleet, label,
       estimation_type)}."

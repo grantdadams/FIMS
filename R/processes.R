@@ -339,14 +339,25 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
       "i" = "Only {.code normal(mean = , sd = )} priors are implemented."
     ))
   }
-  prior_arguments <- as.list(prior)[-1]
+  # Match the arguments as R would, so normal(log(0.5), 0.2) works too.
+  prior_arguments <- as.list(match.call(function(mean, sd) NULL, prior))[-1]
   # The mean and sd may name variables from where the formula was written.
   prior_mean <- eval(prior_arguments[["mean"]], environment(formula))
   prior_sd <- eval(prior_arguments[["sd"]], environment(formula))
+  if (!is_single_number(prior_mean)) {
+    cli::cli_abort(c(
+      "x" = "The prior mean of {.val {target}} is
+      {.code {deparse(prior_arguments[['mean']])}}.",
+      "i" = "The prior mean must be 1 number, on the scale of
+      {.val {target}}.",
+      "i" = "Give it as {.code {target} ~ normal(mean = 0, sd = 0.5)}."
+    ))
+  }
   # The prior sd is written as its log, which is finite only above 0.
   if (!is_single_number(prior_sd) || prior_sd <= 0) {
     cli::cli_abort(c(
-      "x" = "The prior sd of {.val {target}} is {.val {prior_sd}}.",
+      "x" = "The prior sd of {.val {target}} is
+      {.code {deparse(prior_arguments[['sd']])}}.",
       "i" = "The prior sd must be 1 number > 0.",
       "i" = "Give it as {.code {target} ~ normal(mean = 0, sd = 0.5)}."
     ))

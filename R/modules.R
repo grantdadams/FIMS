@@ -25,6 +25,20 @@ call_module <- function(functions, module_type, ..., parameters = list()) {
       {.code dplyr::distinct(parameters, module_name, fleet, module_type)}."
     ))
   }
+  # Name the labels that do not match, where R would say only "argument is
+  # missing" or "unused argument".
+  parameter_names <- setdiff(names(formals(module_function)), ...names())
+  if (!setequal(parameter_names, names(parameters))) {
+    cli::cli_abort(c(
+      "x" = "Module type {.val {module_type}} has the parameters
+      {.val {parameter_names}}, but the parameter tibble gives
+      {.val {names(parameters)}}.",
+      "i" = "Each of its parameters needs rows with that label, and it has no
+      other labels.",
+      "i" = "Check the rows with {.code dplyr::filter(parameters,
+      module_type == \"{module_type}\")}."
+    ))
+  }
   do.call(module_function, c(list(...), parameters))
 }
 

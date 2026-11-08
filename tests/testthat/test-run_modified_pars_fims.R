@@ -48,6 +48,44 @@ test_that("run_modified_pars_fims() works with correct inputs", {
   )
 })
 
+## Edge handling ----
+test_that("run_modified_pars_fims() profiles a parameter that has a prior", {
+  # 10 years of data_big keep the fit fast. Weight at age has 1 more year,
+  # for the start of the year after the last model year.
+  data_10_years <- data_big |>
+    dplyr::filter(
+      is.na(timing) |
+        timing <= dplyr::if_else(type == "weight_at_age", 11, 10)
+    ) |>
+    FIMSFrame()
+  # The recruitment log_sd and its prior both have a "log_sd" row in the
+  # Recruitment module.
+  parameters_with_prior <- setup_default_parameters(data_10_years) |>
+    add_priors(
+      log_sd ~ normal(mean = log(0.6), sd = 0.2),
+      module_name = "Recruitment"
+    )
+  fit <- run_modified_pars_fims(
+    new_value = log(0.5),
+    parameter_name = "log_sd",
+    module_name = "Recruitment",
+    parameters = parameters_with_prior,
+    data = data_10_years
+  )
+  log_sd <- get_estimates(fit) |>
+    dplyr::filter(module_name == "Recruitment", label == "log_sd")
+  #' @description Test that run_modified_pars_fims() takes a FIMSFrame and sets the parameter, not its prior's row with the same label.
+  expect_equal(
+    object = log_sd[["input"]],
+    expected = log(0.5)
+  )
+  #' @description Test that run_modified_pars_fims() keeps the prior, scored at the profiled value, as the first likelihood component.
+  expect_equal(
+    object = get_report(fit)[["nll_components"]][[1]],
+    expected = -stats::dnorm(log(0.5), log(0.6), 0.2, log = TRUE)
+  )
+})
+
 ## Error handling ----
 test_that("run_modified_pars_fims() returns correct error messages", {
   #' @description Test that run_modified_pars_fims() errors when the label is not in the module given by module_name.

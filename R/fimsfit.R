@@ -497,8 +497,10 @@ FIMSFit <- function(
 #' @param input Input list as returned by [initialize_fims()]. Which values
 #'   are estimated, held constant or shared comes from the `estimation_type`
 #'   and `map_group` columns of the parameter tibble, which [initialize_fims()]
-#'   turns into `input[["map"]]`, 1 factor per model parameter. Shared values
-#'   must have identical starting values.
+#'   turns into `input[["map"]]`, 1 factor per model parameter. Rows of 1
+#'   parameter with the same `map_group` share 1 estimate, so they must have
+#'   identical starting values. The same `map_group` in 2 parameters does not
+#'   share a value between them.
 #' @param get_sd A boolean specifying if the [RTMB::sdreport()] should be
 #'   calculated? It is skipped when the maximum gradient is above 0.01 or not
 #'   finite, because standard errors far from the optimum are not meaningful.
@@ -578,8 +580,26 @@ fit_fims <- function(input,
       increase {.arg number_of_loops} instead."
     ))
   }
-  if (number_of_loops < 0) {
-    cli::cli_abort("number_of_loops ({.par {number_of_loops}}) must be >= 0.")
+  if (!is.list(input) || is.null(input[["model_data"]]) ||
+    is.null(input[["parameter_table"]])) {
+    cli::cli_abort(c(
+      "x" = "{.arg input} is not a model from {.fn initialize_fims}.",
+      "i" = "Build it with {.code initialize_fims(parameters, data)}."
+    ))
+  }
+  for (argument in c("get_sd", "save_sd", "optimize")) {
+    if (!rlang::is_bool(get(argument))) {
+      cli::cli_abort(c(
+        "x" = "{.arg {argument}} is {.code {deparse(get(argument))}}.",
+        "i" = "{.arg {argument}} must be {.code TRUE} or {.code FALSE}."
+      ))
+    }
+  }
+  if (!is_single_number(number_of_loops) || number_of_loops < 0) {
+    cli::cli_abort(c(
+      "x" = "{.arg number_of_loops} is {.code {deparse(number_of_loops)}}.",
+      "i" = "{.arg number_of_loops} must be 1 number >= 0."
+    ))
   }
   not_parameters <- setdiff(names(input[["map"]]), names(input[["parameters"]]))
   if (length(not_parameters) > 0) {
