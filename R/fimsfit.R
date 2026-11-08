@@ -514,13 +514,12 @@ FIMSFit <- function(
 #'   a list containing the obj and report slot.
 #' @param number_of_newton_steps The number of Newton steps using the inverse
 #'   Hessian to do after optimization. Not yet implemented.
-#' @param control A list of optimizer settings passed to [stats::nlminb()]. The
-#'   the default is a list of length three with `eval.max = 1000`,
+#' @param control A list of optimizer settings passed to [stats::nlminb()].
+#'   The default is a list of length three with `eval.max = 10000`,
 #'   `iter.max = 10000`, and `trace = 0`.
 #' @param filename Character string giving a file name to save the fitted
-#'   object as an RDS object. Defaults to 'fit.RDS', and a value of NULL
-#'   indicates not to save it. If specified, it must end in .RDS. The file is
-#'   written to folder given by `input[["path"]]`. Not yet implemented.
+#'   object as an RDS object. Defaults to NULL, which does not save it. If
+#'   specified, it must end in .RDS. Not yet implemented.
 #' @param getReportCovariance A logical passed to [RTMB::sdreport()], with the
 #'   default `FALSE`. Standard errors of all parameters and derived quantities
 #'   are calculated either way. If `TRUE`, the full covariance matrix of the

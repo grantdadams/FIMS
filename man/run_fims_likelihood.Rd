@@ -33,8 +33,9 @@ Default is \code{NULL}. Required when the parameter label exists in more than 1
 module, e.g., \code{"Maturity"} or \code{"Selectivity"} for \code{inflection_point}.}
 
 \item{parameter_name}{A character string specifying the parameter to profile.
-Default is \code{"log_rzero"}. Must match a parameter name in the FIMS model.
-Common options include \code{"log_rzero"}, \code{"log_sigma_recruit"}, \code{"logit_steep"},
+Default is \code{"log_rzero"}. Must match a label shown by \code{\link[=get_estimates]{get_estimates()}},
+e.g., \code{"log_q_log_sd"} for the sd of a process on \code{log_q}.
+Common options include \code{"log_rzero"}, \code{"log_sd"}, \code{"logit_steep"},
 or selectivity parameters.}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for

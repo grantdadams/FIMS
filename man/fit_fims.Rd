@@ -44,14 +44,13 @@ a list containing the obj and report slot.}
 \item{number_of_newton_steps}{The number of Newton steps using the inverse
 Hessian to do after optimization. Not yet implemented.}
 
-\item{control}{A list of optimizer settings passed to \code{\link[stats:nlminb]{stats::nlminb()}}. The
-the default is a list of length three with \code{eval.max = 1000},
+\item{control}{A list of optimizer settings passed to \code{\link[stats:nlminb]{stats::nlminb()}}.
+The default is a list of length three with \code{eval.max = 10000},
 \code{iter.max = 10000}, and \code{trace = 0}.}
 
 \item{filename}{Character string giving a file name to save the fitted
-object as an RDS object. Defaults to 'fit.RDS', and a value of NULL
-indicates not to save it. If specified, it must end in .RDS. The file is
-written to folder given by \code{input[["path"]]}. Not yet implemented.}
+object as an RDS object. Defaults to NULL, which does not save it. If
+specified, it must end in .RDS. Not yet implemented.}
 
 \item{getReportCovariance}{A logical passed to \code{\link[RTMB:sdreport]{RTMB::sdreport()}}, with the
 default \code{FALSE}. Standard errors of all parameters and derived quantities
