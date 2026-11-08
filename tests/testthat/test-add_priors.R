@@ -82,6 +82,18 @@ test_that("`add_priors()` works with correct inputs", {
   #' @description Test that `add_priors()` does not change the target's own rows.
   expect_true(is.na(log_q_rows[["distribution_type"]]))
   prior_mean <- log(0.5)
+  #' @description Test that `add_priors()` reads the mean and sd of `normal()` by position, as R would.
+  expect_equal(
+    object = small_parameters |>
+      add_priors(
+        log_q ~ normal(log(0.5), 0.2),
+        module_name = "Fleet",
+        fleet = "survey1"
+      ) |>
+      dplyr::filter(target_label %in% "log_q") |>
+      dplyr::pull(value),
+    expected = prior_rows[["value"]]
+  )
   #' @description Test that `add_priors()` finds variables in the prior, such as its mean, where the formula was written.
   expect_equal(
     object = small_parameters |>
@@ -195,6 +207,25 @@ test_that("`add_priors()` adds the prior's negative log density to the objective
     object = jnll_with_log_sd_prior - jnll_without_prior,
     expected = -stats::dnorm(log_sd_start, log(0.6), 0.2, log = TRUE)
   )
+
+  # A likelihood profile holds the profiled parameter constant, so a prior
+  # on it must still be scored.
+  constant_log_q <- parameters |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      label == "log_q" & fleet %in% "survey1", "constant", estimation_type
+    ))
+  jnll_with_constant_log_q_prior <- constant_log_q |>
+    add_priors(
+      log_q ~ normal(mean = log(0.5), sd = 0.2),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    get_jnll()
+  #' @description Test that a prior on a constant value adds its negative log density to the joint negative log-likelihood, as a likelihood profile needs.
+  expect_equal(
+    object = jnll_with_constant_log_q_prior - get_jnll(constant_log_q),
+    expected = -stats::dnorm(log_q_start, log(0.5), 0.2, log = TRUE)
+  )
 })
 
 ## Edge handling ----
@@ -223,11 +254,18 @@ test_that("a hand-written prior mean for each value is matched by year", {
 
   #' @description Test that a prior with 1 mean per year but no timing errors, because the means could not be matched to their years.
   expect_error(
-    object = FIMS:::prior_densities(FIMS:::initialize_parameters(
+    object = FIMS:::initialize_parameters(
       dplyr::bind_rows(
         per_year_prior,
         dplyr::mutate(mean_rows, timing = NA_real_)
       )
+    ),
+    regexp = "more than 1 row for the same\\s+year and age"
+  )
+  #' @description Test that a prior with means for only 3 of the 6 years errors, because the means do not match the values.
+  expect_error(
+    object = FIMS:::prior_densities(FIMS:::initialize_parameters(
+      dplyr::bind_rows(per_year_prior, dplyr::filter(mean_rows, timing <= 3))
     )[["parameter_table"]]),
     regexp = "do not match"
   )
@@ -291,6 +329,26 @@ test_that("`add_priors()` returns correct error messages", {
       fleet = "survey1"
     ),
     regexp = "must\\s+be\\s+1\\s+number\\s+>\\s+0"
+  )
+  #' @description Test that `add_priors()` errors for a prior mean of NA.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_q ~ normal(mean = NA, sd = 0.2),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "prior\\s+mean\\s+must\\s+be\\s+1\\s+number"
+  )
+  #' @description Test that `add_priors()` errors for more than 1 prior mean.
+  expect_error(
+    object = add_priors(
+      small_parameters,
+      log_Fmort ~ normal(mean = rep(-1, 6), sd = 0.2),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ),
+    regexp = "prior\\s+mean\\s+must\\s+be\\s+1\\s+number"
   )
   #' @description Test that `add_priors()` errors for a prior with no sd.
   expect_error(

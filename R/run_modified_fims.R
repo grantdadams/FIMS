@@ -6,10 +6,10 @@
 #'
 #' @param new_value The new value to be changed in the FIMS model.
 #' @param parameter_name A string specifying the parameter name to modify.
-#' This should match a value in the `label` column of the parameters tibble.
+#' This should match a label shown by [get_estimates()].
 #' @param module_name The name of module associated with the parameter to be changed. Default is NULL.
 #' @param parameters The tibble of input parameters for a FIMS model
-#' @param data A dataframe of input data for FIMS model
+#' @param data A data frame of input data for FIMS model, or a FIMSFrame.
 #'
 #' @return FIMS model fitted to the new parameter input value
 #' @export
@@ -54,14 +54,13 @@ run_modified_pars_fims <- function(
     parameters_to_use <- parameters
   }
 
-  # find the parameter; `%in%` rather than `==` because `x == NULL` has length
-  # 0, which `filter()` rejects, so a NULL module_name matches every module
-  parameter_row <- parameters_to_use |>
-    dplyr::filter(
-      .data[["label"]] == .env$parameter_name,
-      is.null(.env$module_name) |
-        .data[["module_name"]] %in% .env$module_name
-    )
+  # Find the parameter by the label get_estimates() shows, so a prior's own
+  # rows are not matched. `%in%` rather than `==` because `x == NULL` has
+  # length 0, so a NULL module_name matches every module.
+  is_profiled <- flat_label(add_process_columns(parameters_to_use)) ==
+    parameter_name &
+    (is.null(module_name) | parameters_to_use[["module_name"]] %in% module_name)
+  parameter_row <- parameters_to_use[is_profiled, ]
   if (nrow(parameter_row) == 0) {
     cli::cli_abort(c(
       "Parameter with label {.val {parameter_name}}
@@ -82,16 +81,12 @@ run_modified_pars_fims <- function(
     ))
   }
 
-  # Update value
-  parameter_row[["value"]] <- new_value
-  parameter_row[["estimation_type"]] <- "constant"
-  parameters_mod <- parameters_to_use |>
-    dplyr::rows_update(
-      parameter_row,
-      by = c("module_name", "label")
-    )
+  # Update the value of the matched row only
+  parameters_mod <- parameters_to_use
+  parameters_mod[["value"]][is_profiled] <- new_value
+  parameters_mod[["estimation_type"]][is_profiled] <- "constant"
 
-  data_model <- FIMS::FIMSFrame(data)
+  data_model <- if (methods::is(data, "FIMSFrame")) data else FIMS::FIMSFrame(data)
 
   new_fit <- parameters_mod |>
     FIMS::initialize_fims(data = data_model) |>

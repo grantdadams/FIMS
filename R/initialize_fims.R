@@ -47,11 +47,15 @@ initialize_fims <- function(parameters, data) {
   years <- get_start_year(data):get_end_year(data)
   parameters <- add_year_timing(parameters, years)
   check_fleet_parameter_sizes(parameters, length(years))
+  check_recruitment_deviation_years(parameters, years)
   model_parameters <- initialize_parameters(parameters)
   parameter_table <- model_parameters[["parameter_table"]]
   model_data <- initialize_model_data(parameters, data)
   model_data[["split_parameters"]] <- model_parameters[["splits"]]
   model_data[["densities"]] <- initialize_densities(parameter_table)
+  check_random_effect_densities(
+    model_parameters[["random"]], model_data[["densities"]]
+  )
   model_data[["likelihoods"]] <- lapply(
     model_data[["likelihoods"]], link_estimated_family_parameters,
     parameter_names = unique(parameter_table[["name"]])
@@ -185,6 +189,75 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
   invisible(TRUE)
 }
 
+#' Check the years of the recruitment deviations
+#'
+#' Recruitment in the first year comes from the initial numbers at age, so
+#' log_devs (or log_r) has 1 value for each later year. The model reads the
+#' values in year order, so their years must be exactly the 2nd to the last
+#' model year. Otherwise a value would be reported for a year other than the
+#' one it drives.
+#'
+#' @inheritParams initialize_fims
+#' @param years The model years.
+#' @noRd
+check_recruitment_deviation_years <- function(parameters, years) {
+  for (label in c("log_devs", "log_r")) {
+    rows <- dplyr::filter(
+      parameters,
+      .data[["module_name"]] == "Recruitment",
+      .data[["label"]] == .env[["label"]]
+    )
+    if (nrow(rows) == 0) {
+      next
+    }
+    expected_years <- years[-1]
+    has_wrong_years <- nrow(rows) != length(expected_years) ||
+      (!all(is.na(rows[["timing"]])) &&
+        !all(sort(rows[["timing"]]) == expected_years))
+    if (has_wrong_years) {
+      cli::cli_abort(c(
+        "x" = "Recruitment {.val {label}} has {.val {nrow(rows)}} row{?s}
+        for the years {.val {rows[['timing']]}}.",
+        "i" = "{.val {label}} needs 1 row for each year from the 2nd model
+        year, {.val {expected_years[1]}} to
+        {.val {expected_years[length(expected_years)]}}. Recruitment in the
+        first year comes from the initial numbers at age.",
+        "i" = "Check the rows with {.code dplyr::filter(parameters,
+        module_name == \"Recruitment\", label == \"{label}\")}."
+      ))
+    }
+  }
+  invisible(TRUE)
+}
+
+#' Stop when a random effect has no process or prior
+#'
+#' The Laplace approximation integrates the random effects over their
+#' density. With no process or prior, that density is flat, and the
+#' integral adds a term that depends on the data's curvature alone.
+#'
+#' @param random The names of the random effects from initialize_parameters().
+#' @param densities The densities from initialize_densities().
+#' @noRd
+check_random_effect_densities <- function(random, densities) {
+  targets <- vapply(densities, `[[`, character(1), "target")
+  # A parameter with random and other values is split, and its random part
+  # is named "<name>|random".
+  no_density <- random[!sub("|random", "", random, fixed = TRUE) %in% targets]
+  if (length(no_density) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.val {no_density}} {?is a random effect/are random effects}
+      with no process or prior.",
+      "i" = "A random effect needs a density to integrate over. Add a
+      process with {.fn add_process}, or set {.var estimation_type} to
+      {.val fixed_effects} or {.val constant}.",
+      "i" = "Find the rows with {.code dplyr::filter(parameters,
+      estimation_type == \"random_effects\")}."
+    ))
+  }
+  invisible(TRUE)
+}
+
 #' Check the parameter tibble and data before the model is built
 #'
 #' @inheritParams initialize_fims
@@ -232,6 +305,32 @@ check_initialize_inputs <- function(parameters, data) {
     ))
   }
 
+  if (!is.numeric(parameters[["value"]])) {
+    cli::cli_abort(c(
+      "x" = "The {.var value} column of {.var parameters} is
+      {.cls {class(parameters[['value']])}}.",
+      "i" = "Parameter values must be numbers.",
+      "i" = "Convert it with {.code dplyr::mutate(parameters, value =
+      as.numeric(value))} and check the rows that become {.code NA}."
+    ))
+  }
+  missing_values <- parameters |>
+    dplyr::filter(
+      is.na(.data[["value"]]),
+      .data[["estimation_type"]] %in% c("fixed_effects", "random_effects")
+    )
+  if (nrow(missing_values) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.val {nrow(missing_values)}} estimated row{?s} of
+      {.var parameters} {?has/have} no value:
+      {.val {unique(paste(missing_values[['module_name']],
+      missing_values[['label']]))}}.",
+      "i" = "Estimated values need a starting value.",
+      "i" = "Find the rows with {.code dplyr::filter(parameters,
+      is.na(value), estimation_type != \"constant\")}."
+    ))
+  }
+
   fleets <- stats::na.omit(unique(parameters[["fleet"]]))
   if (length(fleets) == 0) {
     cli::cli_abort(c(
@@ -239,6 +338,19 @@ check_initialize_inputs <- function(parameters, data) {
       "i" = "The {.var fleet} column is empty or all {.code NA}.",
       "i" = "Create {.var parameters} with {.fn setup_default_parameters},
       which fills in {.var fleet} for each fleet."
+    ))
+  }
+  # Only fleets in the parameter tibble are in the model, so data for any
+  # other fleet would be left out of the likelihood.
+  data_fleets_missing <- setdiff(get_fleets(data), fleets)
+  if (length(data_fleets_missing) > 0) {
+    cli::cli_abort(c(
+      "x" = "The data have fleet{?s} {.val {data_fleets_missing}}, which
+      {?is/are} not in {.var parameters}.",
+      "i" = "Each fleet in the data needs its rows in the parameter tibble.
+      The fleets in {.var parameters} are {.val {fleets}}.",
+      "i" = "Check the names with {.code get_fleets(data)} and
+      {.code unique(parameters[[\"fleet\"]])}."
     ))
   }
 

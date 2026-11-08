@@ -16,13 +16,13 @@ run_modified_pars_fims(
 \item{new_value}{The new value to be changed in the FIMS model.}
 
 \item{parameter_name}{A string specifying the parameter name to modify.
-This should match a value in the \code{label} column of the parameters tibble.}
+This should match a label shown by \code{\link[=get_estimates]{get_estimates()}}.}
 
 \item{module_name}{The name of module associated with the parameter to be changed. Default is NULL.}
 
 \item{parameters}{The tibble of input parameters for a FIMS model}
 
-\item{data}{A dataframe of input data for FIMS model}
+\item{data}{A data frame of input data for FIMS model, or a FIMSFrame.}
 }
 \value{
 FIMS model fitted to the new parameter input value
