@@ -265,10 +265,17 @@ initialize_likelihoods <- function(data, fleet, fleet_data) {
       conditional_age_at_length =
         fleet_data[["conditional_age_at_length"]][["observed"]]
     )
-    uncertainty <- fleet_rows |>
-      dplyr::filter(.data[["type"]] == data_type) |>
-      dplyr::pull(.data[["uncertainty"]]) |>
-      parse_data_distribution()
+    data_type_rows <- dplyr::filter(fleet_rows, .data[["type"]] == data_type)
+    if (data_type == "length_comp") {
+      # The same rows, in the same order, as the length compositions.
+      data_type_rows <- data_type_rows |>
+        dplyr::filter(.data[["length"]] %in% fleet_data[["length_bins"]]) |>
+        dplyr::arrange(
+          .data[["timing"]],
+          match(.data[["length"]], fleet_data[["length_bins"]])
+        )
+    }
+    uncertainty <- parse_data_distribution(data_type_rows[["uncertainty"]])
     likelihood_family <- unique(stats::na.omit(uncertainty[["family"]]))
     if (is.null(likelihood_families[[likelihood_family]])) {
       cli::cli_abort(c(
@@ -288,8 +295,36 @@ initialize_likelihoods <- function(data, fleet, fleet_data) {
       link = unique(stats::na.omit(uncertainty[["link"]])),
       observed = observed,
       # The family's own parameters, by the names its log density uses.
-      parameters = likelihood_families[[likelihood_family]][["parameters"]](uncertainty)
+      parameters = shape_like_observed(
+        likelihood_families[[likelihood_family]][["parameters"]](uncertainty),
+        observed
+      )
     )
+  })
+}
+
+#' Shape a likelihood's parameters like its observations
+#'
+#' Compositions are a years-by-ages (or bins) matrix, while a parameter with
+#' 1 value per data row, such as a normal sd for each cell, comes in data row
+#' order: by year, then age or bin. Each such parameter is made a matrix
+#' filled by row, so its values pair with their own cells.
+#'
+#' @param parameters A named list of the family's parameters.
+#' @param observed The observations, a vector or a matrix.
+#' @return The parameters, with each 1-per-observation parameter shaped like
+#'   `observed`.
+#' @noRd
+shape_like_observed <- function(parameters, observed) {
+  if (!is.matrix(observed)) {
+    return(parameters)
+  }
+  lapply(parameters, function(parameter) {
+    if (length(parameter) == length(observed)) {
+      matrix(parameter, nrow(observed), ncol(observed), byrow = TRUE)
+    } else {
+      parameter
+    }
   })
 }
 

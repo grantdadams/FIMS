@@ -61,6 +61,11 @@ normal_lpdf <- function(observed, expected, log_sd) {
     standard_deviation[is_observed],
     log = TRUE
   )
+  # Compositions keep their years-by-ages (or bins) shape, so each cell's log
+  # density stays with its year in the report.
+  if (is.matrix(observed)) {
+    log_density <- RTMB::matrix(log_density, nrow(observed), ncol(observed))
+  }
   log_density
 }
 
@@ -89,6 +94,11 @@ lognormal_lpdf <- function(observed, log_expected, log_sd) {
     standard_deviation[is_observed],
     log = TRUE
   )
+  # Compositions keep their years-by-ages (or bins) shape, so each cell's log
+  # density stays with its year in the report.
+  if (is.matrix(observed)) {
+    log_density <- RTMB::matrix(log_density, nrow(observed), ncol(observed))
+  }
   log_density
 }
 
