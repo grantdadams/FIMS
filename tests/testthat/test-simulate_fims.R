@@ -190,6 +190,105 @@ test_that("`simulate_fims()` draws normal compositions cell by cell", {
   )
 })
 
+test_that("`redraw_random_effects()` redraws a process with constant values from its density", {
+  # `data_10_years` is in helper-data-10-years.R.
+  process_sd <- 0.4
+  rho <- 0.5
+  target <- "Fleet.survey1.log_q"
+  # 400 redraws of a process on survey log_q with years 5 (middle) and 10
+  # (end) constant: 1 row per draw and 1 column per year, and the values
+  # they were drawn from.
+  redraw_log_q <- function(formula) {
+    fit <- setup_default_parameters(data_10_years) |>
+      add_process(
+        formula,
+        module_name = "Fleet",
+        fleet = "survey1",
+        sd = list(value = process_sd, estimation_type = "constant"),
+        rho = list(value = rho, estimation_type = "constant")
+      ) |>
+      dplyr::mutate(estimation_type = dplyr::if_else(
+        label == "log_q" & fleet %in% "survey1" & timing %in% c(5, 10),
+        "constant", estimation_type
+      )) |>
+      initialize_fims(data = data_10_years) |>
+      fit_fims(optimize = FALSE)
+    input <- get_input(fit)
+    obj <- get_obj(fit)
+    fitted <- obj[["env"]][["parList"]](par = obj[["env"]][["last.par.best"]])
+    splits <- input[["model_data"]][["split_parameters"]]
+    draws <- withr::with_seed(1, t(vapply(seq_len(400), function(draw) {
+      FIMS:::redraw_random_effects(fitted, input) |>
+        FIMS:::assemble_split_parameters(splits) |>
+        purrr::pluck(target)
+    }, numeric(10))))
+    list(
+      draws = draws,
+      fitted = FIMS:::assemble_split_parameters(fitted, splits)[[target]]
+    )
+  }
+
+  random_walk <- redraw_log_q(log_q ~ rw(1 | year))
+  unchanged_years <- c(1, 5, 10)
+  #' @description Test that a redrawn random walk keeps the constant years and its first year, a fixed effect, at their values.
+  expect_equal(
+    object = unname(random_walk[["draws"]][, unchanged_years]),
+    expected = matrix(
+      random_walk[["fitted"]][unchanged_years], 400, 3,
+      byrow = TRUE
+    )
+  )
+  # Steps of 1 year between estimated years, and the step from year 4 to
+  # year 6 across the constant year 5.
+  one_year_steps <- cbind(
+    random_walk[["draws"]][, 2:4] - random_walk[["draws"]][, 1:3],
+    random_walk[["draws"]][, 7:9] - random_walk[["draws"]][, 6:8]
+  )
+  gap_steps <- random_walk[["draws"]][, 6] - random_walk[["draws"]][, 4]
+  #' @description Test that a redrawn random walk has steps of 1 year with a mean near 0.
+  expect_lt(
+    object = abs(mean(one_year_steps)),
+    expected = 0.05
+  )
+  #' @description Test that a redrawn random walk has steps of 1 year with sd within 10% of the process sd.
+  expect_lt(
+    object = abs(stats::sd(one_year_steps) / process_sd - 1),
+    expected = 0.1
+  )
+  #' @description Test that a redrawn random walk steps across a constant year with sd within 15% of the process sd times sqrt(2).
+  expect_lt(
+    object = abs(stats::sd(gap_steps) / (process_sd * sqrt(2)) - 1),
+    expected = 0.15
+  )
+
+  ar1 <- redraw_log_q(log_q ~ 1 + ar1(1 | year))
+  #' @description Test that a redrawn AR1 process keeps the constant years at their values.
+  expect_equal(
+    object = unname(ar1[["draws"]][, c(5, 10)]),
+    expected = matrix(ar1[["fitted"]][c(5, 10)], 400, 2, byrow = TRUE)
+  )
+  estimated_draws <- ar1[["draws"]][, c(1:4, 6:9)]
+  #' @description Test that a redrawn AR1 process has the stationary sd in each estimated year, within 10%.
+  expect_lt(
+    object = abs(
+      mean(apply(estimated_draws, 2, stats::sd)) /
+        (process_sd / sqrt(1 - rho^2)) - 1
+    ),
+    expected = 0.1
+  )
+  #' @description Test that a redrawn AR1 process has a correlation near rho between years 3 and 4.
+  expect_lt(
+    object = abs(stats::cor(ar1[["draws"]][, 3], ar1[["draws"]][, 4]) - rho),
+    expected = 0.12
+  )
+  #' @description Test that a redrawn AR1 process has a correlation near rho^2 between years 4 and 6, across the constant year 5.
+  expect_lt(
+    object = abs(stats::cor(ar1[["draws"]][, 4], ar1[["draws"]][, 6]) - rho^2),
+    expected = 0.12
+  )
+  clear()
+})
+
 ## Error handling ----
 test_that("`simulate_fims()` returns correct error messages", {
   # A log_r process varies around the stock-recruit curve, which depends on
