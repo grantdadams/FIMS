@@ -23,7 +23,7 @@ namespace fims_popdy {
  *
  * Assumptions:
  * - single sex (n_sexes = 1)
- * - no time variation (n_years = 1)
+ * - no time variation (every year holds the same values)
  * - fixed mean-growth parameters
  * - optional covariance-based delta-method variability
  */
@@ -151,7 +151,9 @@ class GrowthModel : public GrowthModelBase<Type> {
                             : Type(0.0);
     }
 
-    // Fill mean length-at-age, sd, and mean weight-at-age.
+    // Fill mean length-at-age, sd, and mean weight-at-age. Every year gets the
+    // same values. Set varies_by_year to true if that changes.
+    products_.varies_by_year = false;
     for (std::size_t y = 0; y < n_years_; ++y) {
       for (std::size_t a = 0; a < n_ages_; ++a) {
         for (std::size_t s = 0; s < n_sexes_; ++s) {

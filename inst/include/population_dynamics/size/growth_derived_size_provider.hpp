@@ -111,7 +111,15 @@ class GrowthDerivedSizeProvider : public SizeDistributionProviderBase<Type> {
     std::size_t warning_year_index = 0;
     std::size_t warning_age_index = 0;
 
-    for (std::size_t year_index = 0; year_index < n_years_; ++year_index) {
+    // When growth is the same in every year, build the first year and copy it
+    // to the others. Building every year puts n_years copies of the same work
+    // on the AD tape, and TMB merges few of them, so every objective and
+    // gradient evaluation would repeat that work.
+    const std::size_t n_years_to_build =
+        growth_products.varies_by_year ? n_years_ : 1;
+
+    for (std::size_t year_index = 0; year_index < n_years_to_build;
+         ++year_index) {
       for (std::size_t age_index = 0; age_index < n_ages_; ++age_index) {
         fims::Vector<Type> prob_row(population_size_grid_->n_bins);
         Type row_sum = static_cast<Type>(0.0);
@@ -168,7 +176,8 @@ class GrowthDerivedSizeProvider : public SizeDistributionProviderBase<Type> {
     }
 
     mean_weight_at_age_.resize(n_years_ * n_ages_);
-    for (std::size_t year_index = 0; year_index < n_years_; ++year_index) {
+    for (std::size_t year_index = 0; year_index < n_years_to_build;
+         ++year_index) {
       for (std::size_t age_index = 0; age_index < n_ages_; ++age_index) {
         Type mean_weight = static_cast<Type>(0.0);
         for (std::size_t size_bin_index = 0;
@@ -178,6 +187,21 @@ class GrowthDerivedSizeProvider : public SizeDistributionProviderBase<Type> {
               weight_at_bin[size_bin_index];
         }
         mean_weight_at_age_[year_index * n_ages_ + age_index] = mean_weight;
+      }
+    }
+
+    // Copies of the first year are the same AD variables, so they add nothing
+    // to the tape.
+    for (std::size_t year_index = n_years_to_build; year_index < n_years_;
+         ++year_index) {
+      for (std::size_t age_index = 0; age_index < n_ages_; ++age_index) {
+        for (std::size_t size_bin_index = 0;
+             size_bin_index < population_size_grid_->n_bins; ++size_bin_index) {
+          size_products_.ProbSize(year_index, age_index, size_bin_index) =
+              size_products_.ProbSize(0, age_index, size_bin_index);
+        }
+        mean_weight_at_age_[year_index * n_ages_ + age_index] =
+            mean_weight_at_age_[age_index];
       }
     }
 

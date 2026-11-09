@@ -28,6 +28,8 @@ struct GrowthProducts {
   std::size_t n_ages = 0;  /**< number of ages represented */
   std::size_t n_sexes = 0; /**< number of sexes represented */
 
+  bool varies_by_year = true; /**< false if all years hold the same values */
+
   std::vector<Type> mean_LAA; /**< mean length-at-age values */
   std::vector<Type> sd_LAA;   /**< standard deviation of length-at-age values */
   std::vector<Type> mean_WAA; /**< mean weight-at-age values */
