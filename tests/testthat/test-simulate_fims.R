@@ -289,6 +289,58 @@ test_that("`redraw_random_effects()` redraws a process with constant values from
   clear()
 })
 
+test_that("`redraw_random_effects()` redraws a random walk by age across constant ages", {
+  # `data_10_years` is in helper-data-10-years.R.
+  # AgeSpecific survey selectivity with a constant age in the middle (6) and
+  # at the end (12, the default).
+  age_specific <- setup_default_Selectivity(
+    data = data_10_years,
+    fleet = "survey1",
+    module_type = "AgeSpecific"
+  ) |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      age == 6, "constant", estimation_type
+    ))
+  process_sd <- 0.4
+  target <- "Selectivity.survey1.logit_sel_at_age"
+  fit <- setup_default_parameters(data_10_years) |>
+    dplyr::filter(!(module_name == "Selectivity" & fleet %in% "survey1")) |>
+    dplyr::bind_rows(age_specific) |>
+    add_process(
+      logit_sel_at_age ~ rw(1 | age),
+      module_name = "Selectivity",
+      fleet = "survey1",
+      sd = list(value = process_sd, estimation_type = "constant")
+    ) |>
+    initialize_fims(data = data_10_years) |>
+    fit_fims(optimize = FALSE)
+  input <- get_input(fit)
+  obj <- get_obj(fit)
+  fitted <- obj[["env"]][["parList"]](par = obj[["env"]][["last.par.best"]])
+  splits <- input[["model_data"]][["split_parameters"]]
+  # 400 redraws, 1 row per draw and 1 column per age.
+  draws <- withr::with_seed(1, t(vapply(seq_len(400), function(draw) {
+    FIMS:::redraw_random_effects(fitted, input) |>
+      FIMS:::assemble_split_parameters(splits) |>
+      purrr::pluck(target)
+  }, numeric(nrow(age_specific)))))
+  fitted_values <- FIMS:::assemble_split_parameters(fitted, splits)[[target]]
+  unchanged_ages <- c(1, 6, 12)
+  #' @description Test that a redrawn random walk by age keeps the constant ages and its first age, a fixed effect, at their values.
+  expect_equal(
+    object = unname(draws[, unchanged_ages]),
+    expected = matrix(fitted_values[unchanged_ages], 400, 3, byrow = TRUE)
+  )
+  # The step from age 5 to age 7 across the constant age 6.
+  gap_steps <- draws[, 7] - draws[, 5]
+  #' @description Test that a redrawn random walk by age steps across a constant age with sd within 15% of the process sd times sqrt(2).
+  expect_lt(
+    object = abs(stats::sd(gap_steps) / (process_sd * sqrt(2)) - 1),
+    expected = 0.15
+  )
+  clear()
+})
+
 ## Error handling ----
 test_that("`simulate_fims()` returns correct error messages", {
   # A log_r process varies around the stock-recruit curve, which depends on
