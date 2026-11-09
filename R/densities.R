@@ -228,7 +228,7 @@ process_densities <- function(parameter_table) {
 #' @return The steps, or NULL when every step is 1.
 #' @noRd
 process_steps <- function(target_rows, is_estimated, target) {
-  index_columns <- c("timing", "age")
+  index_columns <- unname(process_index_columns)
   varies <- vapply(
     index_columns,
     function(column) dplyr::n_distinct(target_rows[[column]], na.rm = TRUE) > 1,
