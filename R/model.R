@@ -72,9 +72,10 @@ density_inputs <- function(density_entry, parameters, population) {
     parameters[[name]]
   })
   # A prior scores the values in `positions` (prior_densities()): values
-  # that share 1 estimate once, and each constant value. A mean or sd with 1
-  # value per target value is subset the same way, so each stays with its
-  # value. A process has no positions and scores every value.
+  # that share 1 estimate once, and each constant value. A process scores
+  # its estimated values (process_densities()). A mean or sd with 1 value per
+  # target value is subset the same way, so each stays with its value. A
+  # density with no positions scores every value.
   if (utils::hasName(density_entry, "positions")) {
     positions <- density_entry[["positions"]]
     if (length(density_mean) == length(x)) {
@@ -85,7 +86,16 @@ density_inputs <- function(density_entry, parameters, population) {
     })
     x <- x[positions]
   }
-  list(x = x, mean = density_mean, hyperparameters = hyperparameters)
+  list(
+    x = x,
+    mean = density_mean,
+    hyperparameters = hyperparameters,
+    # process_densities() gives steps only to an AR1 process or random walk
+    # whose steps are not all 1.
+    steps = if (utils::hasName(density_entry, "steps")) {
+      density_entry[["steps"]]
+    }
+  )
 }
 
 #' Negative log-likelihood: priors, then processes (random effects), then
@@ -110,7 +120,10 @@ model_likelihood <- function(parameters, model_data, model) {
     inputs <- density_inputs(density_entry, parameters, model[["population"]])
     log_density <- do.call(
       process_structures[[density_entry[["structure"]]]][["lpdf"]],
-      c(list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]])
+      c(
+        list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]],
+        list(steps = inputs[["steps"]])
+      )
     )
     nll_components <- c(nll_components, -log_density)
   }
