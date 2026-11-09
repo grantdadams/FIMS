@@ -19,7 +19,9 @@ initialize_densities <- function(parameter_table) {
 #' (add_priors()). The target's own rows are not changed, so a prior can be
 #' put on any parameter, including a process's own sd. A prior on a constant
 #' value is still scored, so a likelihood profile, which holds the profiled
-#' parameter constant, includes the prior in its objective.
+#' parameter constant, includes the prior in its objective. A process leaves
+#' constant values out instead, because a constant is not a process value
+#' (rule 9 in ?add_process, process_densities()).
 #' @noRd
 prior_densities <- function(parameter_table) {
   prior_rows <- dplyr::filter(
