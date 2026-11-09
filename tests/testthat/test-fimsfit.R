@@ -504,6 +504,72 @@ test_that("`fit_fims()` restores the user's tape settings", {
   )
 })
 
+test_that("`fit_fims()` fits a random walk by age on age-specific selectivity", {
+  # Default AgeSpecific survey selectivity, whose constant oldest age sets
+  # the scale. The process sd is held constant (see ?add_process).
+  age_specific_parameters <- default_parameters |>
+    dplyr::filter(!(module_name == "Selectivity" & fleet %in% "survey1")) |>
+    dplyr::bind_rows(
+      setup_default_Selectivity(
+        data = data_10_years,
+        fleet = "survey1",
+        module_type = "AgeSpecific"
+      )
+    )
+  get_selectivity <- function(fit) {
+    get_estimates(fit) |>
+      dplyr::filter(label == "logit_sel_at_age")
+  }
+  # Squared differences between the logits of neighboring estimated ages.
+  roughness <- function(selectivity) {
+    estimated <- selectivity[["estimated"]][
+      selectivity[["estimation_type"]] != "constant"
+    ]
+    sum(diff(estimated)^2)
+  }
+  no_process_fit <- age_specific_parameters |>
+    initialize_fims(data = data_10_years) |>
+    fit_fims() |>
+    suppressWarnings()
+  no_process_roughness <- roughness(get_selectivity(no_process_fit))
+  for (estimation_type in c("fixed_effects", "random_effects")) {
+    fit <- age_specific_parameters |>
+      add_process(
+        logit_sel_at_age ~ rw(1 | age),
+        module_name = "Selectivity",
+        fleet = "survey1",
+        estimation_type = estimation_type,
+        sd = list(value = 0.5, estimation_type = "constant")
+      ) |>
+      initialize_fims(data = data_10_years) |>
+      fit_fims()
+    selectivity <- get_selectivity(fit)
+    estimated_ages <- selectivity[["estimation_type"]] != "constant"
+    #' @description Test that `fit_fims()` converges with a penalized or integrated random walk by age on age-specific selectivity.
+    expect_equal(
+      object = get_opt(fit)[["convergence"]],
+      expected = 0L
+    )
+    #' @description Test that a random walk by age gives finite estimates for every age.
+    expect_true(all(is.finite(selectivity[["estimated"]])))
+    #' @description Test that a random walk by age gives finite standard errors for every estimated age.
+    expect_true(all(is.finite(selectivity[["uncertainty"]][estimated_ages])))
+    #' @description Test that a random walk by age gives a smoother selectivity curve than the same model with no process.
+    expect_lt(
+      object = roughness(selectivity),
+      expected = no_process_roughness
+    )
+    # data_big was simulated with logistic survey selectivity with its
+    # inflection point at age 1.5.
+    #' @description Test that a random walk by age estimates the lowest selectivity at age 1, as in the logistic selectivity used to simulate `data_big`.
+    expect_equal(
+      object = which.min(selectivity[["estimated"]]),
+      expected = 1L
+    )
+  }
+  clear()
+})
+
 ## Edge handling ----
 test_that("`fit_fims()` returns correct outputs for edge cases", {
   random_effects_only_fit <- default_parameters |>
