@@ -2,7 +2,7 @@
 % Please edit documentation in R/processes.R
 \name{add_process}
 \alias{add_process}
-\title{Add a time-varying structure or process to 1 parameter}
+\title{Add blocks or a process to 1 parameter}
 \usage{
 add_process(
   parameters,
@@ -24,7 +24,8 @@ forms.}
 \item{module_name, fleet}{Which module the target belongs to.}
 
 \item{estimation_type, estimation_status}{Estimation type of the target's
-per-year rows when there is a random term.}
+rows when there is a random term, or of its non-constant rows when some
+are constant.}
 
 \item{sd, rho}{Starting value and estimation type of the process SD (on the
 natural scale, > 0) and AR1 correlation (between -1 and 1).}
@@ -42,16 +43,27 @@ Rules:
 \item Formula variables are the target's index columns: \code{year} (from
 \code{timing}) and \code{age}.
 \item With no random term, the fixed term says which rows share 1 estimate.
-With a random term, it defines the \code{expected_mean} the random effects
-vary around, and each row is its own random effect.
-\item \code{estimation_type} of the per-year rows: "random_effects" (integrated,
-the default with a random term) or "fixed_effects" (penalized).
+With a random term, it defines the \code{expected_mean} the process values
+vary around, and each non-constant row is its own process value.
+\item \code{estimation_type} of the target's rows, or of its non-constant rows
+when some are constant: "random_effects" (integrated, the default with
+a random term) or "fixed_effects" (penalized).
 \item \code{sd} and \code{rho} are lists with \code{value} and \code{estimation_type}.
-\item For \code{rw()}, the first year's row is a fixed effect and there is no
-\code{expected_mean}.
+\item For \code{rw()}, the first estimated row (usually the first year) is a fixed
+effect and there is no \code{expected_mean}.
 \item Rows that share 1 estimate start from the mean of their values. With a
-random term, each \code{expected_mean} starts from the mean of its block,
-and the random effects keep their own starting values.
+random term, each \code{expected_mean} starts from the mean of the estimated
+values in its block, and the process values keep their own starting
+values.
+\item A constant row is not part of the process. The process keeps it
+constant and leaves it out of its density, whatever its
+\code{distribution_type}, e.g., \code{log_Fmort} at -200 in a year with no catch.
+An AR1 process or random walk steps over it. Across k years the random
+walk sd is sd * sqrt(k), and the AR1 correlation is rho^k with the
+conditional sd sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
+difference of the years, so years that are not consecutive also count
+as k steps. Blocks with no random term cannot mix constant and
+estimated rows.
 }
 }
 \details{
