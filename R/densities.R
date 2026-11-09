@@ -106,6 +106,15 @@ prior_densities <- function(parameter_table) {
 #' The mean of the density is the expected_mean parameter if there is one.
 #' Otherwise it comes from the recruitment process table for log_devs and log_r
 #' (recruitment_process_means), or is 0 (deviations, random walks).
+#'
+#' Constant values of the target are left out of the density, whatever their
+#' `distribution_type`. A constant sets a scale or marks a year with no catch
+#' (log_Fmort at -200). It is neither data nor a process value, so it is not
+#' scored, and the density is that of the process seen only at the estimated
+#' values. `positions` then index the estimated values, and an AR1 process or
+#' random walk steps across the constant ones (`steps`, process_steps()).
+#' Positions are left out when every value is estimated, and steps when
+#' every step is 1, so those processes keep the plain form of their density.
 #' @noRd
 process_densities <- function(parameter_table) {
   hyperparameter_labels <- c("expected_mean", "log_sd", "logit_rho")
@@ -118,7 +127,10 @@ process_densities <- function(parameter_table) {
   for (target in unique(targets[["name"]])) {
     rows <- dplyr::filter(targets, .data[["name"]] == target)
     label <- rows[["label"]][1]
-    check_estimated_process(rows, target)
+    # Every row of the target, whatever its distribution_type, so every
+    # constant value is left out.
+    target_rows <- dplyr::filter(parameter_table, .data[["name"]] == target)
+    check_estimated_process(target_rows, target)
     distribution <- unique(stats::na.omit(rows[["distribution"]]))
     if (length(distribution) > 0 && !distribution %in% "Dnorm") {
       cli::cli_abort(c(
@@ -177,7 +189,7 @@ process_densities <- function(parameter_table) {
     } else {
       list(kind = "zero")
     }
-    densities[[length(densities) + 1]] <- list(
+    density_entry <- list(
       distribution_type = "process",
       target = target,
       structure = process_structure,
@@ -186,8 +198,62 @@ process_densities <- function(parameter_table) {
         c("log_sd", "logit_rho"), names(hyperparameter_name)
       )])
     )
+    is_estimated <- target_rows[["estimation_type"]] != "constant"
+    if (!all(is_estimated)) {
+      position <- value_position(target_rows, shape_parameter(target_rows))
+      density_entry[["positions"]] <- sort(position[is_estimated])
+    }
+    if (process_structure %in% c("ar1", "rw")) {
+      density_entry[["steps"]] <- process_steps(
+        target_rows, is_estimated, target
+      )
+    }
+    densities[[length(densities) + 1]] <- density_entry
   }
   densities
+}
+
+#' Steps from each estimated value of an AR1 process or random walk to the
+#' next
+#'
+#' The differences of their years or ages, from the 1 index column that
+#' varies. A gap of constant values, or years 2 apart, counts as more than 1
+#' step.
+#'
+#' @param target_rows Every row of the target, sorted by year and age.
+#' @param is_estimated Which rows are not constant.
+#' @param target The target's name, for messages.
+#' @return The steps, or NULL when every step is 1.
+#' @noRd
+process_steps <- function(target_rows, is_estimated, target) {
+  index_columns <- c("timing", "age")
+  varies <- vapply(
+    index_columns,
+    function(column) dplyr::n_distinct(target_rows[[column]], na.rm = TRUE) > 1,
+    logical(1)
+  )
+  # Values by year and age have no single order to step along.
+  if (sum(varies) > 1) {
+    cli::cli_abort(c(
+      "x" = "The AR1 process or random walk on {.val {target}} has values
+      that vary by year and by age.",
+      "i" = "An AR1 process or random walk varies by year or by age, not
+      both. A 2D process is not implemented.",
+      "i" = "Count the rows by year and age with
+      {.code dplyr::filter(parameters, label ==
+      \"{target_rows[['original_label']][1]}\") |> dplyr::count(timing,
+      age)}."
+    ))
+  }
+  if (!any(varies)) {
+    return(NULL)
+  }
+  index <- target_rows[[index_columns[varies]]]
+  steps <- diff(index[is_estimated])
+  if (all(steps == 1)) {
+    return(NULL)
+  }
+  steps
 }
 
 #' Stop when a process has no estimated values

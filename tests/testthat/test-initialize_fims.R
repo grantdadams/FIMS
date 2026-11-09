@@ -320,7 +320,7 @@ test_that("`initialize_fims()` works with edge cases", {
     parameters = default_parameters,
     data = data
   )
-  #' @description Test that `initialize_fims()` warns when some process values are constant but still included in the process distribution.
+  #' @description Test that `initialize_fims()` warns when some process values are constant, because the process leaves them out.
   expect_warning(
     init_parm_multiple_types <- initialize_fims(
       parameters = parameters_multiple_types,

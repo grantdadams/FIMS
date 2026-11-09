@@ -181,11 +181,18 @@ multinomial_draw <- function(observed, prob) {
 
 # Process and prior log densities --------------------------------------------
 #
-# `values` is a parameter that varies by year (a vector, or a years-by-ages
-# matrix for iid), and `expected_mean` is its mean with the same shape (or
-# 0). The SD is the year-to-year (innovation) SD in every case. Correlation
-# rho is estimated as logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So
-# rho is between -1 and 1, and logit_rho = log(3) gives rho = 0.5.
+# `values` is a parameter that varies by year (a vector), or a
+# years-by-ages matrix for iid. `expected_mean` is its mean with the same
+# shape (or 0). AR1 and random walks go from each value to the next in the
+# vector's order, which is year order (initialize_parameters()).
+# For iid the SD is the SD around the mean. For AR1 and random walks it is
+# the SD of 1 step (the innovation SD). Correlation rho is estimated as
+# logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So rho is between -1
+# and 1, and logit_rho = log(3) gives rho = 0.5.
+#
+# `steps` is the number of steps from each value to the next, more than 1
+# across constant values (process_densities(), process_steps()). NULL means
+# 1 step each and keeps the plain form of each density.
 
 #' Independent normal deviations around the mean (iid)
 #'
@@ -195,8 +202,9 @@ multinomial_draw <- function(observed, prob) {
 #' @param values The process values.
 #' @param expected_mean Their mean, the same shape or 1 value.
 #' @param log_sd Log of the SD.
+#' @param steps Not used. Each value is independent of the others.
 #' @noRd
-iid_process_lpdf <- function(values, expected_mean, log_sd) {
+iid_process_lpdf <- function(values, expected_mean, log_sd, steps = NULL) {
   expected_mean <- rep_len(as.vector(expected_mean), length(values))
   standard_deviation <- rep_len(exp(log_sd), length(values))
   sum(RTMB::dnorm(values, expected_mean, standard_deviation, log = TRUE))
@@ -205,14 +213,19 @@ iid_process_lpdf <- function(values, expected_mean, log_sd) {
 #' First-order autoregressive process around the mean (AR1)
 #'
 #' x_t - m_t = rho (x_(t-1) - m_(t-1)) + e_t, e_t ~ Normal(0, sd). The first
-#' year comes from the stationary distribution, x_1 ~ Normal(m_1,
-#' sd / sqrt(1 - rho^2)). With rho = 0 this is the iid process.
+#' value comes from the stationary distribution, x_1 ~ Normal(m_1,
+#' sd / sqrt(1 - rho^2)). With rho = 0 this is the iid process. Across k
+#' steps the correlation is rho^k and the SD is
+#' sd * sqrt((1 - rho^(2k)) / (1 - rho^2)), so the density of values with
+#' gaps is the AR1 density of those values alone.
 #'
 #' @inheritParams iid_process_lpdf
 #' @param logit_rho The correlation on the logit scale.
 #'   rho = inv_logit(-1, 1, logit_rho) is between -1 and 1.
+#' @param steps Steps from each value to the next, or NULL for 1 each.
 #' @noRd
-ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho) {
+ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho,
+                             steps = NULL) {
   if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
       "x" = "An AR1 process is for parameters that vary by year only, but
@@ -226,27 +239,35 @@ ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho) {
   deviation <- values - rep_len(as.vector(expected_mean), length(values))
   standard_deviation <- exp(log_sd)
   rho <- inv_logit(-1, 1, logit_rho)
-  n_years <- length(deviation)
+  n_values <- length(deviation)
+  step_rho <- rho
+  step_sd <- standard_deviation
+  if (!is.null(steps)) {
+    step_rho <- rho^steps
+    step_sd <- standard_deviation * sqrt((1 - rho^(2 * steps)) / (1 - rho^2))
+  }
   RTMB::dnorm(
     deviation[1], 0, standard_deviation / sqrt(1 - rho^2),
     log = TRUE
   ) +
     sum(RTMB::dnorm(
-      deviation[-1], rho * deviation[-n_years], standard_deviation,
+      deviation[-1], step_rho * deviation[-n_values], step_sd,
       log = TRUE
     ))
 }
 
 #' Random walk
 #'
-#' x_t = x_(t-1) + e_t, e_t ~ Normal(0, sd). A random walk has no mean, so
-#' `expected_mean` is ignored. It is an argument only so every process
-#' density is called the same way. The first year has no density term
-#' because it is a fixed effect (add_process() makes it one).
+#' x_t = x_(t-1) + e_t, e_t ~ Normal(0, sd). Across k steps the SD is
+#' sd * sqrt(k). A random walk has no mean, so `expected_mean` is ignored. It
+#' is an argument only so every process density is called the same way. The
+#' first value has no density term because it is a fixed effect
+#' (add_process() makes it one).
 #'
-#' @inheritParams iid_process_lpdf
+#' @inheritParams ar1_process_lpdf
 #' @noRd
-random_walk_process_lpdf <- function(values, expected_mean, log_sd) {
+random_walk_process_lpdf <- function(values, expected_mean, log_sd,
+                                     steps = NULL) {
   if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
       "x" = "A random walk is for parameters that vary by year only, but
@@ -257,14 +278,18 @@ random_walk_process_lpdf <- function(values, expected_mean, log_sd) {
       re_structure == \"rw\")}."
     ))
   }
-  n_years <- length(values)
-  sum(RTMB::dnorm(values[-1], values[-n_years], exp(log_sd), log = TRUE))
+  n_values <- length(values)
+  step_sd <- exp(log_sd)
+  if (!is.null(steps)) {
+    step_sd <- step_sd * sqrt(steps)
+  }
+  sum(RTMB::dnorm(values[-1], values[-n_values], step_sd, log = TRUE))
 }
 
 # Draws from the process densities, for simulation. Each takes the arguments
 # of its log density and returns new values the same shape as `values`.
 
-iid_process_draw <- function(values, expected_mean, log_sd) {
+iid_process_draw <- function(values, expected_mean, log_sd, steps = NULL) {
   values[] <- stats::rnorm(
     length(values), rep_len(as.vector(expected_mean), length(values)),
     exp(log_sd)
@@ -272,26 +297,38 @@ iid_process_draw <- function(values, expected_mean, log_sd) {
   values
 }
 
-ar1_process_draw <- function(values, expected_mean, log_sd, logit_rho) {
-  n_years <- length(values)
+ar1_process_draw <- function(values, expected_mean, log_sd, logit_rho,
+                             steps = NULL) {
+  n_values <- length(values)
   standard_deviation <- exp(log_sd)
   rho <- inv_logit(-1, 1, logit_rho)
-  deviation <- numeric(n_years)
-  deviation[1] <- stats::rnorm(1, 0, standard_deviation / sqrt(1 - rho^2))
-  for (year in seq_len(n_years)[-1]) {
-    deviation[year] <- rho * deviation[year - 1] +
-      stats::rnorm(1, 0, standard_deviation)
+  step_rho <- rep(rho, n_values - 1)
+  step_sd <- rep(standard_deviation, n_values - 1)
+  if (!is.null(steps)) {
+    step_rho <- rho^steps
+    step_sd <- standard_deviation * sqrt((1 - rho^(2 * steps)) / (1 - rho^2))
   }
-  values[] <- rep_len(as.vector(expected_mean), n_years) + deviation
+  deviation <- numeric(n_values)
+  deviation[1] <- stats::rnorm(1, 0, standard_deviation / sqrt(1 - rho^2))
+  for (value in seq_len(n_values)[-1]) {
+    deviation[value] <- step_rho[value - 1] * deviation[value - 1] +
+      stats::rnorm(1, 0, step_sd[value - 1])
+  }
+  values[] <- rep_len(as.vector(expected_mean), n_values) + deviation
   values
 }
 
-#' The first year is a fixed effect and keeps its value.
+#' The first value is a fixed effect and keeps its value.
 #' @noRd
-random_walk_process_draw <- function(values, expected_mean, log_sd) {
-  n_years <- length(values)
+random_walk_process_draw <- function(values, expected_mean, log_sd,
+                                     steps = NULL) {
+  n_values <- length(values)
+  step_sd <- exp(log_sd)
+  if (!is.null(steps)) {
+    step_sd <- step_sd * sqrt(steps)
+  }
   values[] <- values[1] +
-    c(0, cumsum(stats::rnorm(n_years - 1, 0, exp(log_sd))))
+    c(0, cumsum(stats::rnorm(n_values - 1, 0, step_sd)))
   values
 }
 

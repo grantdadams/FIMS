@@ -68,7 +68,8 @@ simulate_fims <- function(fit, number_of_simulations = 1,
 #'
 #' Only processes whose values are random effects are redrawn. A penalized
 #' process (fixed effects) keeps its fitted values, as do all other
-#' parameters.
+#' parameters. Constant values keep theirs (see process_densities()), and so
+#' does the first estimated value of a random walk, a fixed effect.
 #' @noRd
 redraw_random_effects <- function(parameters, input) {
   splits <- input[["model_data"]][["split_parameters"]]
@@ -91,8 +92,15 @@ redraw_random_effects <- function(parameters, input) {
     inputs <- density_inputs(density_entry, whole, population = NULL)
     drawn <- do.call(
       process_structures[[density_entry[["structure"]]]][["draw"]],
-      c(list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]])
+      c(
+        list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]],
+        list(steps = inputs[["steps"]])
+      )
     )
+    positions <- density_entry[["positions"]]
+    if (!is.null(positions)) {
+      drawn <- replace(whole[[target]], positions, drawn)
+    }
     if (is.null(splits[[target]])) {
       parameters[[target]] <- drawn
     } else {

@@ -69,9 +69,9 @@ density_inputs <- function(density_entry, parameters, population) {
     derived = population[[density_entry[["mean"]][["name"]]]]
   )
   # A prior scores the values in `positions` (prior_densities()): values
-  # that share 1 estimate once, and each constant value. A mean with 1 value
-  # per target value is subset the same way, so each mean stays with its
-  # value.
+  # that share 1 estimate once, and each constant value. A process scores
+  # its estimated values (process_densities()). A mean with 1 value per
+  # target value is subset the same way, so each mean stays with its value.
   positions <- density_entry[["positions"]]
   if (!is.null(positions)) {
     if (length(density_mean) == length(x)) {
@@ -84,7 +84,8 @@ density_inputs <- function(density_entry, parameters, population) {
     mean = density_mean,
     hyperparameters = lapply(density_entry[["hyperparameters"]], function(name) {
       parameters[[name]]
-    })
+    }),
+    steps = density_entry[["steps"]]
   )
 }
 
@@ -110,7 +111,10 @@ model_likelihood <- function(parameters, model_data, model) {
     inputs <- density_inputs(density_entry, parameters, model[["population"]])
     log_density <- do.call(
       process_structures[[density_entry[["structure"]]]][["lpdf"]],
-      c(list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]])
+      c(
+        list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]],
+        list(steps = inputs[["steps"]])
+      )
     )
     nll_components <- c(nll_components, -log_density)
   }

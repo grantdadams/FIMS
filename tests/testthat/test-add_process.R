@@ -253,20 +253,20 @@ test_that("`add_process()` returns correct error messages", {
     ),
     regexp = "age:year"
   )
-  # Some years are fixed (no catch) and some are estimated.
+  # Some years are constant (no catch) and some are estimated.
   mixed <- small_parameters |>
     dplyr::mutate(estimation_type = dplyr::if_else(
       label == "log_Fmort" & timing == 1, "constant", estimation_type
     ))
-  #' @description Test that `add_process()` errors for a target with some years fixed and some estimated.
+  #' @description Test that `add_process()` errors for time blocks on a target with some years constant and some estimated, because the blocks would estimate the constant years.
   expect_error(
     object = add_process(
       mixed,
-      log_Fmort ~ 1 + (1 | year),
+      log_Fmort ~ cut(year, c(-Inf, 3, Inf)),
       module_name = "Fleet",
       fleet = "fleet1"
     ),
-    regexp = "some fixed"
+    regexp = "some\\s+constant\\s+values"
   )
   with_prior <- small_parameters |>
     add_priors(
