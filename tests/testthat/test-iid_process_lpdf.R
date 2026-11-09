@@ -64,7 +64,31 @@ test_that("`ar1_process_lpdf()` works with correct inputs", {
 })
 
 ## Edge handling ----
-# No edge cases to test.
+test_that("`ar1_process_lpdf()` steps across gaps", {
+  # Values in years 1, 2, 5 and 6, e.g., with years 3 and 4 constant.
+  years <- c(1, 2, 5, 6)
+  process_values <- c(0.1, -0.3, 0.2, 0.4)
+  process_mean <- 0.05
+  process_sd <- 0.3
+  rho <- 0.6
+  # An AR1 process seen only in those years:
+  # Cov(x_s, x_t) = sd^2 / (1 - rho^2) * rho^|s - t|.
+  covariance <- process_sd^2 / (1 - rho^2) *
+    rho^abs(outer(years, years, "-"))
+  deviation <- process_values - process_mean
+  mvn_lpdf <- -0.5 * (4 * log(2 * pi) +
+    as.numeric(determinant(covariance)[["modulus"]]) +
+    sum(deviation * solve(covariance, deviation)))
+  #' @description Test that `ar1_process_lpdf()` with steps equals the multivariate normal density of an AR1 process seen only in those years.
+  expect_equal(
+    object = FIMS:::ar1_process_lpdf(
+      process_values, process_mean, log(process_sd),
+      log((1 + rho) / (1 - rho)),
+      steps = diff(years)
+    ),
+    expected = mvn_lpdf
+  )
+})
 
 ## Error handling ----
 test_that("`ar1_process_lpdf()` returns correct error messages", {
@@ -99,7 +123,22 @@ test_that("`random_walk_process_lpdf()` works with correct inputs", {
 })
 
 ## Edge handling ----
-# No edge cases to test.
+test_that("`random_walk_process_lpdf()` steps across gaps", {
+  # Values in years 1, 2, 5 and 6, e.g., with years 3 and 4 constant.
+  years <- c(1, 2, 5, 6)
+  process_values <- c(1, 1.2, 0.9, 1.1)
+  #' @description Test that `random_walk_process_lpdf()` scores a step across k years with the sd times sqrt(k).
+  expect_equal(
+    object = FIMS:::random_walk_process_lpdf(
+      process_values, 0, log(0.2),
+      steps = diff(years)
+    ),
+    expected = sum(stats::dnorm(
+      diff(process_values), 0, 0.2 * sqrt(c(1, 3, 1)),
+      log = TRUE
+    ))
+  )
+})
 
 ## Error handling ----
 test_that("`random_walk_process_lpdf()` returns correct error messages", {

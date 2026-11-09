@@ -340,14 +340,7 @@ test_that("fit_fims() errors when optimization fails to converge", {
 
 # fit_fims ----
 ## Setup ----
-# 10 years of data_big keep the fits fast. Weight at age has 1 more year, for
-# the start of the year after the last model year.
-data_10_years <- FIMS::data_big |>
-  dplyr::filter(
-    is.na(timing) |
-      timing <= dplyr::if_else(type == "weight_at_age", 11, 10)
-  ) |>
-  FIMSFrame()
+# `data_10_years` is in helper-data-10-years.R.
 default_parameters <- setup_default_parameters(data_10_years)
 
 # fleet1's log_Fmort in 2 time blocks, years 1 to 2 and years 3 to 10, so 10

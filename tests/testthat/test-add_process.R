@@ -132,6 +132,48 @@ test_that("`add_process()` makes the first year of a random walk a fixed effect"
   expect_false("expected_mean" %in% parameters[["label"]])
 })
 
+test_that("`add_process()` keeps constant values constant in a process", {
+  # Years 1 and 4 are constant, as years with no catch are.
+  log_fmort_with_constants <- small_parameters |>
+    dplyr::mutate(
+      value = dplyr::if_else(label == "log_Fmort", -timing / 2, value),
+      estimation_type = dplyr::if_else(
+        label == "log_Fmort" & timing %in% c(1, 4), "constant",
+        estimation_type
+      )
+    )
+  random_walk_rows <- log_fmort_with_constants |>
+    add_process(
+      log_Fmort ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    dplyr::filter(label == "log_Fmort")
+  #' @description Test that `add_process()` keeps constant years constant in a random walk and makes the first estimated year the fixed effect.
+  expect_equal(
+    object = random_walk_rows[["estimation_type"]],
+    expected = c(
+      "constant", "fixed_effects", "random_effects", "constant",
+      "random_effects", "random_effects"
+    )
+  )
+  ar1_parameters <- log_fmort_with_constants |>
+    add_process(
+      log_Fmort ~ 1 + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1",
+      rho = list(value = 0.5, estimation_type = "fixed_effects")
+    )
+  #' @description Test that `add_process()` starts the expected_mean from the mean of the estimated years only.
+  expect_equal(
+    object = ar1_parameters |>
+      dplyr::filter(label == "expected_mean") |>
+      dplyr::pull(value) |>
+      unique(),
+    expected = mean(-c(2, 3, 5, 6) / 2)
+  )
+})
+
 ## Edge handling ----
 test_that("`add_process()` returns correct outputs for edge cases", {
   log_init_naa_rows <- parameters_with_init_naa |>
@@ -267,6 +309,17 @@ test_that("`add_process()` returns correct error messages", {
       fleet = "fleet1"
     ),
     regexp = "some\\s+constant\\s+values"
+  )
+  # Year 1 is the only constant year and a block of its own.
+  #' @description Test that `add_process()` errors for a process whose fixed term gives a block of only constant values, because the density leaves them out.
+  expect_error(
+    object = add_process(
+      mixed,
+      log_Fmort ~ cut(year, c(-Inf, 1, Inf)) + (1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ),
+    regexp = "only\\s+constant\\s+values"
   )
   with_prior <- small_parameters |>
     add_priors(

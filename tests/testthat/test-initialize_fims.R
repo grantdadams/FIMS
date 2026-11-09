@@ -13,6 +13,17 @@ data <- FIMSFrame(data_big)
 
 default_parameters <- setup_default_parameters(data = data)
 
+# The joint negative log-likelihood at the starting values, random effects
+# included. obj$fn() would optimize the random effects first.
+# `data_10_years` is in helper-data-10-years.R.
+get_jnll <- function(parameters, data) {
+  obj <- parameters |>
+    initialize_fims(data = data) |>
+    fit_fims(optimize = FALSE) |>
+    get_obj()
+  obj[["report"]](obj[["env"]][["par"]])[["jnll"]]
+}
+
 # The report of a default model at its starting values.
 get_fleet_report <- function(data) {
   frame <- FIMSFrame(data)
@@ -280,6 +291,150 @@ test_that("`initialize_fims()` assigns named von Bertalanffy SDs independently o
   population <- result[["model_data"]][["populations"]][["population"]]
   #' @description Test that each reference age is assigned to its named input.
   expect_equal(population[["growth_inputs"]][["reference_ages"]], c(4, 18))
+})
+
+test_that("`initialize_fims()` scores a penalized random walk by year", {
+  default_parameters_10_years <- setup_default_parameters(data_10_years)
+  process_sd <- 0.3
+  years <- get_start_year(data_10_years):get_end_year(data_10_years)
+  log_q_start <- dplyr::filter(
+    default_parameters_10_years, label == "log_q", fleet %in% "survey1"
+  )[["value"]]
+  # A different log_q in each year, so the year-to-year differences are not
+  # 0.
+  log_q_by_year <- log_q_start + 0.1 * sin(years)
+  set_log_q <- function(parameters) {
+    is_survey_log_q <- parameters[["label"]] == "log_q" &
+      parameters[["fleet"]] %in% "survey1"
+    parameters[["value"]][is_survey_log_q] <- log_q_by_year
+    parameters
+  }
+  jnll_without_process <- default_parameters_10_years |>
+    add_process(
+      log_q ~ factor(year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    set_log_q() |>
+    get_jnll(data_10_years)
+  jnll_with_process <- default_parameters_10_years |>
+    add_process(
+      log_q ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      estimation_type = "fixed_effects",
+      sd = list(value = process_sd, estimation_type = "constant")
+    ) |>
+    set_log_q() |>
+    get_jnll(data_10_years)
+  #' @description Test that a penalized random walk by year adds the negative log density of the year-to-year differences, with no term for the first year.
+  expect_equal(
+    object = jnll_with_process - jnll_without_process,
+    expected = -sum(stats::dnorm(
+      diff(log_q_by_year), 0, process_sd,
+      log = TRUE
+    ))
+  )
+  clear()
+})
+
+test_that("`initialize_fims()` steps a process across years with no catch", {
+  # No catch in years 4 and 5, so setup_default_parameters() holds log_Fmort
+  # constant at -200 in those years.
+  no_catch_data <- get_data(data_10_years) |>
+    dplyr::mutate(observed = dplyr::if_else(
+      type == "catch" & fleet == "fleet1" & timing %in% 4:5, 0, observed
+    )) |>
+    FIMSFrame()
+  # A different log_Fmort in each fished year.
+  parameters <- setup_default_parameters(no_catch_data) |>
+    dplyr::mutate(value = dplyr::if_else(
+      label == "log_Fmort" & fleet %in% "fleet1" &
+        estimation_type != "constant",
+      -3 + 0.2 * sin(timing),
+      value
+    ))
+  log_fmort <- dplyr::filter(
+    parameters, label == "log_Fmort", fleet %in% "fleet1"
+  )
+  is_fished <- log_fmort[["estimation_type"]] != "constant"
+  fished_years <- log_fmort[["timing"]][is_fished]
+  fished_log_fmort <- log_fmort[["value"]][is_fished]
+  jnll_without_process <- get_jnll(parameters, no_catch_data)
+  process_sd <- 0.3
+  rho <- 0.5
+  add_fmort_process <- function(formula) {
+    add_process(
+      parameters,
+      formula,
+      module_name = "Fleet",
+      fleet = "fleet1",
+      estimation_type = "fixed_effects",
+      sd = list(value = process_sd, estimation_type = "constant"),
+      rho = list(value = rho, estimation_type = "constant")
+    )
+  }
+  #' @description Test that a random walk by year steps from year 3 to year 6 with the sd times sqrt(3), and leaves the years with no catch out.
+  expect_equal(
+    object = get_jnll(
+      add_fmort_process(log_Fmort ~ rw(1 | year)), no_catch_data
+    ) - jnll_without_process,
+    expected = -sum(stats::dnorm(
+      diff(fished_log_fmort), 0, process_sd * sqrt(diff(fished_years)),
+      log = TRUE
+    ))
+  )
+  # An AR1 process seen only in the fished years: Cov(x_s, x_t) =
+  # sd^2 / (1 - rho^2) * rho^|s - t|, around the mean of the fished years.
+  covariance <- process_sd^2 / (1 - rho^2) *
+    rho^abs(outer(fished_years, fished_years, "-"))
+  deviation <- fished_log_fmort - mean(fished_log_fmort)
+  ar1_nll <- 0.5 * (length(deviation) * log(2 * pi) +
+    as.numeric(determinant(covariance)[["modulus"]]) +
+    sum(deviation * solve(covariance, deviation)))
+  #' @description Test that an AR1 process by year gives the fished years the multivariate normal density of an AR1 process seen only in those years.
+  expect_equal(
+    object = get_jnll(
+      add_fmort_process(log_Fmort ~ 1 + ar1(1 | year)), no_catch_data
+    ) - jnll_without_process,
+    expected = ar1_nll
+  )
+  clear()
+})
+
+test_that("`initialize_fims()` leaves constant recruitment deviations out of the process", {
+  # Deviations in years 2 to 4 are constant with no distribution, and in
+  # year 10 constant with the process.
+  parameters <- setup_default_parameters(data_10_years) |>
+    dplyr::mutate(
+      is_no_distribution = label == "log_devs" & timing %in% 2:4,
+      estimation_type = dplyr::if_else(
+        is_no_distribution | (label == "log_devs" & timing %in% 10),
+        "constant", estimation_type
+      ),
+      distribution_type = dplyr::if_else(
+        is_no_distribution, NA_character_, distribution_type
+      ),
+      distribution = dplyr::if_else(
+        is_no_distribution, NA_character_, distribution
+      )
+    ) |>
+    dplyr::select(-"is_no_distribution")
+  #' @description Test that `initialize_fims()` warns that the constant recruitment deviations are left out of the process.
+  expect_warning(
+    object = input <- initialize_fims(parameters, data = data_10_years),
+    regexp = "leaves\\s+them\\s+out"
+  )
+  recruitment_density <- Filter(
+    function(density) density[["target"]] == "Recruitment.log_devs",
+    input[["model_data"]][["densities"]]
+  )[[1]]
+  # Deviations start in year 2, so years 5 to 9 are positions 4 to 8.
+  #' @description Test that the recruitment process scores only the estimated deviations, years 5 to 9, whatever the distribution_type of the constant ones.
+  expect_equal(
+    object = recruitment_density[["positions"]],
+    expected = 4:8
+  )
 })
 
 ## Edge handling ----
@@ -554,6 +709,35 @@ test_that("`initialize_fims()` treats a catch of 0 as a year with no fishing", {
   )
 })
 
+test_that("`initialize_fims()` steps a process by year when every row has the same age", {
+  # 1 log_q per year, all with age 1, and year 5 constant.
+  parameters <- setup_default_parameters(data_10_years) |>
+    add_process(
+      log_q ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1",
+      sd = list(value = 0.3, estimation_type = "constant")
+    ) |>
+    dplyr::mutate(
+      is_survey_log_q = label == "log_q" & fleet %in% "survey1",
+      age = dplyr::if_else(is_survey_log_q, 1, age),
+      estimation_type = dplyr::if_else(
+        is_survey_log_q & timing == 5, "constant", estimation_type
+      )
+    ) |>
+    dplyr::select(-"is_survey_log_q")
+  input <- initialize_fims(parameters, data = data_10_years)
+  log_q_density <- Filter(
+    function(density) density[["target"]] == "Fleet.survey1.log_q",
+    input[["model_data"]][["densities"]]
+  )[[1]]
+  #' @description Test that `initialize_fims()` steps a random walk by year across a constant year when every row has the same age.
+  expect_equal(
+    object = log_q_density[["steps"]],
+    expected = c(1, 1, 1, 2, 1, 1, 1, 1)
+  )
+})
+
 ## Error handling ----
 test_that("`initialize_fims()` returns correct error messages", {
   #' @description Test that `initialize_fims()` handles missing parameters input correctly.
@@ -779,6 +963,30 @@ test_that("`initialize_fims()` returns correct error messages for the recruitmen
       data = data
     ),
     "with no timing"
+  )
+})
+
+test_that("`initialize_fims()` returns correct error messages for a process with constant values", {
+  # A random walk hand-written on log_M by year and age, with 1 value
+  # constant.
+  parameters <- setup_default_parameters(data_10_years) |>
+    add_process(
+      log_M ~ 1 + (1 | age:year),
+      module_name = "Population",
+      sd = list(value = 0.3, estimation_type = "constant")
+    ) |>
+    dplyr::mutate(
+      is_log_m = label == "log_M" & module_name == "Population",
+      re_structure = dplyr::if_else(is_log_m, "rw", re_structure),
+      estimation_type = dplyr::if_else(
+        is_log_m & timing == 1 & age == 1, "constant", estimation_type
+      )
+    ) |>
+    dplyr::select(-"is_log_m")
+  #' @description Test that `initialize_fims()` errors for a random walk on values by year and age with a constant value, because they have no single order to step along.
+  expect_error(
+    object = initialize_fims(parameters, data = data_10_years),
+    regexp = "vary\\s+by\\s+year\\s+and\\s+by\\s+age"
   )
 })
 
