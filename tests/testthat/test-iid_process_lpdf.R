@@ -94,10 +94,10 @@ test_that("`ar1_process_lpdf()` steps across gaps", {
 test_that("`ar1_process_lpdf()` returns correct error messages", {
   # 3 years by 2 ages.
   by_age_and_year <- matrix(c(0.1, -0.3, 0.2, 0.4, 0, -0.1), nrow = 3)
-  #' @description Test that `ar1_process_lpdf()` errors for a parameter that varies by age and year, because an AR1 process is by year only.
+  #' @description Test that `ar1_process_lpdf()` errors for a parameter that varies by age and year, because an AR1 process varies by year or by age, not both.
   expect_error(
     object = FIMS:::ar1_process_lpdf(by_age_and_year, 0, log(0.3), 0),
-    regexp = "by\\s+year\\s+only"
+    regexp = "year\\s+or\\s+by\\s+age,\\s+not\\s+both"
   )
 })
 
@@ -144,9 +144,9 @@ test_that("`random_walk_process_lpdf()` steps across gaps", {
 test_that("`random_walk_process_lpdf()` returns correct error messages", {
   # 3 years by 2 ages.
   by_age_and_year <- matrix(c(1, 1.2, 0.9, 1.1, 1, 0.8), nrow = 3)
-  #' @description Test that `random_walk_process_lpdf()` errors for a parameter that varies by age and year, because a random walk is by year only.
+  #' @description Test that `random_walk_process_lpdf()` errors for a parameter that varies by age and year, because a random walk varies by year or by age, not both.
   expect_error(
     object = FIMS:::random_walk_process_lpdf(by_age_and_year, 0, log(0.2)),
-    regexp = "by\\s+year\\s+only"
+    regexp = "year\\s+or\\s+by\\s+age,\\s+not\\s+both"
   )
 })

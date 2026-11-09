@@ -181,10 +181,10 @@ multinomial_draw <- function(observed, prob) {
 
 # Process and prior log densities --------------------------------------------
 #
-# `values` is a parameter that varies by year (a vector), or a
+# `values` is a parameter that varies by year or by age (a vector), or a
 # years-by-ages matrix for iid. `expected_mean` is its mean with the same
 # shape (or 0). AR1 and random walks go from each value to the next in the
-# vector's order, which is year order (initialize_parameters()).
+# vector's order, which is year or age order (initialize_parameters()).
 # For iid the SD is the SD around the mean. For AR1 and random walks it is
 # the SD of 1 step (the innovation SD). Correlation rho is estimated as
 # logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So rho is between -1
@@ -196,8 +196,8 @@ multinomial_draw <- function(observed, prob) {
 
 #' Independent normal deviations around the mean (iid)
 #'
-#' x_t ~ Normal(m_t, sd), independently for every value (each year, or each
-#' age and year).
+#' x_t ~ Normal(m_t, sd), independently for every value (each year, each age,
+#' or each age and year).
 #'
 #' @param values The process values.
 #' @param expected_mean Their mean, the same shape or 1 value.
@@ -228,10 +228,11 @@ ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho,
                              steps = NULL) {
   if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
-      "x" = "An AR1 process is for parameters that vary by year only, but
-      this one has {.val {ncol(values)}} columns (ages).",
-      "i" = "Use an iid process, {.code (1 | age:year)}, for a parameter that
-      varies by age and year.",
+      "x" = "This parameter has {.val {ncol(values)}} columns (ages), so it
+      varies by year and by age.",
+      "i" = "An AR1 process varies by year or by age, not both. Use an iid
+      process, {.code (1 | age:year)}, for a parameter that varies by age and
+      year.",
       "i" = "Check the target rows with {.code dplyr::filter(parameters,
       re_structure == \"ar1\")}."
     ))
@@ -270,10 +271,11 @@ random_walk_process_lpdf <- function(values, expected_mean, log_sd,
                                      steps = NULL) {
   if (is.matrix(values) && ncol(values) > 1) {
     cli::cli_abort(c(
-      "x" = "A random walk is for parameters that vary by year only, but
-      this one has {.val {ncol(values)}} columns (ages).",
-      "i" = "Use an iid process, {.code (1 | age:year)}, for a parameter that
-      varies by age and year.",
+      "x" = "This parameter has {.val {ncol(values)}} columns (ages), so it
+      varies by year and by age.",
+      "i" = "A random walk varies by year or by age, not both. Use an iid
+      process, {.code (1 | age:year)}, for a parameter that varies by age and
+      year.",
       "i" = "Check the target rows with {.code dplyr::filter(parameters,
       re_structure == \"rw\")}."
     ))

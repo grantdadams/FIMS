@@ -440,7 +440,7 @@ test_that("`add_process()` returns correct error messages for the formula", {
     ),
     regexp = "groups\\s+by"
   )
-  #' @description Test that `add_process()` errors for an AR1 process by age and year, because AR1 is by year only.
+  #' @description Test that `add_process()` errors for an AR1 process by age and year, because a 2D process is not implemented.
   expect_error(
     object = add_process(
       small_parameters,
@@ -448,7 +448,7 @@ test_that("`add_process()` returns correct error messages for the formula", {
       module_name = "Fleet",
       fleet = "survey1"
     ),
-    regexp = "by\\s+year\\s+only"
+    regexp = "year\\s+or\\s+by\\s+age,\\s+not\\s+both"
   )
   #' @description Test that `add_process()` errors for `(1 | age:year)` on a target that does not vary by age.
   expect_error(

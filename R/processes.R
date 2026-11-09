@@ -209,6 +209,15 @@ check_process <- function(parameters, formula, module_name, fleet,
   }
   process_structure <- formula_terms[["random"]][["structure"]]
   random_grouping <- formula_terms[["random"]][["grouping"]]
+  if (random_grouping == "age" &&
+    "year" %in% formula_terms[["fixed_variables"]]) {
+    cli::cli_abort(c(
+      "x" = "A process by age cannot have a fixed term in year.",
+      "i" = "A process by age is for a target with 1 row per age and no
+      years. A 2D process is not implemented.",
+      "i" = "Use a fixed term in age, e.g., {.code cut(age, c(-Inf, 5, Inf))}."
+    ))
+  }
   has_age <- all(!is.na(rows[["age"]]))
   if (random_grouping == "year" && has_age) {
     cli::cli_abort(c(
@@ -217,16 +226,35 @@ check_process <- function(parameters, formula, module_name, fleet,
       "i" = "Use {.code (1 | age:year)}."
     ))
   }
-  if (random_grouping == "age:year" && !has_age) {
+  if (random_grouping %in% c("age", "age:year") && !has_age) {
+    year_term <- if (process_structure == "iid") {
+      "(1 | year)"
+    } else {
+      paste0(process_structure, "(1 | year)")
+    }
     cli::cli_abort(c(
       "x" = "{.val {target}} does not vary by age.",
-      "i" = "Use {.code (1 | year)}."
+      "i" = "Use {.code {year_term}}."
+    ))
+  }
+  if (random_grouping == "age" &&
+    (any(!is.na(rows[["timing"]])) || anyDuplicated(rows[["age"]]) > 0)) {
+    cli::cli_abort(c(
+      "x" = "{.val {target}} varies by year and by age, so it cannot take a
+      process by age.",
+      "i" = "A process by age needs 1 row per age and no years
+      ({.var timing} NA). A 2D process is not implemented. Use
+      {.code (1 | age:year)} for an iid process by age and year.",
+      "i" = "Count the rows by year and age with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(timing, age)}."
     ))
   }
   if (process_structure == "rw" && length(unique(group)) > 1) {
     cli::cli_abort(c(
       "x" = "A random walk has no mean, so it cannot have fixed blocks.",
-      "i" = "Use {.code {target} ~ rw(1 | year)} or a mean with an AR1 or iid process."
+      "i" = "Use {.code {target} ~ rw(1 | {random_grouping})} or a mean with an
+      AR1 or iid process."
     ))
   }
   # The density leaves constant values out, so a block of only constant
@@ -282,6 +310,7 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
   }
 
   process_structure <- process[["formula_terms"]][["random"]][["structure"]]
+  random_grouping <- process[["formula_terms"]][["random"]][["grouping"]]
   # Constant rows stay constant when some rows are estimated (see
   # process_densities()). When every row is constant, the call is a request
   # to estimate them all.
@@ -299,8 +328,8 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
     # term. As a random effect it would be improper, so it is a fixed effect.
     # A penalized walk (all fixed effects) is then a penalty on the
     # differences only, and the data determine the level.
-    years <- rows[["timing"]]
-    is_first <- !is_constant & years == min(years[!is_constant])
+    index <- rows[[process_index_columns[[random_grouping]]]]
+    is_first <- !is_constant & index == min(index[!is_constant])
     rows[["estimation_type"]][is_first] <- "fixed_effects"
   }
   # Each expected_mean starts from the mean of the estimated values in its
@@ -576,7 +605,12 @@ is_random_term <- function(formula_term) {
   as.character(formula_term[[1]]) %in% c("(", "ar1", "rw")
 }
 
-#' (1 | year) gives iid, ar1(1 | year) AR1, and rw(1 | year) a random walk
+# The tibble column that each grouping variable of a random term indexes.
+# `year` is the `timing` column. Any other variable is its own column.
+process_index_columns <- c(year = "timing", age = "age")
+
+#' (1 | year) gives iid, ar1(1 | year) AR1, and rw(1 | year) a random walk,
+#' and the same by age
 #' @noRd
 parse_random_term <- function(formula_term) {
   process_structure <- switch(as.character(formula_term[[1]]),
@@ -594,17 +628,21 @@ parse_random_term <- function(formula_term) {
     ))
   }
   random_grouping <- paste(deparse(bar[[3]]), collapse = "")
-  if (!random_grouping %in% c("year", "age:year")) {
+  groupings <- c(names(process_index_columns), "age:year")
+  if (!random_grouping %in% groupings) {
     cli::cli_abort(c(
       "x" = "The random term groups by {.val {random_grouping}}.",
-      "i" = "Random terms group by {.val year} or {.val age:year}."
+      "i" = "Random terms group by {.or {.val {groupings}}}."
     ))
   }
-  if (process_structure != "iid" && random_grouping != "year") {
+  if (process_structure != "iid" &&
+    !random_grouping %in% names(process_index_columns)) {
     cli::cli_abort(c(
-      "x" = "{.code {process_structure}()} is by year only.",
-      "i" = "A 2D AR1 is not implemented. Use {.code (1 | age:year)} for an
-      iid process by age and year."
+      "x" = "{.code {process_structure}()} groups by
+      {.val {random_grouping}}.",
+      "i" = "An AR1 process or random walk varies by year or by age, not
+      both. A 2D process is not implemented.",
+      "i" = "Use {.code (1 | age:year)} for an iid process by age and year."
     ))
   }
   list(structure = process_structure, grouping = random_grouping)
