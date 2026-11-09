@@ -402,6 +402,138 @@ test_that("`initialize_fims()` steps a process across years with no catch", {
   clear()
 })
 
+test_that("`initialize_fims()` scores processes by age without the constant oldest age", {
+  # Default AgeSpecific survey selectivity, whose oldest age is constant at
+  # logit 10. The other ages start from different values, so the
+  # differences between ages are not 0.
+  logit_selectivity_start <- c(
+    -2, -1.2, -0.3, 0.4, 0.9, 1.5, 1.8, 2.3, 2.2, 2.6, 2.9, 10
+  )
+  parameters <- setup_default_parameters(data_10_years) |>
+    dplyr::filter(!(module_name == "Selectivity" & fleet %in% "survey1")) |>
+    dplyr::bind_rows(
+      setup_default_Selectivity(
+        data = data_10_years,
+        fleet = "survey1",
+        module_type = "AgeSpecific"
+      ) |>
+        dplyr::mutate(value = logit_selectivity_start)
+    )
+  jnll_without_process <- get_jnll(parameters, data_10_years)
+  process_sd <- 0.4
+  rho <- 0.5
+  get_process_nll <- function(formula, estimation_type) {
+    with_process <- add_process(
+      parameters,
+      formula,
+      module_name = "Selectivity",
+      fleet = "survey1",
+      estimation_type = estimation_type,
+      sd = list(value = process_sd, estimation_type = "constant"),
+      rho = list(value = rho, estimation_type = "constant")
+    )
+    get_jnll(with_process, data_10_years) - jnll_without_process
+  }
+
+  estimated_start <- logit_selectivity_start[-12]
+  random_walk_nll <- -sum(stats::dnorm(
+    diff(estimated_start), 0, process_sd,
+    log = TRUE
+  ))
+  # The process mean starts from the mean of the estimated values.
+  iid_nll <- -sum(stats::dnorm(
+    estimated_start, mean(estimated_start), process_sd,
+    log = TRUE
+  ))
+  # Stationary AR1: Cov(x_i, x_j) = sd^2 / (1 - rho^2) * rho^|i - j|.
+  n_estimated <- length(estimated_start)
+  covariance <- process_sd^2 / (1 - rho^2) *
+    rho^abs(outer(seq_len(n_estimated), seq_len(n_estimated), "-"))
+  deviation <- estimated_start - mean(estimated_start)
+  ar1_nll <- 0.5 * (n_estimated * log(2 * pi) +
+    as.numeric(determinant(covariance)[["modulus"]]) +
+    sum(deviation * solve(covariance, deviation)))
+
+  for (estimation_type in c("fixed_effects", "random_effects")) {
+    #' @description Test that a random walk by age adds the negative log density of the age-to-age differences of the estimated ages.
+    expect_equal(
+      object = get_process_nll(logit_sel_at_age ~ rw(1 | age), estimation_type),
+      expected = random_walk_nll
+    )
+    #' @description Test that an iid process by age adds the negative log density of each estimated age around the mean.
+    expect_equal(
+      object = get_process_nll(
+        logit_sel_at_age ~ 1 + (1 | age),
+        estimation_type
+      ),
+      expected = iid_nll
+    )
+    #' @description Test that an AR1 process by age adds the negative log density of the multivariate normal with the stationary AR1 covariance across the estimated ages.
+    expect_equal(
+      object = get_process_nll(
+        logit_sel_at_age ~ 1 + ar1(1 | age),
+        estimation_type
+      ),
+      expected = ar1_nll
+    )
+  }
+  clear()
+})
+
+test_that("`initialize_fims()` splits a random walk by age into random and fixed parts", {
+  # Default AgeSpecific survey selectivity: the oldest age is constant.
+  age_specific <- setup_default_Selectivity(
+    data = data,
+    fleet = "survey1",
+    module_type = "AgeSpecific"
+  )
+  n_ages <- nrow(age_specific)
+  input <- default_parameters |>
+    dplyr::filter(!(module_name == "Selectivity" & fleet %in% "survey1")) |>
+    dplyr::bind_rows(age_specific) |>
+    add_process(
+      logit_sel_at_age ~ rw(1 | age),
+      module_name = "Selectivity",
+      fleet = "survey1",
+      sd = list(value = 0.4, estimation_type = "constant")
+    ) |>
+    initialize_fims(data = data)
+  target <- "Selectivity.survey1.logit_sel_at_age"
+  random_name <- paste0(target, "|random")
+  fixed_name <- paste0(target, "|fixed")
+  #' @description Test that `initialize_fims()` makes ages 2 to 11 the random effects of a random walk by age whose oldest age is constant.
+  expect_equal(
+    object = input[["parameters"]][[random_name]],
+    expected = age_specific[["value"]][2:(n_ages - 1)]
+  )
+  #' @description Test that `initialize_fims()` lists the random part of a random walk by age as random effects.
+  expect_true(random_name %in% input[["random"]])
+  #' @description Test that `initialize_fims()` keeps the first age and the constant oldest age in the fixed part of a random walk by age.
+  expect_equal(
+    object = input[["parameters"]][[fixed_name]],
+    expected = age_specific[["value"]][c(1, n_ages)]
+  )
+  #' @description Test that `initialize_fims()` estimates the first age and maps off the constant oldest age.
+  expect_equal(
+    object = is.na(input[["map"]][[fixed_name]]),
+    expected = c(FALSE, TRUE)
+  )
+  selectivity_density <- Filter(
+    function(density) density[["target"]] == target,
+    input[["model_data"]][["densities"]]
+  )[[1]]
+  #' @description Test that `initialize_fims()` puts a random walk density on age-specific selectivity.
+  expect_equal(
+    object = selectivity_density[["structure"]],
+    expected = "rw"
+  )
+  #' @description Test that `initialize_fims()` leaves the constant oldest age out of the random walk density.
+  expect_equal(
+    object = selectivity_density[["positions"]],
+    expected = seq_len(n_ages - 1)
+  )
+})
+
 test_that("`initialize_fims()` leaves constant recruitment deviations out of the process", {
   # Deviations in years 2 to 4 are constant with no distribution, and in
   # year 10 constant with the process.
