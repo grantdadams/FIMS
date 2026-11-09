@@ -135,15 +135,20 @@ check_process <- function(parameters, formula, module_name, fleet,
   old_rows <- dplyr::filter(parameters, is_target)
   check_new_target(old_rows, target)
 
-  # Some values fixed and some estimated (e.g., log_Fmort in years with no
-  # catch): the call would estimate or score the fixed ones. When every value
-  # is fixed (e.g., the default log_M), the call is a request to estimate them.
-  if (any(old_rows[["estimation_type"]] == "constant") &&
+  # Some values constant and some estimated (e.g., log_Fmort in years with no
+  # catch). Blocks would estimate the constant ones. A process keeps them
+  # constant (see process_densities()). When every value is constant (e.g.,
+  # the default log_M), the call is a request to estimate them.
+  if (is.null(random_term) &&
+    any(old_rows[["estimation_type"]] == "constant") &&
     any(old_rows[["estimation_type"]] != "constant")) {
     cli::cli_abort(c(
-      "x" = "{.val {target}} has some fixed (constant) values and some
-      estimated, e.g., years with no catch.",
-      "i" = "The process would estimate or score the fixed ones."
+      "x" = "{.val {target}} has some constant values and some estimated.",
+      "i" = "Blocks would estimate the constant values. A process (a random
+      term) keeps them constant.",
+      "i" = "Count the values by estimation type with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(fleet, estimation_type)}."
     ))
   }
   if (has_prior(parameters, target, module_name, unique(old_rows[["fleet"]]))) {
@@ -207,6 +212,21 @@ check_process <- function(parameters, formula, module_name, fleet,
       "i" = "Use {.code {target} ~ rw(1 | year)} or a mean with an AR1 or iid process."
     ))
   }
+  # The density leaves constant values out, so a block of only constant
+  # values would have a mean that nothing informs.
+  is_constant <- rows[["estimation_type"]] == "constant"
+  if (process_structure != "rw" && any(!is_constant) &&
+    !all(group %in% group[!is_constant])) {
+    cli::cli_abort(c(
+      "x" = "A block of {.val {target}} has only constant values.",
+      "i" = "A process leaves constant values out of its density, so the mean
+      of that block would not be estimable. Every block needs an estimated
+      value.",
+      "i" = "Compare the blocks with the estimation types with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(timing, age, estimation_type)}."
+    ))
+  }
   if (estimation_type == "fixed_effects" && sd[["estimation_type"]] != "constant") {
     cli::cli_warn(c(
       "!" = "The process on {.val {target}} is penalized (fixed effects) and
@@ -245,15 +265,34 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
   }
 
   process_structure <- process[["formula_terms"]][["random"]][["structure"]]
-  rows[["estimation_type"]] <- estimation_type
+  # Constant rows stay constant when some rows are estimated (see
+  # process_densities()). When every row is constant, the call is a request
+  # to estimate them all.
+  is_constant <- rows[["estimation_type"]] == "constant"
+  if (all(is_constant)) {
+    is_constant[] <- FALSE
+  }
+  rows[["estimation_type"]][!is_constant] <- estimation_type
   rows[["map_group"]] <- NA_integer_
   rows[["distribution_type"]] <- "process"
   rows[["distribution"]] <- "Dnorm"
   rows[["re_structure"]] <- process_structure
   if (process_structure == "rw") {
-    first_year <- rows[["timing"]] == min(rows[["timing"]])
-    rows[["estimation_type"]][first_year] <- "fixed_effects"
+    # A random walk has no mean, so its first estimated value has no density
+    # term. As a random effect it would be improper, so it is a fixed effect.
+    # A penalized walk (all fixed effects) is then a penalty on the
+    # differences only, and the data determine the level.
+    years <- rows[["timing"]]
+    is_first <- !is_constant & years == min(years[!is_constant])
+    rows[["estimation_type"]][is_first] <- "fixed_effects"
   }
+  # Each expected_mean starts from the mean of the estimated values in its
+  # block, as the density uses only those.
+  estimated_value <- dplyr::if_else(is_constant, NA_real_, rows[["value"]])
+  process_mean <- stats::ave(
+    estimated_value, group,
+    FUN = function(block_values) mean(block_values, na.rm = TRUE)
+  )
 
   template <- dplyr::slice(rows, 1) |>
     dplyr::mutate(
@@ -271,7 +310,7 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
   if (process_structure != "rw") {
     hyperparameters[[2]] <- rows |>
       dplyr::mutate(
-        label = "expected_mean", value = block_mean,
+        label = "expected_mean", value = process_mean,
         estimation_type = "fixed_effects",
         map_group = shared_groups(group),
         re_structure = NA_character_, target_label = target
