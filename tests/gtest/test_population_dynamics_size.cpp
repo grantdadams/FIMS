@@ -1,5 +1,6 @@
 #include <memory>
 #include <cmath>
+#include <vector>
 #include "common/fims_math.hpp"
 #include "common/def.hpp"
 
@@ -96,6 +97,25 @@ void ConfigureAdapter(
 // provider's own probabilities.
 double NormalCdf(double x, double mean, double sd) {
   return 0.5 * (1.0 + std::erf((x - mean) / (sd * std::sqrt(2.0))));
+}
+
+// Expected P(size bin | age) for normally distributed length at age. The first
+// and last bins hold the lower and upper tails.
+std::vector<double> ExpectedProbSizeRow(const fims::Vector<double>& edges,
+                                        double mean, double sd) {
+  const std::size_t n_bins = edges.size() - 1;
+  std::vector<double> row(n_bins);
+  for (std::size_t size_bin_index = 0; size_bin_index < n_bins;
+       ++size_bin_index) {
+    const double lower = (size_bin_index == 0)
+                             ? 0.0
+                             : NormalCdf(edges[size_bin_index], mean, sd);
+    const double upper = (size_bin_index + 1 == n_bins)
+                             ? 1.0
+                             : NormalCdf(edges[size_bin_index + 1], mean, sd);
+    row[size_bin_index] = upper - lower;
+  }
+  return row;
 }
 
 TEST(SizeGridBuilder, BuildObservationEdgesFromLowerEdgesAddsLastBinUpperEdge) {
@@ -406,6 +426,76 @@ TEST(GrowthDerivedSizeProvider,
 
     EXPECT_NEAR(observed / expected, 1.0, 1e-4);
     EXPECT_GT(observed, products->MeanWAA(0, age_index, 0));
+  }
+}
+
+TEST(GrowthDerivedSizeProvider,
+     PrepareSizeProductsBuildsEachYearWhenGrowthVariesByYear) {
+  auto growth = std::make_shared<FakeGrowthDerivedObservation>();
+  growth->Initialize(2, 1, 1);
+  growth->products.MeanLAA(0, 0, 0) = 2.0;
+  growth->products.SdLAA(0, 0, 0) = 0.4;
+  growth->products.MeanLAA(1, 0, 0) = 3.0;
+  growth->products.SdLAA(1, 0, 0) = 0.4;
+  growth->PrepareGrowthProducts();
+  ASSERT_TRUE(growth->products.varies_by_year);
+
+  const fims_popdy::SizeGrid grid =
+      fims_popdy::SizeGridBuilder::BuildFromEdges({0.0, 1.0, 2.0, 3.0, 4.0});
+  fims_popdy::GrowthDerivedSizeProvider<double> provider(growth);
+  provider.SetPopulationSizeGrid(&grid);
+  provider.SetPopulationDimensions(2, 1);
+  provider.PrepareSizeProducts();
+
+  // Each year follows its own mean length. The tolerance covers the smooth
+  // SD floor and the 1e-12 added to each bin before normalizing.
+  for (std::size_t year_index = 0; year_index < 2; ++year_index) {
+    const std::vector<double> expected = ExpectedProbSizeRow(
+        grid.edges, growth->products.MeanLAA(year_index, 0, 0), 0.4);
+    for (std::size_t size_bin_index = 0; size_bin_index < grid.n_bins;
+         ++size_bin_index) {
+      EXPECT_NEAR(provider.ProbSize(year_index, 0, size_bin_index),
+                  expected[size_bin_index], 1e-6);
+    }
+  }
+}
+
+TEST(GrowthDerivedSizeProvider,
+     PrepareSizeProductsSharesFirstYearWhenGrowthIsSameEveryYear) {
+  auto growth = std::make_shared<
+      fims_popdy::VonBertalanffySchnuteGrowthModelAdapter<double>>();
+  ConfigureAdapter(*growth, 275.0, 725.0, 0.18, 1.0, 12.0, 2.5e-11, 3.0, 28.0,
+                   73.0);
+  growth->SetAgeOffset(1.0);
+  growth->Initialize(3, 2, 1);
+  ASSERT_NO_THROW(growth->PrepareGrowthProducts());
+
+  const fims_popdy::GrowthProducts<double>* products =
+      growth->TryGetPreparedGrowthProducts();
+  ASSERT_NE(products, nullptr);
+  // GrowthModel fills every year with the same values.
+  EXPECT_FALSE(products->varies_by_year);
+
+  const fims_popdy::SizeGrid grid = fims_popdy::SizeGridBuilder::BuildFromEdges(
+      {0.0, 100.0, 200.0, 300.0, 400.0, 500.0, 600.0, 700.0, 800.0, 900.0});
+  fims_popdy::GrowthDerivedSizeProvider<double> provider(growth);
+  provider.SetPopulationSizeGrid(&grid);
+  provider.SetPopulationDimensions(3, 2);
+  ASSERT_NO_THROW(provider.PrepareSizeProducts());
+
+  for (std::size_t year_index = 0; year_index < 3; ++year_index) {
+    for (std::size_t age_index = 0; age_index < 2; ++age_index) {
+      const std::vector<double> expected = ExpectedProbSizeRow(
+          grid.edges, products->MeanLAA(year_index, age_index, 0),
+          products->SdLAA(year_index, age_index, 0));
+      for (std::size_t size_bin_index = 0; size_bin_index < grid.n_bins;
+           ++size_bin_index) {
+        EXPECT_NEAR(provider.ProbSize(year_index, age_index, size_bin_index),
+                    expected[size_bin_index], 1e-6);
+      }
+      EXPECT_DOUBLE_EQ(provider.MeanWeightAtAge(year_index, age_index),
+                       provider.MeanWeightAtAge(0, age_index));
+    }
   }
 }
 
