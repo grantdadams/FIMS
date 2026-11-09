@@ -41,7 +41,12 @@
 #'    conditional sd sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
 #'    difference of the years, so years that are not consecutive also count
 #'    as k steps. Blocks with no random term cannot mix constant and
-#'    estimated rows.
+#'    estimated rows. A prior ([add_priors()]) is different: it still scores
+#'    a constant value. A known value with a prior is still informative, and
+#'    a likelihood profile, which holds the profiled value constant, keeps the
+#'    prior. A constant is not a process value, so a process steps over it.
+#'    Holding a process value constant to profile it therefore leaves it out
+#'    of the process.
 #'
 #' @details
 #' The formula describes 1 parameter, the target. Its right side has a fixed
