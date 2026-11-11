@@ -59,8 +59,8 @@ values.
 constant and leaves it out of its density, whatever its
 \code{distribution_type}, e.g., \code{log_Fmort} at -200 in a year with no catch.
 An AR1 process or random walk steps over it. Across k years the random
-walk sd is sd * sqrt(k), and the AR1 correlation is rho^k with the
-conditional sd sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
+walk SD is sd * sqrt(k), and the AR1 correlation is rho^k with
+conditional SD sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
 difference of the years, so years that are not consecutive also count
 as k steps. Blocks with no random term cannot mix constant and
 estimated rows. A prior (\code{\link[=add_priors]{add_priors()}}) is different: it still scores
