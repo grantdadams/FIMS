@@ -37,10 +37,12 @@
 #'    constant and leaves it out of its density, whatever its
 #'    `distribution_type`, e.g., `log_Fmort` at -200 in a year with no catch.
 #'    An AR1 process or random walk steps over it. Across k years the random
-#'    walk sd is sd * sqrt(k), and the AR1 correlation is rho^k with the
-#'    conditional sd sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
+#'    walk SD is sd * sqrt(k), and the AR1 correlation is rho^k with
+#'    conditional SD sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
 #'    difference of the years, so years that are not consecutive also count
-#'    as k steps. Blocks with no random term cannot mix constant and
+#'    as k steps. A process with only 1 estimated value must hold its mean,
+#'    sd and rho constant, so it is a penalty on that value. Blocks with no
+#'    random term cannot mix constant and
 #'    estimated rows. A prior ([add_priors()]) is different: it still scores
 #'    a constant value. A known value with a prior is still informative, and
 #'    a likelihood profile, which holds the profiled value constant, keeps the
