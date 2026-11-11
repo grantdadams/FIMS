@@ -21,13 +21,15 @@ parameters_with_prior <- small_parameters |>
 recruitment <- tibble::tibble(
   module_name = "Recruitment",
   module_type = "BevertonHolt",
-  label = c("log_rzero", "logit_steep", "log_devs", "log_sd"),
-  value = c(10, 0.5, 0, log(0.4)),
+  label = c("log_rzero", "logit_steep", "log_devs", "log_devs", "log_sd"),
+  timing = c(NA, NA, 2, 3, NA),
+  value = c(10, 0.5, 0, 0, log(0.4)),
   estimation_type = c(
-    "fixed_effects", "fixed_effects", "random_effects", "fixed_effects"
+    "fixed_effects", "fixed_effects", "random_effects", "random_effects",
+    "fixed_effects"
   ),
-  distribution_type = c(NA, NA, "process", "process"),
-  distribution = c(NA, NA, "Dnorm", "Dnorm")
+  distribution_type = c(NA, NA, "process", "process", "process"),
+  distribution = c(NA, NA, "Dnorm", "Dnorm", "Dnorm")
 )
 growth <- tibble::tibble(
   module_name = "Growth",

@@ -115,7 +115,6 @@ process_densities <- function(parameter_table) {
     # Every row of the target, whatever its distribution_type, so every
     # constant value is left out.
     target_rows <- dplyr::filter(parameter_table, .data[["name"]] == target)
-    check_estimated_process(target_rows, target)
     distribution <- unique(stats::na.omit(rows[["distribution"]]))
     if (length(distribution) > 0 && !distribution %in% "Dnorm") {
       cli::cli_abort(c(
@@ -144,6 +143,11 @@ process_densities <- function(parameter_table) {
     check_density_parameter_rows(
       dplyr::filter(parameter_table, is_hyperparameter),
       dplyr::filter(parameter_table, .data[["name"]] == target),
+      target
+    )
+    check_estimated_process(
+      target_rows,
+      dplyr::filter(parameter_table, is_hyperparameter),
       target
     )
     hyperparameters <- parameter_table |>
@@ -246,14 +250,27 @@ process_steps <- function(target_rows, is_estimated, target) {
   steps
 }
 
-#' Stop when a process has no estimated values
+#' Stop when a process has too few estimated values for what it estimates
 #'
 #' With every value constant, the process informs only its own
 #' hyperparameters. When the values equal the mean, e.g., deviations fixed at
-#' 0, an estimated sd goes to 0 and the objective is unbounded.
+#' 0, an estimated sd goes to 0 and the objective is unbounded. With 1
+#' estimated value, an estimated mean fits it exactly and an estimated sd or
+#' rho has nothing to inform it, so the sd can go to 0. With its mean, sd and
+#' rho all constant, a process on 1 estimated value is a penalty and is
+#' allowed.
+#' @param rows Every row of the target.
+#' @param hyperparameter_rows The expected_mean, log_sd and logit_rho rows of
+#'   the process.
+#' @param target The target's name.
 #' @noRd
-check_estimated_process <- function(rows, target) {
-  if (all(rows[["estimation_type"]] == "constant")) {
+check_estimated_process <- function(rows, hyperparameter_rows, target) {
+  n_estimated <- sum(rows[["estimation_type"]] != "constant")
+  estimated_hyperparameters <- hyperparameter_rows |>
+    dplyr::filter(.data[["estimation_type"]] != "constant") |>
+    dplyr::pull(.data[["label"]]) |>
+    unique()
+  if (n_estimated == 0) {
     cli::cli_abort(c(
       "x" = "The process on {.val {target}} has no estimated values.",
       "i" = "A process needs estimated values ({.val random_effects} or
@@ -263,6 +280,18 @@ check_estimated_process <- function(rows, target) {
       "i" = "Check the estimation types with
       {.code dplyr::distinct(parameters, module_name, fleet, label,
       estimation_type)}."
+    ))
+  }
+  if (n_estimated == 1 && length(estimated_hyperparameters) > 0) {
+    cli::cli_abort(c(
+      "x" = "The process on {.val {target}} has 1 estimated value and
+      estimates {.val {estimated_hyperparameters}}.",
+      "i" = "A process leaves constant values out of its density. With 1
+      estimated value, an estimated mean fits it exactly and an estimated sd
+      or rho has nothing to inform it, so the sd can go to 0.",
+      "i" = "Estimate at least 2 values, or hold {.val expected_mean},
+      {.val log_sd} and {.val logit_rho} constant so the process is a
+      penalty."
     ))
   }
 }

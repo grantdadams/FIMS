@@ -1358,6 +1358,34 @@ test_that("`initialize_fims()` returns correct error messages for a process with
     object = initialize_fims(parameters, data = data_10_years),
     regexp = "vary\\s+by\\s+year\\s+and\\s+by\\s+age"
   )
+  # Recruitment deviations held constant in every year except year 2.
+  one_estimated_dev <- setup_default_parameters(data_10_years) |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      label == "log_devs" & timing > 2, "constant", estimation_type
+    ))
+  estimated_sd <- dplyr::mutate(
+    one_estimated_dev,
+    estimation_type = dplyr::if_else(
+      module_name == "Recruitment" & label == "log_sd",
+      "fixed_effects", estimation_type
+    )
+  )
+  #' @description Test that `initialize_fims()` errors for a process with only 1 estimated value and an estimated sd, which has nothing to inform it.
+  expect_error(
+    object = suppressWarnings(initialize_fims(estimated_sd, data = data_10_years)),
+    regexp = "1\\s+estimated\\s+value\\s+and\\s+estimates"
+  )
+  constant_sd <- dplyr::mutate(
+    one_estimated_dev,
+    estimation_type = dplyr::if_else(
+      module_name == "Recruitment" & label == "log_sd",
+      "constant", estimation_type
+    )
+  )
+  #' @description Test that `initialize_fims()` accepts a process on 1 estimated value when its sd is constant, so the process is a penalty.
+  expect_no_error(
+    suppressWarnings(initialize_fims(constant_sd, data = data_10_years))
+  )
 })
 
 test_that("`initialize_fims()` errors for a catch unit it cannot map", {
