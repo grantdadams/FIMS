@@ -1,6 +1,6 @@
-# add_process() and add_priors(): time-varying parameters, time blocks,
-# processes and priors, written into the parameter tibble. The formula forms
-# are listed in the add_process() help page.
+# add_process() and add_priors(): blocks, processes by year or age, and
+# priors, written into the parameter tibble. The formula forms are listed in
+# the add_process() help page.
 #
 # The helpers only write rows. initialize_fims() builds the map and the
 # densities from the tibble, so a hand-edited tibble works the same way.
@@ -19,7 +19,8 @@
 #'    `module_name` and `fleet`.
 #' 2. 1 call per target. A second call is an error.
 #' 3. Formula variables are the target's index columns: `year` (from
-#'    `timing`) and `age`.
+#'    `timing`) and `age`. A random term groups by `year`, `age` or
+#'    `age:year`.
 #' 4. With no random term, the fixed term says which rows share 1 estimate.
 #'    With a random term, it defines the `expected_mean` the process values
 #'    vary around, and each non-constant row is its own process value.
@@ -27,20 +28,21 @@
 #'    when some are constant: "random_effects" (integrated, the default with
 #'    a random term) or "fixed_effects" (penalized).
 #' 6. `sd` and `rho` are lists with `value` and `estimation_type`.
-#' 7. For `rw()`, the first estimated row (usually the first year) is a fixed
-#'    effect and there is no `expected_mean`.
+#' 7. For `rw()`, the first estimated row (usually the first year or the
+#'    first age) is a fixed effect and there is no `expected_mean`.
 #' 8. Rows that share 1 estimate start from the mean of their values. With a
 #'    random term, each `expected_mean` starts from the mean of the estimated
 #'    values in its block, and the process values keep their own starting
 #'    values.
 #' 9. A constant row is not part of the process. The process keeps it
 #'    constant and leaves it out of its density, whatever its
-#'    `distribution_type`, e.g., `log_Fmort` at -200 in a year with no catch.
-#'    An AR1 process or random walk steps over it. Across k years the random
-#'    walk SD is sd * sqrt(k), and the AR1 correlation is rho^k with
-#'    conditional SD sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
-#'    difference of the years, so years that are not consecutive also count
-#'    as k steps. Blocks with no random term cannot mix constant and
+#'    `distribution_type`, e.g., `log_Fmort` at -200 in a year with no catch,
+#'    or the oldest age of `AgeSpecific` selectivity. An AR1 process or random
+#'    walk steps over it. Across k years or ages the random walk SD is
+#'    sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
+#'    sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
+#'    years or ages, so years or ages that are not consecutive also count as
+#'    k steps. Blocks with no random term cannot mix constant and
 #'    estimated rows. A prior ([add_priors()]) is different: it still scores
 #'    a constant value. A known value with a prior is still informative, and
 #'    a likelihood profile, which holds the profiled value constant, keeps the
@@ -58,10 +60,27 @@
 #' - `log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year)`: an iid process by
 #'   age and year.
 #' - `log_q ~ rw(1 | year)`: a random walk.
+#' - `logit_sel_at_age ~ rw(1 | age)`: a random walk from each age to the next,
+#'   for `AgeSpecific` selectivity. `(1 | age)` and `ar1(1 | age)` give iid
+#'   and AR1 processes by age.
 #'
 #' These breaks fit data with years 1 to 30, as in `data_big`. When the data
 #' use calendar years, `year` is a calendar year, e.g.,
 #' `cut(year, c(-Inf, 2000, Inf))`.
+#'
+#' A random term by age is for a target with 1 row per age and no years, such
+#' as `logit_sel_at_age` or `log_init_naa`. A target that also varies by year,
+#' such as the default `log_M`, is an error, because a 2D process is not
+#' implemented. With `estimation_type = "fixed_effects"`, a random walk by age
+#' is a smoothness penalty on the differences between ages. A penalty with
+#' weight w, `w * sum(diff(x)^2) / 2`, equals the negative log density of a
+#' random walk with sd = 1 / sqrt(w), up to a constant.
+#'
+#' An estimated process SD on `logit_sel_at_age` needs a selectivity curve
+#' that does not saturate. Where selectivity is near 1, the data hardly
+#' inform the logit values, so the SD and those values can drift together.
+#' If the curve saturates, hold the SD constant
+#' (`estimation_type = "constant"`).
 #'
 #' @param parameters The parameter tibble.
 #' @param formula `target ~ fixed term + random term`. See Details for the
@@ -88,6 +107,21 @@
 #' parameters |>
 #'   add_process(log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
 #'     module_name = "Fleet", fleet = "fleet1"
+#'   )
+#' # Smooth age-specific survey selectivity: a penalized random walk by age.
+#' # The oldest age stays constant and sets the scale of selectivity.
+#' parameters |>
+#'   dplyr::filter(!(module_name == "Selectivity" & fleet == "survey1")) |>
+#'   dplyr::bind_rows(
+#'     setup_default_Selectivity(
+#'       data = FIMSFrame(data_big), fleet = "survey1",
+#'       module_type = "AgeSpecific"
+#'     )
+#'   ) |>
+#'   add_process(logit_sel_at_age ~ rw(1 | age),
+#'     module_name = "Selectivity", fleet = "survey1",
+#'     estimation_type = "fixed_effects",
+#'     sd = list(value = 0.5, estimation_type = "constant")
 #'   )
 #' }
 add_process <- function(parameters,
@@ -243,7 +277,7 @@ check_process <- function(parameters, formula, module_name, fleet,
       "x" = "{.val {target}} varies by year and by age, so it cannot take a
       process by age.",
       "i" = "A process by age needs 1 row per age and no years
-      ({.var timing} NA). A 2D process is not implemented. Use
+      ({.var timing} of {.code NA}). A 2D process is not implemented. Use
       {.code (1 | age:year)} for an iid process by age and year.",
       "i" = "Count the rows by year and age with
       {.code dplyr::filter(parameters, label == \"{target}\") |>

@@ -41,7 +41,8 @@ Rules:
 \code{module_name} and \code{fleet}.
 \item 1 call per target. A second call is an error.
 \item Formula variables are the target's index columns: \code{year} (from
-\code{timing}) and \code{age}.
+\code{timing}) and \code{age}. A random term groups by \code{year}, \code{age} or
+\code{age:year}.
 \item With no random term, the fixed term says which rows share 1 estimate.
 With a random term, it defines the \code{expected_mean} the process values
 vary around, and each non-constant row is its own process value.
@@ -49,20 +50,21 @@ vary around, and each non-constant row is its own process value.
 when some are constant: "random_effects" (integrated, the default with
 a random term) or "fixed_effects" (penalized).
 \item \code{sd} and \code{rho} are lists with \code{value} and \code{estimation_type}.
-\item For \code{rw()}, the first estimated row (usually the first year) is a fixed
-effect and there is no \code{expected_mean}.
+\item For \code{rw()}, the first estimated row (usually the first year or the
+first age) is a fixed effect and there is no \code{expected_mean}.
 \item Rows that share 1 estimate start from the mean of their values. With a
 random term, each \code{expected_mean} starts from the mean of the estimated
 values in its block, and the process values keep their own starting
 values.
 \item A constant row is not part of the process. The process keeps it
 constant and leaves it out of its density, whatever its
-\code{distribution_type}, e.g., \code{log_Fmort} at -200 in a year with no catch.
-An AR1 process or random walk steps over it. Across k years the random
-walk SD is sd * sqrt(k), and the AR1 correlation is rho^k with
-conditional SD sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the
-difference of the years, so years that are not consecutive also count
-as k steps. Blocks with no random term cannot mix constant and
+\code{distribution_type}, e.g., \code{log_Fmort} at -200 in a year with no catch,
+or the oldest age of \code{AgeSpecific} selectivity. An AR1 process or random
+walk steps over it. Across k years or ages the random walk SD is
+sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
+sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
+years or ages, so years or ages that are not consecutive also count as
+k steps. Blocks with no random term cannot mix constant and
 estimated rows. A prior (\code{\link[=add_priors]{add_priors()}}) is different: it still scores
 a constant value. A known value with a prior is still informative, and
 a likelihood profile, which holds the profiled value constant, keeps the
@@ -82,11 +84,28 @@ process around 2 block means.
 \item \code{log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year)}: an iid process by
 age and year.
 \item \code{log_q ~ rw(1 | year)}: a random walk.
+\item \code{logit_sel_at_age ~ rw(1 | age)}: a random walk from each age to the next,
+for \code{AgeSpecific} selectivity. \code{(1 | age)} and \code{ar1(1 | age)} give iid
+and AR1 processes by age.
 }
 
 These breaks fit data with years 1 to 30, as in \code{data_big}. When the data
 use calendar years, \code{year} is a calendar year, e.g.,
 \code{cut(year, c(-Inf, 2000, Inf))}.
+
+A random term by age is for a target with 1 row per age and no years, such
+as \code{logit_sel_at_age} or \code{log_init_naa}. A target that also varies by year,
+such as the default \code{log_M}, is an error, because a 2D process is not
+implemented. With \code{estimation_type = "fixed_effects"}, a random walk by age
+is a smoothness penalty on the differences between ages. A penalty with
+weight w, \code{w * sum(diff(x)^2) / 2}, equals the negative log density of a
+random walk with sd = 1 / sqrt(w), up to a constant.
+
+An estimated process SD on \code{logit_sel_at_age} needs a selectivity curve
+that does not saturate. Where selectivity is near 1, the data hardly
+inform the logit values, so the SD and those values can drift together.
+If the curve saturates, hold the SD constant
+(\code{estimation_type = "constant"}).
 }
 \examples{
 \dontrun{
@@ -100,6 +119,21 @@ parameters |>
 parameters |>
   add_process(log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
     module_name = "Fleet", fleet = "fleet1"
+  )
+# Smooth age-specific survey selectivity: a penalized random walk by age.
+# The oldest age stays constant and sets the scale of selectivity.
+parameters |>
+  dplyr::filter(!(module_name == "Selectivity" & fleet == "survey1")) |>
+  dplyr::bind_rows(
+    setup_default_Selectivity(
+      data = FIMSFrame(data_big), fleet = "survey1",
+      module_type = "AgeSpecific"
+    )
+  ) |>
+  add_process(logit_sel_at_age ~ rw(1 | age),
+    module_name = "Selectivity", fleet = "survey1",
+    estimation_type = "fixed_effects",
+    sd = list(value = 0.5, estimation_type = "constant")
   )
 }
 }
