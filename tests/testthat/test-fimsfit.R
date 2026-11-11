@@ -532,6 +532,10 @@ test_that("`fit_fims()` fits a random walk by age on age-specific selectivity", 
     fit_fims() |>
     suppressWarnings()
   no_process_roughness <- roughness(get_selectivity(no_process_fit))
+  # data_big was simulated with logistic survey selectivity with slope 2 and
+  # inflection point at age 1.5, so ages 4 to 11 are on the plateau near 1.
+  true_selectivity <- stats::plogis(2 * (1:12 - 1.5))
+  plateau_ages <- 4:11
   for (estimation_type in c("fixed_effects", "random_effects")) {
     fit <- age_specific_parameters |>
       add_process(
@@ -545,6 +549,7 @@ test_that("`fit_fims()` fits a random walk by age on age-specific selectivity", 
       fit_fims()
     selectivity <- get_selectivity(fit)
     estimated_ages <- selectivity[["estimation_type"]] != "constant"
+    estimated_selectivity <- stats::plogis(selectivity[["estimated"]])
     #' @description Test that `fit_fims()` converges with a penalized or integrated random walk by age on age-specific selectivity.
     expect_equal(
       object = get_opt(fit)[["convergence"]],
@@ -559,12 +564,22 @@ test_that("`fit_fims()` fits a random walk by age on age-specific selectivity", 
       object = roughness(selectivity),
       expected = no_process_roughness
     )
-    # data_big was simulated with logistic survey selectivity with its
-    # inflection point at age 1.5.
     #' @description Test that a random walk by age estimates the lowest selectivity at age 1, as in the logistic selectivity used to simulate `data_big`.
     expect_equal(
       object = which.min(selectivity[["estimated"]]),
       expected = 1L
+    )
+    # The constant age 12 is left out of the random walk, so the estimated
+    # ages settle at a plateau logit around 2 and log_q absorbs the scale.
+    # Dividing by the plateau mean compares the relative shape to the true
+    # curve.
+    #' @description Test that a random walk by age recovers the shape of the true logistic survey selectivity within 0.1 after scaling by the plateau mean.
+    expect_equal(
+      object = estimated_selectivity[estimated_ages] /
+        mean(estimated_selectivity[plateau_ages]),
+      expected = true_selectivity[estimated_ages] /
+        mean(true_selectivity[plateau_ages]),
+      tolerance = 0.1
     )
   }
   clear()
