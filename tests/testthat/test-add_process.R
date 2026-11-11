@@ -132,6 +132,124 @@ test_that("`add_process()` makes the first year of a random walk a fixed effect"
   expect_false("expected_mean" %in% parameters[["label"]])
 })
 
+test_that("`add_process()` keeps constant values constant in a process", {
+  # Years 1 and 4 are constant, as years with no catch are.
+  log_fmort_with_constants <- small_parameters |>
+    dplyr::mutate(
+      value = dplyr::if_else(label == "log_Fmort", -timing / 2, value),
+      estimation_type = dplyr::if_else(
+        label == "log_Fmort" & timing %in% c(1, 4), "constant",
+        estimation_type
+      )
+    )
+  random_walk_rows <- log_fmort_with_constants |>
+    add_process(
+      log_Fmort ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    dplyr::filter(label == "log_Fmort")
+  #' @description Test that `add_process()` keeps constant years constant in a random walk and makes the first estimated year the fixed effect.
+  expect_equal(
+    object = random_walk_rows[["estimation_type"]],
+    expected = c(
+      "constant", "fixed_effects", "random_effects", "constant",
+      "random_effects", "random_effects"
+    )
+  )
+  ar1_parameters <- log_fmort_with_constants |>
+    add_process(
+      log_Fmort ~ 1 + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1",
+      rho = list(value = 0.5, estimation_type = "fixed_effects")
+    )
+  #' @description Test that `add_process()` starts the expected_mean from the mean of the estimated years only.
+  expect_equal(
+    object = ar1_parameters |>
+      dplyr::filter(label == "expected_mean") |>
+      dplyr::pull(value) |>
+      unique(),
+    expected = mean(-c(2, 3, 5, 6) / 2)
+  )
+})
+
+test_that("`add_process()` writes the rows of a process by age", {
+  random_walk_rows <- parameters_with_init_naa |>
+    add_process(
+      log_init_naa ~ rw(1 | age),
+      module_name = "Population"
+    ) |>
+    dplyr::filter(label == "log_init_naa")
+  #' @description Test that `add_process()` makes the first age of a random walk by age a fixed effect and the other ages random effects.
+  expect_equal(
+    object = random_walk_rows[["estimation_type"]],
+    expected = c("fixed_effects", rep("random_effects", 3))
+  )
+  #' @description Test that `add_process()` keeps 1 row per age and adds no years for a process by age.
+  expect_true(all(is.na(random_walk_rows[["timing"]])))
+
+  # A constant youngest and oldest age. The oldest age of AgeSpecific
+  # selectivity is constant by default.
+  init_naa_with_constants <- parameters_with_init_naa |>
+    dplyr::mutate(
+      value = dplyr::if_else(
+        label == "log_init_naa", c(-7, 1, 2, -7)[age], value
+      ),
+      estimation_type = dplyr::if_else(
+        label == "log_init_naa" & age %in% c(1, 4), "constant", estimation_type
+      )
+    )
+  anchored_rows <- init_naa_with_constants |>
+    add_process(
+      log_init_naa ~ rw(1 | age),
+      module_name = "Population"
+    ) |>
+    dplyr::filter(label == "log_init_naa")
+  #' @description Test that `add_process()` keeps constant ages constant in a random walk by age and makes the first estimated age the fixed effect.
+  expect_equal(
+    object = anchored_rows[["estimation_type"]],
+    expected = c("constant", "fixed_effects", "random_effects", "constant")
+  )
+  ar1_with_constants <- init_naa_with_constants |>
+    add_process(
+      log_init_naa ~ 1 + ar1(1 | age),
+      module_name = "Population",
+      rho = list(value = 0.5, estimation_type = "fixed_effects")
+    )
+  #' @description Test that `add_process()` starts the expected_mean of a process from the mean of the estimated values only.
+  expect_equal(
+    object = ar1_with_constants |>
+      dplyr::filter(label == "expected_mean") |>
+      dplyr::pull(value) |>
+      unique(),
+    expected = 1.5
+  )
+
+  parameters <- parameters_with_init_naa |>
+    add_process(
+      log_init_naa ~ cut(age, c(-Inf, 2, Inf)) + ar1(1 | age),
+      module_name = "Population",
+      rho = list(value = 0.5, estimation_type = "fixed_effects")
+    )
+  expected_mean_rows <- dplyr::filter(parameters, label == "expected_mean")
+  #' @description Test that `add_process()` writes 1 expected_mean row per age for an AR1 process by age.
+  expect_equal(
+    object = expected_mean_rows[["age"]],
+    expected = 1:4
+  )
+  #' @description Test that `add_process()` shares the expected_mean within each age block.
+  expect_equal(
+    object = expected_mean_rows[["map_group"]],
+    expected = c(1L, 1L, 2L, 2L)
+  )
+  #' @description Test that `add_process()` writes a logit_rho row for an AR1 process by age.
+  expect_equal(
+    object = dplyr::filter(parameters, label == "logit_rho")[["value"]],
+    expected = log(3)
+  )
+})
+
 ## Edge handling ----
 test_that("`add_process()` returns correct outputs for edge cases", {
   log_init_naa_rows <- parameters_with_init_naa |>
@@ -253,20 +371,46 @@ test_that("`add_process()` returns correct error messages", {
     ),
     regexp = "age:year"
   )
-  # Some years are fixed (no catch) and some are estimated.
+  # Some years are constant (no catch) and some are estimated.
   mixed <- small_parameters |>
     dplyr::mutate(estimation_type = dplyr::if_else(
       label == "log_Fmort" & timing == 1, "constant", estimation_type
     ))
-  #' @description Test that `add_process()` errors for a target with some years fixed and some estimated.
+  #' @description Test that `add_process()` errors for time blocks on a target with some years constant and some estimated, because the blocks would estimate the constant years.
   expect_error(
     object = add_process(
       mixed,
-      log_Fmort ~ 1 + (1 | year),
+      log_Fmort ~ cut(year, c(-Inf, 3, Inf)),
       module_name = "Fleet",
       fleet = "fleet1"
     ),
-    regexp = "some fixed"
+    regexp = "some\\s+constant\\s+values"
+  )
+  # Year 1 is the only constant year and a block of its own.
+  #' @description Test that `add_process()` errors for a process whose fixed term gives a block of only constant values, because the density leaves them out.
+  expect_error(
+    object = add_process(
+      mixed,
+      log_Fmort ~ cut(year, c(-Inf, 1, Inf)) + (1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ),
+    regexp = "only\\s+constant\\s+values"
+  )
+  # Only year 1 is estimated and years 2 to 6 are constant.
+  one_estimated <- small_parameters |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      label == "log_Fmort" & timing > 1, "constant", estimation_type
+    ))
+  #' @description Test that `add_process()` errors for a process with only 1 estimated value, because the density leaves constant values out and needs at least 2 estimated values.
+  expect_error(
+    object = add_process(
+      one_estimated,
+      log_Fmort ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ),
+    regexp = "at\\s+least\\s+2\\s+estimated\\s+values"
   )
   with_prior <- small_parameters |>
     add_priors(
@@ -387,7 +531,7 @@ test_that("`add_process()` returns correct error messages for the formula", {
     ),
     regexp = "groups\\s+by"
   )
-  #' @description Test that `add_process()` errors for an AR1 process by age and year, because AR1 is by year only.
+  #' @description Test that `add_process()` errors for an AR1 process by age and year, because a 2D process is not implemented.
   expect_error(
     object = add_process(
       small_parameters,
@@ -395,7 +539,7 @@ test_that("`add_process()` returns correct error messages for the formula", {
       module_name = "Fleet",
       fleet = "survey1"
     ),
-    regexp = "by\\s+year\\s+only"
+    regexp = "year\\s+or\\s+by\\s+age,\\s+not\\s+both"
   )
   #' @description Test that `add_process()` errors for `(1 | age:year)` on a target that does not vary by age.
   expect_error(
@@ -406,6 +550,103 @@ test_that("`add_process()` returns correct error messages for the formula", {
       fleet = "survey1"
     ),
     regexp = "does\\s+not\\s+vary\\s+by\\s+age"
+  )
+})
+
+test_that("`add_process()` returns correct error messages for a process by age", {
+  # log_M by age in each year, as setup_default_parameters() writes it.
+  log_m_by_year <- small_parameters |>
+    dplyr::bind_rows(tibble::tibble(
+      module_name = "Population",
+      label = "log_M",
+      age = rep(1:3, times = 6),
+      timing = rep(1:6, each = 3),
+      value = log(0.2),
+      estimation_type = "fixed_effects"
+    ))
+  #' @description Test that `add_process()` errors for a process by age on a target that also varies by year, because a 2D process is not implemented.
+  expect_error(
+    object = add_process(
+      log_m_by_year,
+      log_M ~ rw(1 | age),
+      module_name = "Population"
+    ),
+    regexp = "varies\\s+by\\s+year\\s+and\\s+by\\s+age"
+  )
+  # The same rows given year by year with no timing repeat each age.
+  log_m_no_timing <- dplyr::mutate(
+    log_m_by_year,
+    timing = dplyr::if_else(label == "log_M", NA_integer_, timing)
+  )
+  #' @description Test that `add_process()` errors for a process by age on rows that repeat each age, as time-varying rows given with no timing do.
+  expect_error(
+    object = add_process(
+      log_m_no_timing,
+      log_M ~ 1 + ar1(1 | age),
+      module_name = "Population"
+    ),
+    regexp = "varies\\s+by\\s+year\\s+and\\s+by\\s+age"
+  )
+  log_m_by_age <- small_parameters |>
+    dplyr::bind_rows(tibble::tibble(
+      module_name = "Population",
+      label = "log_M",
+      age = 1:3,
+      value = log(0.2),
+      estimation_type = "fixed_effects"
+    ))
+  #' @description Test that `add_process()` errors for a process by age with a fixed term in year.
+  expect_error(
+    object = add_process(
+      log_m_by_age,
+      log_M ~ cut(year, c(-Inf, 3, Inf)) + (1 | age),
+      module_name = "Population"
+    ),
+    regexp = "fixed\\s+term\\s+in\\s+year"
+  )
+  # 1 row per age, but with a year.
+  init_naa_with_timing <- dplyr::mutate(
+    parameters_with_init_naa,
+    timing = dplyr::if_else(label == "log_init_naa", 1L, timing)
+  )
+  #' @description Test that `add_process()` errors for a process by age on rows with a year, even with 1 row per age.
+  expect_error(
+    object = add_process(
+      init_naa_with_timing,
+      log_init_naa ~ rw(1 | age),
+      module_name = "Population"
+    ),
+    regexp = "varies\\s+by\\s+year\\s+and\\s+by\\s+age"
+  )
+  #' @description Test that `add_process()` errors for a process by age on a target that does not vary by age.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ rw(1 | age),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "does\\s+not\\s+vary\\s+by\\s+age"
+  )
+  #' @description Test that `add_process()` suggests the same process by year for a target that does not vary by age.
+  expect_error(
+    object = add_process(
+      small_parameters,
+      log_q ~ rw(1 | age),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ),
+    regexp = "rw(1 | year)",
+    fixed = TRUE
+  )
+  #' @description Test that `add_process()` errors for a random term grouped by length, which no parameter is indexed by.
+  expect_error(
+    object = add_process(
+      parameters_with_init_naa,
+      log_init_naa ~ rw(1 | length),
+      module_name = "Population"
+    ),
+    regexp = "groups\\s+by"
   )
 })
 

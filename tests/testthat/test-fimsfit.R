@@ -340,14 +340,7 @@ test_that("fit_fims() errors when optimization fails to converge", {
 
 # fit_fims ----
 ## Setup ----
-# 10 years of data_big keep the fits fast. Weight at age has 1 more year, for
-# the start of the year after the last model year.
-data_10_years <- FIMS::data_big |>
-  dplyr::filter(
-    is.na(timing) |
-      timing <= dplyr::if_else(type == "weight_at_age", 11, 10)
-  ) |>
-  FIMSFrame()
+# `data_10_years` is in helper-data-10-years.R.
 default_parameters <- setup_default_parameters(data_10_years)
 
 # fleet1's log_Fmort in 2 time blocks, years 1 to 2 and years 3 to 10, so 10
@@ -509,6 +502,87 @@ test_that("`fit_fims()` restores the user's tape settings", {
   expect_false(
     rlang::env_binding_are_lazy(get_obj(fit)[["env"]], "spHess")
   )
+})
+
+test_that("`fit_fims()` fits a random walk by age on age-specific selectivity", {
+  # Default AgeSpecific survey selectivity, whose constant oldest age sets
+  # the scale. The process sd is held constant (see ?add_process).
+  age_specific_parameters <- default_parameters |>
+    dplyr::filter(!(module_name == "Selectivity" & fleet %in% "survey1")) |>
+    dplyr::bind_rows(
+      setup_default_Selectivity(
+        data = data_10_years,
+        fleet = "survey1",
+        module_type = "AgeSpecific"
+      )
+    )
+  get_selectivity <- function(fit) {
+    get_estimates(fit) |>
+      dplyr::filter(label == "logit_sel_at_age")
+  }
+  # Squared differences between the logits of neighboring estimated ages.
+  roughness <- function(selectivity) {
+    estimated <- selectivity[["estimated"]][
+      selectivity[["estimation_type"]] != "constant"
+    ]
+    sum(diff(estimated)^2)
+  }
+  no_process_fit <- age_specific_parameters |>
+    initialize_fims(data = data_10_years) |>
+    fit_fims() |>
+    suppressWarnings()
+  no_process_roughness <- roughness(get_selectivity(no_process_fit))
+  # data_big was simulated with logistic survey selectivity with slope 2 and
+  # inflection point at age 1.5, so ages 4 to 11 are on the plateau near 1.
+  true_selectivity <- stats::plogis(2 * (1:12 - 1.5))
+  plateau_ages <- 4:11
+  for (estimation_type in c("fixed_effects", "random_effects")) {
+    fit <- age_specific_parameters |>
+      add_process(
+        logit_sel_at_age ~ rw(1 | age),
+        module_name = "Selectivity",
+        fleet = "survey1",
+        estimation_type = estimation_type,
+        sd = list(value = 0.5, estimation_type = "constant")
+      ) |>
+      initialize_fims(data = data_10_years) |>
+      fit_fims()
+    selectivity <- get_selectivity(fit)
+    estimated_ages <- selectivity[["estimation_type"]] != "constant"
+    estimated_selectivity <- stats::plogis(selectivity[["estimated"]])
+    #' @description Test that `fit_fims()` converges with a penalized or integrated random walk by age on age-specific selectivity.
+    expect_equal(
+      object = get_opt(fit)[["convergence"]],
+      expected = 0L
+    )
+    #' @description Test that a random walk by age gives finite estimates for every age.
+    expect_true(all(is.finite(selectivity[["estimated"]])))
+    #' @description Test that a random walk by age gives finite standard errors for every estimated age.
+    expect_true(all(is.finite(selectivity[["uncertainty"]][estimated_ages])))
+    #' @description Test that a random walk by age gives a smoother selectivity curve than the same model with no process.
+    expect_lt(
+      object = roughness(selectivity),
+      expected = no_process_roughness
+    )
+    #' @description Test that a random walk by age estimates the lowest selectivity at age 1, as in the logistic selectivity used to simulate `data_big`.
+    expect_equal(
+      object = which.min(selectivity[["estimated"]]),
+      expected = 1L
+    )
+    # The constant age 12 is left out of the random walk, so the estimated
+    # ages settle at a plateau logit around 2 and log_q absorbs the scale.
+    # Dividing by the plateau mean compares the relative shape to the true
+    # curve.
+    #' @description Test that a random walk by age recovers the shape of the true logistic survey selectivity within 0.1 after scaling by the plateau mean.
+    expect_equal(
+      object = estimated_selectivity[estimated_ages] /
+        mean(estimated_selectivity[plateau_ages]),
+      expected = true_selectivity[estimated_ages] /
+        mean(true_selectivity[plateau_ages]),
+      tolerance = 0.1
+    )
+  }
+  clear()
 })
 
 ## Edge handling ----

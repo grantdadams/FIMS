@@ -19,7 +19,9 @@ initialize_densities <- function(parameter_table) {
 #' (add_priors()). The target's own rows are not changed, so a prior can be
 #' put on any parameter, including a process's own sd. A prior on a constant
 #' value is still scored, so a likelihood profile, which holds the profiled
-#' parameter constant, includes the prior in its objective.
+#' parameter constant, includes the prior in its objective. A process leaves
+#' constant values out instead, because a constant is not a process value
+#' (rule 9 in ?add_process, process_densities()).
 #' @noRd
 prior_densities <- function(parameter_table) {
   prior_rows <- dplyr::filter(
@@ -107,6 +109,15 @@ prior_densities <- function(parameter_table) {
 #' Otherwise it comes from the process mean tables for log_devs and log_r
 #' (recruitment_process_means) and log_depletion (depletion_process_means),
 #' or is 0 (deviations, random walks).
+#'
+#' Constant values of the target are left out of the density, whatever their
+#' `distribution_type`. A constant sets a scale or marks a year with no catch
+#' (log_Fmort at -200). It is neither data nor a process value, so it is not
+#' scored, and the density is that of the process seen only at the estimated
+#' values. `positions` then index the estimated values, and an AR1 process or
+#' random walk steps across the constant ones (`steps`, process_steps()).
+#' Positions are left out when every value is estimated, and steps when
+#' every step is 1, so those processes keep the plain form of their density.
 #' @noRd
 process_densities <- function(parameter_table) {
   hyperparameter_labels <- c("expected_mean", "log_sd", "logit_rho")
@@ -119,7 +130,10 @@ process_densities <- function(parameter_table) {
   for (target in unique(targets[["name"]])) {
     rows <- dplyr::filter(targets, .data[["name"]] == target)
     label <- rows[["label"]][1]
-    check_estimated_process(rows, target)
+    # Every row of the target, whatever its distribution_type, so every
+    # constant value is left out.
+    target_rows <- dplyr::filter(parameter_table, .data[["name"]] == target)
+    check_estimated_process(target_rows, target)
     distribution <- unique(stats::na.omit(rows[["distribution"]]))
     if (length(distribution) > 0 && !distribution %in% "Dnorm") {
       cli::cli_abort(c(
@@ -179,7 +193,7 @@ process_densities <- function(parameter_table) {
     } else {
       list(kind = "zero")
     }
-    densities[[length(densities) + 1]] <- list(
+    density_entry <- list(
       distribution_type = "process",
       target = target,
       structure = process_structure,
@@ -188,23 +202,81 @@ process_densities <- function(parameter_table) {
         c("log_sd", "logit_rho"), names(hyperparameter_name)
       )])
     )
+    is_estimated <- target_rows[["estimation_type"]] != "constant"
+    if (!all(is_estimated)) {
+      position <- value_position(target_rows, shape_parameter(target_rows))
+      density_entry[["positions"]] <- sort(position[is_estimated])
+    }
+    if (process_structure %in% c("ar1", "rw")) {
+      density_entry[["steps"]] <- process_steps(
+        target_rows, is_estimated, target
+      )
+    }
+    densities[[length(densities) + 1]] <- density_entry
   }
   densities
 }
 
-#' Stop when a process has no estimated values
+#' Steps from each estimated value of an AR1 process or random walk to the
+#' next
 #'
-#' With every value constant, the process informs only its own
-#' hyperparameters. When the values equal the mean, e.g., deviations fixed at
-#' 0, an estimated sd goes to 0 and the objective is unbounded.
+#' The differences of their years or ages, from the 1 index column that
+#' varies. A gap of constant values, or years 2 apart, counts as more than 1
+#' step.
+#'
+#' @param target_rows Every row of the target, sorted by year and age.
+#' @param is_estimated Which rows are not constant.
+#' @param target The target's name, for messages.
+#' @return The steps, or NULL when every step is 1.
+#' @noRd
+process_steps <- function(target_rows, is_estimated, target) {
+  index_columns <- unname(process_index_columns)
+  varies <- vapply(
+    index_columns,
+    function(column) dplyr::n_distinct(target_rows[[column]], na.rm = TRUE) > 1,
+    logical(1)
+  )
+  # Values by year and age have no single order to step along.
+  if (sum(varies) > 1) {
+    cli::cli_abort(c(
+      "x" = "The AR1 process or random walk on {.val {target}} has values
+      that vary by year and by age.",
+      "i" = "An AR1 process or random walk varies by year or by age, not
+      both. A 2D process is not implemented.",
+      "i" = "Count the rows by year and age with
+      {.code dplyr::filter(parameters, label ==
+      \"{target_rows[['original_label']][1]}\") |> dplyr::count(timing,
+      age)}."
+    ))
+  }
+  if (!any(varies)) {
+    return(NULL)
+  }
+  index <- target_rows[[index_columns[varies]]]
+  steps <- diff(index[is_estimated])
+  if (all(steps == 1)) {
+    return(NULL)
+  }
+  steps
+}
+
+#' Stop when a process has fewer than 2 estimated values
+#'
+#' With every value constant, or only 1 estimated, a random walk has no step,
+#' an AR1 process has no pair of values, and an iid process around an
+#' estimated mean has 0 degrees of freedom, so an estimated sd can go to 0 and
+#' the objective is unbounded.
 #' @noRd
 check_estimated_process <- function(rows, target) {
-  if (all(rows[["estimation_type"]] == "constant")) {
+  n_estimated <- sum(rows[["estimation_type"]] != "constant")
+  if (n_estimated < 2) {
     cli::cli_abort(c(
-      "x" = "The process on {.val {target}} has no estimated values.",
-      "i" = "A process needs estimated values ({.val random_effects} or
-      {.val fixed_effects}). On constant values it cannot inform the
-      estimates, and an estimated process sd can go to 0. Estimate the
+      "x" = "The process on {.val {target}} has {.val {n_estimated}}
+      estimated {cli::qty(n_estimated)}value{?s}.",
+      "i" = "A process leaves constant values out of its density and needs at
+      least 2 estimated values ({.val random_effects} or
+      {.val fixed_effects}). With fewer than 2 it has no step or variance to
+      inform, and an estimated process sd can go to 0. Estimate at least 2
       values or remove the process.",
       "i" = "Check the estimation types with
       {.code dplyr::distinct(parameters, module_name, fleet, label,

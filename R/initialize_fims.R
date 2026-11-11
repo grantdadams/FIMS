@@ -579,7 +579,7 @@ check_recruitment_process <- function(parameters) {
       "i" = check_recruitment_rows
     ))
   }
-  if (any(process_rows[["estimation_type"]][process_rows[["label"]] != "log_sd"] %in% "constant")) {
+  if (all(process_rows[["estimation_type"]][process_rows[["label"]] != "log_sd"] %in% "constant")) {
     cli::cli_abort(c(
       "x" = "Missing required inputs for recruitment process random or
       fixed effects. {.val {process_label}} has a process, but its
@@ -592,8 +592,8 @@ check_recruitment_process <- function(parameters) {
       "i" = check_recruitment_rows
     ))
   }
-  # The process density covers every value of the parameter, including
-  # values set to constant (with no distribution).
+  # The process density leaves constant values out (see process_densities()),
+  # whatever their distribution_type.
   process_estimation_types <- parameters[["estimation_type"]][
     parameters[["module_name"]] %in% "Recruitment" &
       parameters[["label"]] %in% process_label
@@ -604,11 +604,11 @@ check_recruitment_process <- function(parameters) {
   if (n_constant > 0) {
     cli::cli_warn(c(
       "!" = "{n_constant} of the {length(process_estimation_types)}
-      {.var {process_label}} values in the recruitment module are constant,
-      but the recruitment process distribution includes all of them.",
-      "i" = "The constant values still add to the negative log-likelihood
-      and affect the estimate of {.var log_sd} (biased low when they are
-      fixed at 0) and, for {.var log_r}, the stock-recruit parameters.",
+      {.var {process_label}} values in the recruitment module are constant.
+      The recruitment process leaves them out.",
+      "i" = "Constant values are known values, not draws from the process.
+      They add nothing to the negative log-likelihood, so they do not inform
+      the process parameters, such as {.var log_sd}.",
       "i" = check_recruitment_rows
     ))
   }

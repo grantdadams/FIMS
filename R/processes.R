@@ -1,6 +1,6 @@
-# add_process() and add_priors(): time-varying parameters, time blocks,
-# processes and priors, written into the parameter tibble. The formula forms
-# are listed in the add_process() help page.
+# add_process() and add_priors(): blocks, processes by year or age, and
+# priors, written into the parameter tibble. The formula forms are listed in
+# the add_process() help page.
 #
 # The helpers only write rows. initialize_fims() builds the map and the
 # densities from the tibble, so a hand-edited tibble works the same way.
@@ -12,25 +12,43 @@
 # "constant", and `estimation_status` for `estimation_type`. Both are
 # written as estimation_type.
 
-#' Add a time-varying structure or process to 1 parameter
+#' Add blocks or a process to 1 parameter
 #'
 #' Rules:
 #' 1. The left side of the formula is the target `label`, keyed by
 #'    `module_name` and `fleet`.
 #' 2. 1 call per target. A second call is an error.
 #' 3. Formula variables are the target's index columns: `year` (from
-#'    `timing`) and `age`.
+#'    `timing`) and `age`. A random term groups by `year`, `age` or
+#'    `age:year`.
 #' 4. With no random term, the fixed term says which rows share 1 estimate.
-#'    With a random term, it defines the `expected_mean` the random effects
-#'    vary around, and each row is its own random effect.
-#' 5. `estimation_type` of the per-year rows: "random_effects" (integrated,
-#'    the default with a random term) or "fixed_effects" (penalized).
+#'    With a random term, it defines the `expected_mean` the process values
+#'    vary around, and each non-constant row is its own process value.
+#' 5. `estimation_type` of the target's rows, or of its non-constant rows
+#'    when some are constant: "random_effects" (integrated, the default with
+#'    a random term) or "fixed_effects" (penalized).
 #' 6. `sd` and `rho` are lists with `value` and `estimation_type`.
-#' 7. For `rw()`, the first year's row is a fixed effect and there is no
-#'    `expected_mean`.
+#' 7. For `rw()`, the first estimated row (usually the first year or the
+#'    first age) is a fixed effect and there is no `expected_mean`.
 #' 8. Rows that share 1 estimate start from the mean of their values. With a
-#'    random term, each `expected_mean` starts from the mean of its block,
-#'    and the random effects keep their own starting values.
+#'    random term, each `expected_mean` starts from the mean of the estimated
+#'    values in its block, and the process values keep their own starting
+#'    values.
+#' 9. A constant row is not part of the process. The process keeps it
+#'    constant and leaves it out of its density, whatever its
+#'    `distribution_type`, e.g., `log_Fmort` at -200 in a year with no catch,
+#'    or the oldest age of `AgeSpecific` selectivity. An AR1 process or random
+#'    walk steps over it. Across k years or ages the random walk SD is
+#'    sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
+#'    sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
+#'    years or ages, so years or ages that are not consecutive also count as
+#'    k steps. Blocks with no random term cannot mix constant and
+#'    estimated rows. A prior ([add_priors()]) is different: it still scores
+#'    a constant value. A known value with a prior is still informative, and
+#'    a likelihood profile, which holds the profiled value constant, keeps the
+#'    prior. A constant is not a process value, so a process steps over it.
+#'    Holding a process value constant to profile it therefore leaves it out
+#'    of the process.
 #'
 #' @details
 #' The formula describes 1 parameter, the target. Its right side has a fixed
@@ -42,17 +60,35 @@
 #' - `log_M ~ cut(age, c(-Inf, 1, Inf)) + (1 | age:year)`: an iid process by
 #'   age and year.
 #' - `log_q ~ rw(1 | year)`: a random walk.
+#' - `logit_sel_at_age ~ rw(1 | age)`: a random walk from each age to the next,
+#'   for `AgeSpecific` selectivity. `(1 | age)` and `ar1(1 | age)` give iid
+#'   and AR1 processes by age.
 #'
 #' These breaks fit data with years 1 to 30, as in `data_big`. When the data
 #' use calendar years, `year` is a calendar year, e.g.,
 #' `cut(year, c(-Inf, 2000, Inf))`.
+#'
+#' A random term by age is for a target with 1 row per age and no years, such
+#' as `logit_sel_at_age` or `log_init_naa`. A target that also varies by year,
+#' such as the default `log_M`, is an error, because a 2D process is not
+#' implemented. With `estimation_type = "fixed_effects"`, a random walk by age
+#' is a smoothness penalty on the differences between ages. A penalty with
+#' weight w, `w * sum(diff(x)^2) / 2`, equals the negative log density of a
+#' random walk with sd = 1 / sqrt(w), up to a constant.
+#'
+#' An estimated process SD on `logit_sel_at_age` needs a selectivity curve
+#' that does not saturate. Where selectivity is near 1, the data hardly
+#' inform the logit values, so the SD and those values can drift together.
+#' If the curve saturates, hold the SD constant
+#' (`estimation_type = "constant"`).
 #'
 #' @param parameters The parameter tibble.
 #' @param formula `target ~ fixed term + random term`. See Details for the
 #'   forms.
 #' @param module_name,fleet Which module the target belongs to.
 #' @param estimation_type,estimation_status Estimation type of the target's
-#'   per-year rows when there is a random term.
+#'   rows when there is a random term, or of its non-constant rows when some
+#'   are constant.
 #' @param sd,rho Starting value and estimation type of the process SD (on the
 #'   natural scale, > 0) and AR1 correlation (between -1 and 1).
 #' @return The parameter tibble with the target's rows replaced and the
@@ -71,6 +107,21 @@
 #' parameters |>
 #'   add_process(log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
 #'     module_name = "Fleet", fleet = "fleet1"
+#'   )
+#' # Smooth age-specific survey selectivity: a penalized random walk by age.
+#' # The oldest age stays constant and sets the scale of selectivity.
+#' parameters |>
+#'   dplyr::filter(!(module_name == "Selectivity" & fleet == "survey1")) |>
+#'   dplyr::bind_rows(
+#'     setup_default_Selectivity(
+#'       data = FIMSFrame(data_big), fleet = "survey1",
+#'       module_type = "AgeSpecific"
+#'     )
+#'   ) |>
+#'   add_process(logit_sel_at_age ~ rw(1 | age),
+#'     module_name = "Selectivity", fleet = "survey1",
+#'     estimation_type = "fixed_effects",
+#'     sd = list(value = 0.5, estimation_type = "constant")
 #'   )
 #' }
 add_process <- function(parameters,
@@ -135,15 +186,20 @@ check_process <- function(parameters, formula, module_name, fleet,
   old_rows <- dplyr::filter(parameters, is_target)
   check_new_target(old_rows, target)
 
-  # Some values fixed and some estimated (e.g., log_Fmort in years with no
-  # catch): the call would estimate or score the fixed ones. When every value
-  # is fixed (e.g., the default log_M), the call is a request to estimate them.
-  if (any(old_rows[["estimation_type"]] == "constant") &&
+  # Some values constant and some estimated (e.g., log_Fmort in years with no
+  # catch). Blocks would estimate the constant ones. A process keeps them
+  # constant (see process_densities()). When every value is constant (e.g.,
+  # the default log_M), the call is a request to estimate them.
+  if (is.null(random_term) &&
+    any(old_rows[["estimation_type"]] == "constant") &&
     any(old_rows[["estimation_type"]] != "constant")) {
     cli::cli_abort(c(
-      "x" = "{.val {target}} has some fixed (constant) values and some
-      estimated, e.g., years with no catch.",
-      "i" = "The process would estimate or score the fixed ones."
+      "x" = "{.val {target}} has some constant values and some estimated.",
+      "i" = "Blocks would estimate the constant values. A process (a random
+      term) keeps them constant.",
+      "i" = "Count the values by estimation type with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(fleet, estimation_type)}."
     ))
   }
   if (has_prior(parameters, target, module_name, unique(old_rows[["fleet"]]))) {
@@ -187,6 +243,15 @@ check_process <- function(parameters, formula, module_name, fleet,
   }
   process_structure <- formula_terms[["random"]][["structure"]]
   random_grouping <- formula_terms[["random"]][["grouping"]]
+  if (random_grouping == "age" &&
+    "year" %in% formula_terms[["fixed_variables"]]) {
+    cli::cli_abort(c(
+      "x" = "A process by age cannot have a fixed term in year.",
+      "i" = "A process by age is for a target with 1 row per age and no
+      years. A 2D process is not implemented.",
+      "i" = "Use a fixed term in age, e.g., {.code cut(age, c(-Inf, 5, Inf))}."
+    ))
+  }
   has_age <- all(!is.na(rows[["age"]]))
   if (random_grouping == "year" && has_age) {
     cli::cli_abort(c(
@@ -195,16 +260,63 @@ check_process <- function(parameters, formula, module_name, fleet,
       "i" = "Use {.code (1 | age:year)}."
     ))
   }
-  if (random_grouping == "age:year" && !has_age) {
+  if (random_grouping %in% c("age", "age:year") && !has_age) {
+    year_term <- if (process_structure == "iid") {
+      "(1 | year)"
+    } else {
+      paste0(process_structure, "(1 | year)")
+    }
     cli::cli_abort(c(
       "x" = "{.val {target}} does not vary by age.",
-      "i" = "Use {.code (1 | year)}."
+      "i" = "Use {.code {year_term}}."
+    ))
+  }
+  if (random_grouping == "age" &&
+    (any(!is.na(rows[["timing"]])) || anyDuplicated(rows[["age"]]) > 0)) {
+    cli::cli_abort(c(
+      "x" = "{.val {target}} varies by year and by age, so it cannot take a
+      process by age.",
+      "i" = "A process by age needs 1 row per age and no years
+      ({.var timing} of {.code NA}). A 2D process is not implemented. Use
+      {.code (1 | age:year)} for an iid process by age and year.",
+      "i" = "Count the rows by year and age with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(timing, age)}."
     ))
   }
   if (process_structure == "rw" && length(unique(group)) > 1) {
     cli::cli_abort(c(
       "x" = "A random walk has no mean, so it cannot have fixed blocks.",
-      "i" = "Use {.code {target} ~ rw(1 | year)} or a mean with an AR1 or iid process."
+      "i" = "Use {.code {target} ~ rw(1 | {random_grouping})} or a mean with an
+      AR1 or iid process."
+    ))
+  }
+  # The density leaves constant values out, so a process needs at least 2
+  # estimated values, and a block of only constant values would have a mean
+  # that nothing informs.
+  is_constant <- rows[["estimation_type"]] == "constant"
+  n_estimated <- if (all(is_constant)) nrow(rows) else sum(!is_constant)
+  if (n_estimated < 2) {
+    cli::cli_abort(c(
+      "x" = "{.val {target}} has {.val {n_estimated}} estimated
+      {cli::qty(n_estimated)}value{?s}.",
+      "i" = "A process leaves constant values out of its density, so it needs
+      at least 2 estimated values.",
+      "i" = "Count the values by estimation type with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(fleet, estimation_type)}."
+    ))
+  }
+  if (process_structure != "rw" && any(!is_constant) &&
+    !all(group %in% group[!is_constant])) {
+    cli::cli_abort(c(
+      "x" = "A block of {.val {target}} has only constant values.",
+      "i" = "A process leaves constant values out of its density, so the mean
+      of that block would not be estimable. Every block needs an estimated
+      value.",
+      "i" = "Compare the blocks with the estimation types with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(timing, age, estimation_type)}."
     ))
   }
   if (estimation_type == "fixed_effects" && sd[["estimation_type"]] != "constant") {
@@ -245,15 +357,35 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
   }
 
   process_structure <- process[["formula_terms"]][["random"]][["structure"]]
-  rows[["estimation_type"]] <- estimation_type
+  random_grouping <- process[["formula_terms"]][["random"]][["grouping"]]
+  # Constant rows stay constant when some rows are estimated (see
+  # process_densities()). When every row is constant, the call is a request
+  # to estimate them all.
+  is_constant <- rows[["estimation_type"]] == "constant"
+  if (all(is_constant)) {
+    is_constant[] <- FALSE
+  }
+  rows[["estimation_type"]][!is_constant] <- estimation_type
   rows[["map_group"]] <- NA_integer_
   rows[["distribution_type"]] <- "process"
   rows[["distribution"]] <- "Dnorm"
   rows[["re_structure"]] <- process_structure
   if (process_structure == "rw") {
-    first_year <- rows[["timing"]] == min(rows[["timing"]])
-    rows[["estimation_type"]][first_year] <- "fixed_effects"
+    # A random walk has no mean, so its first estimated value has no density
+    # term. As a random effect it would be improper, so it is a fixed effect.
+    # A penalized walk (all fixed effects) is then a penalty on the
+    # differences only, and the data determine the level.
+    index <- rows[[process_index_columns[[random_grouping]]]]
+    is_first <- !is_constant & index == min(index[!is_constant])
+    rows[["estimation_type"]][is_first] <- "fixed_effects"
   }
+  # Each expected_mean starts from the mean of the estimated values in its
+  # block, as the density uses only those.
+  estimated_value <- dplyr::if_else(is_constant, NA_real_, rows[["value"]])
+  process_mean <- stats::ave(
+    estimated_value, group,
+    FUN = function(block_values) mean(block_values, na.rm = TRUE)
+  )
 
   template <- dplyr::slice(rows, 1) |>
     dplyr::mutate(
@@ -271,7 +403,7 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
   if (process_structure != "rw") {
     hyperparameters[[2]] <- rows |>
       dplyr::mutate(
-        label = "expected_mean", value = block_mean,
+        label = "expected_mean", value = process_mean,
         estimation_type = "fixed_effects",
         map_group = shared_groups(group),
         re_structure = NA_character_, target_label = target
@@ -520,7 +652,12 @@ is_random_term <- function(formula_term) {
   as.character(formula_term[[1]]) %in% c("(", "ar1", "rw")
 }
 
-#' (1 | year) gives iid, ar1(1 | year) AR1, and rw(1 | year) a random walk
+# The tibble column that each grouping variable of a random term indexes.
+# `year` is the `timing` column. Any other variable is its own column.
+process_index_columns <- c(year = "timing", age = "age")
+
+#' (1 | year) gives iid, ar1(1 | year) AR1, and rw(1 | year) a random walk,
+#' and the same by age
 #' @noRd
 parse_random_term <- function(formula_term) {
   process_structure <- switch(as.character(formula_term[[1]]),
@@ -538,17 +675,21 @@ parse_random_term <- function(formula_term) {
     ))
   }
   random_grouping <- paste(deparse(bar[[3]]), collapse = "")
-  if (!random_grouping %in% c("year", "age:year")) {
+  groupings <- c(names(process_index_columns), "age:year")
+  if (!random_grouping %in% groupings) {
     cli::cli_abort(c(
       "x" = "The random term groups by {.val {random_grouping}}.",
-      "i" = "Random terms group by {.val year} or {.val age:year}."
+      "i" = "Random terms group by {.or {.val {groupings}}}."
     ))
   }
-  if (process_structure != "iid" && random_grouping != "year") {
+  if (process_structure != "iid" &&
+    !random_grouping %in% names(process_index_columns)) {
     cli::cli_abort(c(
-      "x" = "{.code {process_structure}()} is by year only.",
-      "i" = "A 2D AR1 is not implemented. Use {.code (1 | age:year)} for an
-      iid process by age and year."
+      "x" = "{.code {process_structure}()} groups by
+      {.val {random_grouping}}.",
+      "i" = "An AR1 process or random walk varies by year or by age, not
+      both. A 2D process is not implemented.",
+      "i" = "Use {.code (1 | age:year)} for an iid process by age and year."
     ))
   }
   list(structure = process_structure, grouping = random_grouping)
