@@ -6,7 +6,7 @@
 \usage{
 setup_default_Growth(
   data = NULL,
-  module_type = c("EWAA", "VonBertalanffySchnute")
+  module_type = c("EWAA", "VonBertalanffySchnute", "LinearGammaIncrement")
 )
 }
 \arguments{

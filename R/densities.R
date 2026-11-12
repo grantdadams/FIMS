@@ -69,31 +69,49 @@ prior_densities <- function(parameter_table) {
     )
     name_of <- function(label) rows[["name"]][rows[["label"]] == label][1]
     # A prior mean with 1 value per target value must carry the target's
-    # timing and age, so the means are sorted and shaped like the values
-    # and each mean stays with its own value.
+    # timing and age or length, so the means are sorted and shaped like the
+    # values and each mean stays with its own value.
     mean_rows <- dplyr::filter(rows, .data[["label"]] == "expected_mean")
     if (nrow(mean_rows) > 1 &&
       (nrow(mean_rows) != nrow(target_rows) ||
         !identical(mean_rows[["timing"]], target_rows[["timing"]]) ||
-        !identical(mean_rows[["age"]], target_rows[["age"]]))) {
+        !identical(mean_rows[["age"]], target_rows[["age"]]) ||
+        !identical(mean_rows[["length"]], target_rows[["length"]]))) {
       cli::cli_abort(c(
         "x" = "The prior on {.val {target}} has {.val {nrow(mean_rows)}}
         means that do not match its {.val {nrow(target_rows)}} values by
-        year and age.",
+        year, age, and length.",
         "i" = "A prior mean is 1 value, or 1 per value with the same
-        {.var timing} and {.var age} as the target's rows.",
+        {.var timing}, {.var age}, and {.var length} as the target's rows.",
         "i" = "Compare the rows with {.code dplyr::filter(parameters,
         label == \"expected_mean\", target_label == \"{target_label}\")}."
       ))
     }
-    list(
+    scored_positions <- positions[!duplicated(shared_key)]
+    if (nrow(mean_rows) == 1 &&
+      (!is.na(mean_rows[["timing"]]) || !is.na(mean_rows[["age"]]) ||
+        !is.na(mean_rows[["length"]]))) {
+      matches_row <- (is.na(mean_rows[["timing"]]) |
+        target_rows[["timing"]] %in% mean_rows[["timing"]]) &
+        (is.na(mean_rows[["age"]]) |
+          target_rows[["age"]] %in% mean_rows[["age"]]) &
+        (is.na(mean_rows[["length"]]) |
+          target_rows[["length"]] %in% mean_rows[["length"]])
+      scored_positions <- positions[matches_row & !duplicated(shared_key)]
+    }
+    prior_transform <- unique(stats::na.omit(rows[["prior_transform"]]))
+    density_entry <- list(
       distribution_type = "prior",
       target = target,
-      positions = positions[!duplicated(shared_key)],
+      positions = scored_positions,
       structure = "iid",
       mean = list(kind = "parameter", name = name_of("expected_mean")),
       hyperparameters = list(log_sd = name_of("log_sd"))
     )
+    if (length(prior_transform) > 0) {
+      density_entry[["transform"]] <- prior_transform[1]
+    }
+    density_entry
   })
 }
 
@@ -236,24 +254,30 @@ process_steps <- function(target_rows, is_estimated, target) {
     function(column) dplyr::n_distinct(target_rows[[column]], na.rm = TRUE) > 1,
     logical(1)
   )
-  # Values by year and age have no single order to step along.
+  # Values by year and age or length have no single order to step along.
   if (sum(varies) > 1) {
+    dimension_label <- if ("length" %in% index_columns[varies]) "length" else "age"
     cli::cli_abort(c(
       "x" = "The AR1 process or random walk on {.val {target}} has values
-      that vary by year and by age.",
-      "i" = "An AR1 process or random walk varies by year or by age, not
-      both. A 2D process is not implemented.",
-      "i" = "Count the rows by year and age with
+      that vary by year and by {dimension_label}.",
+      "i" = "An AR1 process or random walk varies by year or by
+      {dimension_label}, not both. A 2D process is not implemented.",
+      "i" = "Count the rows by year and {dimension_label} with
       {.code dplyr::filter(parameters, label ==
       \"{target_rows[['original_label']][1]}\") |> dplyr::count(timing,
-      age)}."
+      {dimension_label})}."
     ))
   }
   if (!any(varies)) {
     return(NULL)
   }
-  index <- target_rows[[index_columns[varies]]]
+  varying_column <- index_columns[varies]
+  index <- target_rows[[varying_column]]
   steps <- diff(index[is_estimated])
+  if (varying_column == "length") {
+    bin_width <- min(diff(sort(unique(stats::na.omit(index)))))
+    steps <- steps / bin_width
+  }
   if (all(steps == 1)) {
     return(NULL)
   }

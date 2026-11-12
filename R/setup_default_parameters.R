@@ -34,9 +34,10 @@
 #' @param data A `FIMSFrame` object returned from running [FIMSFrame()] on
 #'   your long input data.
 #' @param model_type A string specifying the model, `"CatchAtAge"` (the
-#'   default) or `"SurplusProduction"`. A surplus production model has only
-#'   the Depletion rows from [setup_default_Depletion()]. Its fleets have no
-#'   parameters, because catch is known and q is calculated from the index.
+#'   default), `"CatchAtLength"`, or `"SurplusProduction"`. A surplus
+#'   production model has only the Depletion rows from
+#'   [setup_default_Depletion()]. Its fleets have no parameters, because catch
+#'   is known and q is calculated from the index.
 #' @return
 #' A `tibble` containing default parameter values and metadata for your model.
 #' Key columns are listed below:
@@ -111,12 +112,15 @@
 #' }
 setup_default_parameters <- function(
   data,
-  model_type = c("CatchAtAge", "SurplusProduction")
+  model_type = c("CatchAtAge", "CatchAtLength", "SurplusProduction")
 ) {
   is.FIMSFrame(data)
   model_type <- rlang::arg_match(model_type)
   if (model_type == "SurplusProduction") {
     return(setup_default_Depletion(data = data))
+  }
+  if (model_type == "CatchAtLength") {
+    return(setup_default_catch_at_length_parameters(data = data))
   }
 
   fleets <- get_fleets(data)
@@ -369,10 +373,30 @@ choose_default_Growth_module_type <- function(data) {
 #' }
 setup_default_Growth <- function(
   data = NULL,
-  module_type = c("EWAA", "VonBertalanffySchnute")
+  module_type = c("EWAA", "VonBertalanffySchnute", "LinearGammaIncrement")
 ) {
   # Input check
   module_type <- rlang::arg_match(module_type)
+
+  if (identical(module_type, "LinearGammaIncrement")) {
+    default <- setup_default_parameters_template(n_parameters = 3) |>
+      dplyr::mutate(
+        module_name = "Growth",
+        module_type = "LinearGammaIncrement",
+        label = c(
+          "growth_intercept",
+          "growth_slope",
+          "growth_scale"
+        ),
+        value = c(15, -0.05, 0.75),
+        estimation_type = c(
+          "fixed_effects",
+          "fixed_effects",
+          "constant"
+        )
+      )
+    return(default)
+  }
 
   if (identical(module_type, "EWAA")) {
     if (!is.null(data)) {
@@ -692,6 +716,24 @@ setup_default_AgeSpecific <- function(
     )
 }
 
+#' Create default length-specific selectivity parameters
+#'
+#' @inheritParams setup_default_parameters
+#' @return A tibble containing default length-specific parameters on the logit
+#'   scale, with 1 row per length bin.
+#' @noRd
+setup_default_LengthSpecific <- function(data) {
+  lengths <- get_lengths(data)
+  setup_default_parameters_template(n_parameters = length(lengths)) |>
+    dplyr::mutate(
+      module_type = "LengthSpecific",
+      label = "logit_sel_at_length",
+      length = lengths,
+      value = 0,
+      estimation_type = "fixed_effects"
+    )
+}
+
 #' Set up default selectivity parameters
 #'
 #' @description
@@ -721,7 +763,7 @@ setup_default_AgeSpecific <- function(
 setup_default_Selectivity <- function(
   data,
   fleet,
-  module_type = c("Logistic", "DoubleLogistic", "AgeSpecific")
+  module_type = c("Logistic", "DoubleLogistic", "AgeSpecific", "LengthSpecific")
 ) {
   # Input checks
   is.FIMSFrame(data)
@@ -734,10 +776,50 @@ setup_default_Selectivity <- function(
   default <- switch(module_type,
     "Logistic" = setup_default_Logistic(),
     "DoubleLogistic" = setup_default_DoubleLogistic(),
-    "AgeSpecific" = setup_default_AgeSpecific(data)
+    "AgeSpecific" = setup_default_AgeSpecific(data),
+    "LengthSpecific" = setup_default_LengthSpecific(data)
   ) |>
     dplyr::mutate(
       module_name = "Selectivity",
+      fleet = .env$fleet
+    )
+}
+
+#' Set up default retention parameters
+#'
+#' @description
+#' Sets up default parameters for a fleet retention curve in a catch-at-length
+#' model.
+#' @inheritParams setup_default_parameters
+#' @param fleet A string specifying the name of the fleet for which retention
+#'   parameters are being created.
+#' @param module_type A string specifying the desired form of retention:
+#'   `"Logistic"` (the default), `"DoubleLogistic"`, or `"LengthSpecific"`.
+#' @return A tibble containing the default retention parameters.
+#' @seealso
+#' * [setup_default_parameters()]
+#' * [setup_default_Selectivity()]
+#' @export
+#' @keywords setup_default_parameters
+#' @examples
+#' data("data_big")
+#' data_4_model <- FIMSFrame(data_big)
+#' setup_default_Retention(data_4_model, fleet = "fleet1")
+setup_default_Retention <- function(
+  data,
+  fleet,
+  module_type = c("Logistic", "DoubleLogistic", "LengthSpecific")
+) {
+  is.FIMSFrame(data)
+  assert_presence_of_fleet(data, fleet)
+  module_type <- rlang::arg_match(module_type)
+  switch(module_type,
+    "Logistic" = setup_default_Logistic(),
+    "DoubleLogistic" = setup_default_DoubleLogistic(),
+    "LengthSpecific" = setup_default_LengthSpecific(data)
+  ) |>
+    dplyr::mutate(
+      module_name = "Retention",
       fleet = .env$fleet
     )
 }
@@ -784,7 +866,9 @@ setup_default_Fleet <- function(
     unique()
 
   # Evaluate conditions upfront
-  has_catch <- "catch" %in% fleet_types
+  has_catch <- any(
+    c("catch", "catch_retained", "catch_discarded") %in% fleet_types
+  )
   has_index <- "index" %in% fleet_types
 
   # Set up default parameters for catchability
@@ -816,9 +900,14 @@ setup_default_Fleet <- function(
   zero_catch_years <- get_data(data) |>
     dplyr::filter(
       .data$fleet == .env$fleet,
-      .data$type == "catch",
-      .data$observed == 0
+      .data$type %in% c("catch", "catch_retained", "catch_discarded")
     ) |>
+    dplyr::group_by(.data$timing) |>
+    dplyr::summarize(
+      all_zero = all(.data$observed == 0),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(.data$all_zero) |>
     dplyr::pull(.data$timing)
   log_Fmort_default <- log_Fmort_default |>
     dplyr::mutate(
@@ -829,10 +918,24 @@ setup_default_Fleet <- function(
         .data$timing %in% zero_catch_years, "constant", .data$estimation_type
       )
     )
+  discard_mortality_default <- NULL
+  if (any(c("catch_retained", "catch_discarded") %in% fleet_types)) {
+    discard_mortality_default <- setup_default_parameters_template(
+      n_parameters = 1
+    ) |>
+      dplyr::mutate(
+        module_name = "Fleet",
+        fleet = .env$fleet,
+        label = "discard_mortality",
+        value = 1,
+        estimation_type = "constant"
+      )
+  }
   # Compile all default parameters into a single list
   default <- dplyr::bind_rows(
     q_default,
-    log_Fmort_default
+    log_Fmort_default,
+    discard_mortality_default
   )
 }
 
@@ -1252,5 +1355,113 @@ setup_default_Depletion <- function(
   module_type <- rlang::arg_match(module_type)
   switch(module_type,
     "PellaTomlinson" = setup_default_PellaTomlinsonDepletion(data)
+  )
+}
+
+#' Set up default parameters for a catch-at-length model
+#'
+#' @inheritParams setup_default_parameters
+#' @return A parameter tibble for `model_type = "CatchAtLength"`.
+#' @noRd
+setup_default_catch_at_length_parameters <- function(data) {
+  fleets <- get_fleets(data)
+  lengths <- get_lengths(data)
+  years <- get_start_year(data):get_end_year(data)
+  midpoint_length <- stats::median(lengths)
+
+  selectivity_defaults <- purrr::map_df(fleets, function(fleet_i) {
+    setup_default_Selectivity(
+      data = data, fleet = fleet_i, module_type = "Logistic"
+    ) |>
+      dplyr::mutate(
+        value = dplyr::if_else(
+          .data[["label"]] == "inflection_point", midpoint_length, 0.1
+        )
+      )
+  })
+
+  retention_fleets <- get_data(data) |>
+    dplyr::filter(.data[["type"]] == "catch_retained") |>
+    dplyr::pull(.data[["fleet"]]) |>
+    unique()
+  retention_defaults <- purrr::map_df(retention_fleets, function(fleet_i) {
+    setup_default_Retention(
+      data = data, fleet = fleet_i, module_type = "Logistic"
+    ) |>
+      dplyr::mutate(
+        value = dplyr::if_else(
+          .data[["label"]] == "inflection_point", midpoint_length, 0.1
+        )
+      )
+  })
+
+  fleet_defaults <- purrr::map_df(fleets, function(fleet_i) {
+    setup_default_Fleet(data = data, fleet = fleet_i)
+  })
+
+  recruitment_gamma <- setup_default_parameters_template(n_parameters = 2) |>
+    dplyr::mutate(
+      module_name = "Recruitment",
+      module_type = "GammaLength",
+      label = c("log_recruit_alpha", "log_recruit_beta"),
+      value = c(log(lengths[1] + 7.5), log(1)),
+      estimation_type = "constant"
+    )
+  recruitment_log_r <- setup_default_parameters_template(
+    n_parameters = length(years)
+  ) |>
+    dplyr::mutate(
+      module_name = "Recruitment",
+      module_type = "GammaLength",
+      label = "log_r",
+      timing = years,
+      value = log(1e5),
+      estimation_type = "fixed_effects"
+    )
+  recruitment_defaults <- dplyr::bind_rows(
+    recruitment_gamma, recruitment_log_r
+  ) |>
+    add_process(
+      log_r ~ 1 + (1 | year),
+      module_name = "Recruitment",
+      estimation_type = "fixed_effects",
+      sd = list(value = 0.4, estimation_type = "constant")
+    )
+
+  growth_defaults <- setup_default_Growth(
+    data = data, module_type = "LinearGammaIncrement"
+  )
+
+  population_mortality <- setup_default_parameters_template(n_parameters = 2) |>
+    dplyr::mutate(
+      module_name = "Population",
+      label = c("log_M", "log_M_immature_offset"),
+      value = c(log(0.25), -1),
+      estimation_type = c("fixed_effects", "constant")
+    )
+  population_initial_numbers <- setup_default_parameters_template(
+    n_parameters = 2 * length(lengths)
+  ) |>
+    dplyr::mutate(
+      module_name = "Population",
+      label = rep(
+        c("log_init_nal_immature", "log_init_nal_mature"),
+        each = length(lengths)
+      ),
+      length = rep(lengths, times = 2),
+      value = 10,
+      estimation_type = "fixed_effects"
+    )
+  population_defaults <- dplyr::bind_rows(
+    population_mortality, population_initial_numbers
+  )
+
+  dplyr::bind_rows(
+    selectivity_defaults,
+    retention_defaults,
+    fleet_defaults,
+    recruitment_defaults,
+    growth_defaults,
+    population_defaults
   )
 }

@@ -131,6 +131,61 @@ multinomial_lpmf <- function(observed, prob) {
   log_probability
 }
 
+#' Robust normal approximation to the multinomial log density for compositions
+#'
+#' Fournier et al. (1990) normal approximation to the multinomial with fat
+#' tails (`acl::robust_multi::pdf` in GMACS, with offset 1e-8). This is not a
+#' normalized probability density over compositions. `observed` holds counts
+#' (proportions times sample size), so `sum(counts)` is the sample size `n`
+#' and `counts / sum(counts)` is the observed proportion. Each bin returns its
+#' own term:
+#'   log(exp(-n * l_b) + 0.01) - 0.5 * log(v_b / n),
+#' where `v_b = 0.1 / B + o_b (1 - o_b)` and `l_b = 0.5 (q_b - o_b)^2 / v_b`.
+#'
+#' @param observed Matrix of observed counts (proportions times sample size),
+#'   1 row per year.
+#' @param prob Matrix of expected proportions, same shape as `observed`.
+#' @return Matrix of per-bin log density values the same shape as `observed`.
+#' @noRd
+robust_normal_multinomial_lpdf <- function(observed, prob) {
+  # RTMB: lets `x[i, ] <- value` store AD values in a plain matrix.
+  "[<-" <- RTMB::ADoverload("[<-")
+  n_bins <- ncol(observed)
+  offset <- 1e-8
+  log_density <- matrix(0, nrow(observed), n_bins)
+  for (row_index in seq_len(nrow(observed))) {
+    counts <- observed[row_index, ]
+    if (anyNA(counts)) {
+      next
+    }
+    sample_size <- sum(counts)
+    if (sample_size <= 0) {
+      next
+    }
+    observed_proportion <- counts / sample_size + offset
+    observed_proportion <- observed_proportion / sum(observed_proportion)
+    expected_proportion <- prob[row_index, ] + offset
+    expected_proportion <- expected_proportion / sum(expected_proportion)
+    variance <- 0.1 / n_bins + observed_proportion * (1 - observed_proportion)
+    scaled_squared_error <- 0.5 *
+      (expected_proportion - observed_proportion)^2 / variance
+    log_density[row_index, ] <- log(
+      exp(-sample_size * scaled_squared_error) + 0.01
+    ) - 0.5 * log(variance / sample_size)
+  }
+  log_density
+}
+
+#' Formula stub for `parse_data_distribution()`
+#'
+#' `parse_one_data_distribution()` checks argument names with `formals()`.
+#' Unlike `dnorm`, `dlnorm`, and `dmultinom`, `dmultinom_robust` is not in
+#' `stats`, so this provides the same formal arguments as `stats::dmultinom`.
+#' @noRd
+dmultinom_robust <- function(x, size = NULL, prob, log = FALSE) {
+  invisible(NULL)
+}
+
 # Draws for simulation -----------------------------------------------------
 #
 # 1 per data family, with the same arguments, returning new observations the
@@ -364,6 +419,15 @@ likelihood_families <- list(
     lpdf = multinomial_lpmf,
     draw = multinomial_draw,
     distribution = "multinomial",
+    parameters = function(uncertainty) list()
+  ),
+  # Fournier's robust normal approximation is not a normalized density, so
+  # simulation uses a multinomial stand-in draw with the same sample size and
+  # expected proportions.
+  dmultinom_robust = list(
+    lpdf = robust_normal_multinomial_lpdf,
+    draw = multinomial_draw,
+    distribution = "robust_multinomial",
     parameters = function(uncertainty) list()
   )
 )

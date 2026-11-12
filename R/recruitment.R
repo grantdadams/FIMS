@@ -67,6 +67,34 @@ numbers_per_recruit <- function(mortality_M) {
   survival_to_age
 }
 
+#' Gamma length distribution of recruits
+#'
+#' Integrates a gamma distribution with shape `recruit_gamma_shape /
+#' recruit_gamma_scale` and scale `recruit_gamma_scale` over the first
+#' `max_recruit_length_bin` population length bins and normalizes to sum to 1
+#' (`calc_recruitment_size_distribution` in GMACS).
+#'
+#' @param length_edges Population length-bin edges (`n_lengths + 1`).
+#' @param recruit_gamma_shape,recruit_gamma_scale Gamma parameters (`ra`, `rb`).
+#' @param max_recruit_length_bin Number of length bins recruits can enter.
+#' @return Vector of proportions of length `n_lengths` summing to 1.
+#' @noRd
+gamma_length_recruitment_distribution <- function(length_edges,
+                                                  recruit_gamma_shape,
+                                                  recruit_gamma_scale,
+                                                  max_recruit_length_bin) {
+  # RTMB: lets `x[i] <- value` store AD values in a plain vector.
+  "[<-" <- RTMB::ADoverload("[<-")
+  n_lengths <- length(length_edges) - 1L
+  max_bin <- as.integer(round(max_recruit_length_bin))
+  shape <- recruit_gamma_shape / recruit_gamma_scale
+  bin_mass <- diff(RTMB::pgamma(length_edges / recruit_gamma_scale, shape = shape))
+  if (max_bin < n_lengths) {
+    bin_mass[(max_bin + 1L):n_lengths] <- 0
+  }
+  bin_mass / sum(bin_mass)
+}
+
 # Recruitment processes
 #
 # A process gives log recruitment in a year from that year's value of its

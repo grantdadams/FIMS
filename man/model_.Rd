@@ -5,6 +5,12 @@
 \alias{model_catch}
 \alias{model_catch,FIMSFrame-method}
 \alias{model_catch,data.frame-method}
+\alias{model_catch_retained}
+\alias{model_catch_retained,FIMSFrame-method}
+\alias{model_catch_retained,data.frame-method}
+\alias{model_catch_discarded}
+\alias{model_catch_discarded,FIMSFrame-method}
+\alias{model_catch_discarded,data.frame-method}
 \alias{model_index}
 \alias{model_index,FIMSFrame-method}
 \alias{model_index,data.frame-method}
@@ -20,6 +26,15 @@
 \alias{model_age_to_length_conversion}
 \alias{model_age_to_length_conversion,FIMSFrame-method}
 \alias{model_age_to_length_conversion,data.frame-method}
+\alias{model_weight_at_length}
+\alias{model_weight_at_length,FIMSFrame-method}
+\alias{model_weight_at_length,data.frame-method}
+\alias{model_terminal_molt_probability_at_length}
+\alias{model_terminal_molt_probability_at_length,FIMSFrame-method}
+\alias{model_terminal_molt_probability_at_length,data.frame-method}
+\alias{model_growth_increment}
+\alias{model_growth_increment,FIMSFrame-method}
+\alias{model_growth_increment,data.frame-method}
 \title{Get a vector of data to be passed to a FIMS module from a FIMSFrame object}
 \usage{
 model_catch(x, fleet)
@@ -27,6 +42,18 @@ model_catch(x, fleet)
 \S4method{model_catch}{FIMSFrame}(x, fleet)
 
 \S4method{model_catch}{data.frame}(x, fleet)
+
+model_catch_retained(x, fleet)
+
+\S4method{model_catch_retained}{FIMSFrame}(x, fleet)
+
+\S4method{model_catch_retained}{data.frame}(x, fleet)
+
+model_catch_discarded(x, fleet)
+
+\S4method{model_catch_discarded}{FIMSFrame}(x, fleet)
+
+\S4method{model_catch_discarded}{data.frame}(x, fleet)
 
 model_index(x, fleet)
 
@@ -57,6 +84,24 @@ model_age_to_length_conversion(x, fleet = NA)
 \S4method{model_age_to_length_conversion}{FIMSFrame}(x, fleet = NA)
 
 \S4method{model_age_to_length_conversion}{data.frame}(x, fleet = NA)
+
+model_weight_at_length(x, maturity = NULL)
+
+\S4method{model_weight_at_length}{FIMSFrame}(x, maturity = NULL)
+
+\S4method{model_weight_at_length}{data.frame}(x, maturity = NULL)
+
+model_terminal_molt_probability_at_length(x)
+
+\S4method{model_terminal_molt_probability_at_length}{FIMSFrame}(x)
+
+\S4method{model_terminal_molt_probability_at_length}{data.frame}(x)
+
+model_growth_increment(x)
+
+\S4method{model_growth_increment}{FIMSFrame}(x)
+
+\S4method{model_growth_increment}{data.frame}(x)
 }
 \arguments{
 \item{x}{An object returned from \code{\link[=FIMSFrame]{FIMSFrame()}}.}
@@ -64,6 +109,10 @@ model_age_to_length_conversion(x, fleet = NA)
 \item{fleet}{A string, or vector of strings, specifying the name of the
 fleet(s) of interest that you want data for. The strings must
 exactly match strings in the \code{"fleet"} column of \code{get_data(x)}.}
+
+\item{maturity}{An optional string (\code{"immature"} or \code{"mature"}) filtering
+\code{weight_at_length} rows by maturity stage, or \code{NULL} (the default) to
+return all \code{weight_at_length} rows.}
 }
 \value{
 All of the \verb{model_*()} functions return vectors of data. Currently, the
@@ -90,6 +139,18 @@ Returns a numeric vector of catch data (type \code{"catch"}) for the
 specified fleet(s).
 }
 
+\subsection{\code{model_catch_retained()}}{
+
+Returns a numeric vector of retained catch data (type \code{"catch_retained"})
+for the specified fleet(s).
+}
+
+\subsection{\code{model_catch_discarded()}}{
+
+Returns a numeric vector of discarded catch data (type \code{"catch_discarded"})
+for the specified fleet(s).
+}
+
 \subsection{\code{model_index()}}{
 
 Returns a numeric vector of index data (type \code{"index"}) for the specified
@@ -105,8 +166,26 @@ specified fleet(s).
 \subsection{\code{model_length_comp()}}{
 
 Returns a numeric vector of length-composition data (type \code{"length_comp"})
-for the specified fleet(s). This accessor requires that age-to-length
-conversion data are present in the \code{FIMSFrame} object.
+for the specified fleet(s).
+}
+
+\subsection{\code{model_weight_at_length()}}{
+
+Returns a numeric vector of empirical weight at length (type
+\code{"weight_at_length"}), ordered by length bin.
+}
+
+\subsection{\code{model_terminal_molt_probability_at_length()}}{
+
+Returns a numeric vector of terminal molt probabilities at length (type
+\code{"terminal_molt_probability_at_length"}), ordered by year (including the
+year after the last model year) and length bin.
+}
+
+\subsection{\code{model_growth_increment()}}{
+
+Returns a numeric vector of observed molt increments (type
+\code{"growth_increment"}).
 }
 
 \subsection{\code{model_weight_at_age()}}{

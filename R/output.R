@@ -307,7 +307,7 @@ weight_at_age_rows <- function(input) {
 #'
 #' @param name The quantity's name, for the error message.
 #' @param dimension The quantity's dimension: "year", "year_age",
-#'   "year_length", "conditional_age_at_length" or "na".
+#'   "year_length", "conditional_age_at_length", "growth_increment" or "na".
 #' @param n_values The number of values.
 #' @param model_data The `model_data` element of initialize_fims().
 #' @param fleet The fleet, for a quantity by length bin or conditional
@@ -318,8 +318,20 @@ weight_at_age_rows <- function(input) {
 value_dimensions <- function(name, dimension, n_values, model_data,
                              fleet = NA) {
   ages <- model_data[["ages"]]
+  if (identical(model_data[["model_type"]], "CatchAtLength") &&
+    dimension == "year_age") {
+    dimension <- "year_length"
+  }
   if (dimension == "na") {
     return(list(year_i = NA, age = NA, length = NA))
+  }
+  if (dimension == "growth_increment") {
+    premolt_lengths <- model_data[["populations"]][[1]][["growth_inputs"]][["observed_premolt_lengths"]]
+    return(list(
+      year_i = rep(NA_real_, n_values),
+      age = rep(NA_real_, n_values),
+      length = premolt_lengths
+    ))
   }
   if (dimension == "conditional_age_at_length") {
     rows <- model_data[["fleets"]][[fleet]][["conditional_age_at_length"]]
@@ -335,7 +347,11 @@ value_dimensions <- function(name, dimension, n_values, model_data,
   columns <- switch(dimension,
     year = NA,
     year_age = ages,
-    year_length = model_data[["fleets"]][[fleet]][["length_bins"]]
+    year_length = if (is.na(fleet)) {
+      model_data[["lengths"]]
+    } else {
+      model_data[["fleets"]][[fleet]][["length_bins"]]
+    }
   )
   n_years <- n_values / length(columns)
   if (!n_years %in% (model_data[["n_years"]] + 0:1)) {
@@ -360,9 +376,16 @@ value_dimensions <- function(name, dimension, n_values, model_data,
 # natural-scale expected values, not the quantity the likelihood uses.
 estimate_row_for_link <- c(
   log_catch_expected = "catch_expected",
+  log_catch_retained_expected = "catch_retained_expected",
+  log_catch_discarded_expected = "catch_discarded_expected",
   log_index_expected = "index_expected",
+  log_growth_increment_expected = "growth_increment_expected",
   agecomp_proportion = "agecomp_expected",
-  lengthcomp_proportion = "lengthcomp_expected"
+  lengthcomp_proportion = "lengthcomp_expected",
+  lengthcomp_retained_proportion = "lengthcomp_retained_expected",
+  lengthcomp_discarded_proportion = "lengthcomp_discarded_expected",
+  lengthcomp_immature_proportion = "lengthcomp_immature_expected",
+  lengthcomp_mature_proportion = "lengthcomp_mature_expected"
 )
 
 #' Add observations and likelihood values to the derived-quantity rows

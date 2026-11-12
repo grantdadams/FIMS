@@ -1,5 +1,5 @@
-# add_process() and add_priors(): blocks, processes by year or age, and
-# priors, written into the parameter tibble. The formula forms are listed in
+# add_process() and add_priors(): blocks, processes by year, age, or length,
+# and priors, written into the parameter tibble. The formula forms are listed in
 # the add_process() help page.
 #
 # The helpers only write rows. initialize_fims() builds the map and the
@@ -19,8 +19,8 @@
 #'    `module_name` and `fleet`.
 #' 2. 1 call per target. A second call is an error.
 #' 3. Formula variables are the target's index columns: `year` (from
-#'    `timing`) and `age`. A random term groups by `year`, `age` or
-#'    `age:year`.
+#'    `timing`), `age`, and `length`. A random term groups by `year`, `age`,
+#'    `length`, `age:year`, or `length:year`.
 #' 4. With no random term, the fixed term says which rows share 1 estimate.
 #'    With a random term, it defines the `expected_mean` the process values
 #'    vary around, and each non-constant row is its own process value.
@@ -62,7 +62,8 @@
 #' - `log_q ~ rw(1 | year)`: a random walk.
 #' - `logit_sel_at_age ~ rw(1 | age)`: a random walk from each age to the next,
 #'   for `AgeSpecific` selectivity. `(1 | age)` and `ar1(1 | age)` give iid
-#'   and AR1 processes by age.
+#'   and AR1 processes by age, and `(1 | length)`, `ar1(1 | length)`, and
+#'   `rw(1 | length)` do the same by length.
 #'
 #' These breaks fit data with years 1 to 30, as in `data_big`. When the data
 #' use calendar years, `year` is a calendar year, e.g.,
@@ -211,18 +212,22 @@ check_process <- function(parameters, formula, module_name, fleet,
   }
   variables <- c(formula_terms[["fixed_variables"]], formula_terms[["random_variables"]])
   uses_age <- "age" %in% variables
-  # A formula in age only (e.g., age blocks on log_init_naa) keeps the rows
-  # as they are. A formula in year needs 1 row per year.
+  uses_length <- "length" %in% variables
+  # A formula in age or length only (e.g., age blocks on log_init_naa) keeps
+  # the rows as they are. A formula in year needs 1 row per year.
   rows <- old_rows
   if ("year" %in% variables) {
     if (!can_vary_by_year(target, module_name)) {
       cli::cli_abort(c(
         "x" = "{.val {target}} is not indexed by year in the model.",
-        "i" = "It can take blocks or a process by age only, e.g.,
+        "i" = "It can take blocks or a process by age or length only, e.g.,
         {.code {target} ~ cut(age, c(-Inf, 5, Inf))}."
       ))
     }
-    rows <- expand_by_year(old_rows, all_years(parameters), keep_age = uses_age)
+    rows <- expand_by_year(
+      old_rows, all_years(parameters),
+      keep_age = uses_age, keep_length = uses_length
+    )
   }
   group <- evaluate_fixed_term(
     formula_terms[["fixed"]], rows, environment(formula)
@@ -231,6 +236,12 @@ check_process <- function(parameters, formula, module_name, fleet,
     cli::cli_inform(c(
       "i" = "{.val {target}} varies by age. The formula has no age term, so
       each block shares 1 value across ages."
+    ))
+  }
+  if (!uses_length && all(!is.na(rows[["length"]])) && length(unique(group)) > 1) {
+    cli::cli_inform(c(
+      "i" = "{.val {target}} varies by length. The formula has no length term,
+      so each block shares 1 value across lengths."
     ))
   }
 
@@ -243,45 +254,68 @@ check_process <- function(parameters, formula, module_name, fleet,
   }
   process_structure <- formula_terms[["random"]][["structure"]]
   random_grouping <- formula_terms[["random"]][["grouping"]]
-  if (random_grouping == "age" &&
+  if (random_grouping %in% c("age", "length") &&
     "year" %in% formula_terms[["fixed_variables"]]) {
     cli::cli_abort(c(
-      "x" = "A process by age cannot have a fixed term in year.",
-      "i" = "A process by age is for a target with 1 row per age and no
-      years. A 2D process is not implemented.",
-      "i" = "Use a fixed term in age, e.g., {.code cut(age, c(-Inf, 5, Inf))}."
+      "x" = "A process by {random_grouping} cannot have a fixed term in year.",
+      "i" = "A process by {random_grouping} is for a target with 1 row per
+      {random_grouping} and no years. A 2D process is not implemented.",
+      "i" = "Use a fixed term in {random_grouping}, e.g.,
+      {.code cut({random_grouping}, c(-Inf, 5, Inf))}."
     ))
   }
   has_age <- all(!is.na(rows[["age"]]))
-  if (random_grouping == "year" && has_age) {
+  has_length <- all(!is.na(rows[["length"]]))
+  if (random_grouping == "year" && (has_age || has_length)) {
+    dimension_label <- if (has_age) "age" else "length"
     cli::cli_abort(c(
-      "x" = "{.code (1 | year)} on {.val {target}}, which varies by age and
-      year, would share 1 random effect across ages.",
-      "i" = "Use {.code (1 | age:year)}."
+      "x" = "{.code (1 | year)} on {.val {target}}, which varies by
+      {dimension_label} and year, would share 1 random effect across
+      {dimension_label}s.",
+      "i" = "Use {.code (1 | {dimension_label}:year)}.",
+      "i" = "Count the rows by year and {dimension_label} with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(timing, {dimension_label})}."
     ))
   }
-  if (random_grouping %in% c("age", "age:year") && !has_age) {
-    year_term <- if (process_structure == "iid") {
-      "(1 | year)"
+  if ((random_grouping %in% c("age", "age:year") && !has_age) ||
+    (random_grouping %in% c("length", "length:year") && !has_length)) {
+    dimension_label <- if (random_grouping %in% c("age", "age:year")) {
+      "age"
     } else {
-      paste0(process_structure, "(1 | year)")
+      "length"
+    }
+    suggested_grouping <- if (has_age) {
+      "age"
+    } else if (has_length) {
+      "length"
+    } else {
+      "year"
+    }
+    suggested_term <- if (process_structure == "iid") {
+      paste0("(1 | ", suggested_grouping, ")")
+    } else {
+      paste0(process_structure, "(1 | ", suggested_grouping, ")")
     }
     cli::cli_abort(c(
-      "x" = "{.val {target}} does not vary by age.",
-      "i" = "Use {.code {year_term}}."
+      "x" = "{.val {target}} does not vary by {dimension_label}.",
+      "i" = "Use {.code {suggested_term}}.",
+      "i" = "Check the columns of {.val {target}} with
+      {.code dplyr::filter(parameters, label == \"{target}\")}."
     ))
   }
-  if (random_grouping == "age" &&
-    (any(!is.na(rows[["timing"]])) || anyDuplicated(rows[["age"]]) > 0)) {
+  if (random_grouping %in% c("age", "length") &&
+    (any(!is.na(rows[["timing"]])) || anyDuplicated(rows[[random_grouping]]) > 0)) {
     cli::cli_abort(c(
-      "x" = "{.val {target}} varies by year and by age, so it cannot take a
-      process by age.",
-      "i" = "A process by age needs 1 row per age and no years
-      ({.var timing} of {.code NA}). A 2D process is not implemented. Use
-      {.code (1 | age:year)} for an iid process by age and year.",
-      "i" = "Count the rows by year and age with
+      "x" = "{.val {target}} varies by year and by {random_grouping}, so it
+      cannot take a process by {random_grouping}.",
+      "i" = "A process by {random_grouping} needs 1 row per {random_grouping}
+      and no years ({.var timing} of {.code NA}). A 2D process is not
+      implemented. Use {.code (1 | {random_grouping}:year)} for an iid process
+      by {random_grouping} and year.",
+      "i" = "Count the rows by year and {random_grouping} with
       {.code dplyr::filter(parameters, label == \"{target}\") |>
-      dplyr::count(timing, age)}."
+      dplyr::count(timing, {random_grouping})}."
     ))
   }
   if (process_structure == "rw" && length(unique(group)) > 1) {
@@ -389,7 +423,8 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
 
   template <- dplyr::slice(rows, 1) |>
     dplyr::mutate(
-      age = NA, timing = NA, estimation_type = "fixed_effects",
+      age = NA_real_, length = NA_real_, timing = NA_real_,
+      estimation_type = "fixed_effects",
       map_group = NA_integer_, re_structure = NA_character_,
       target_label = target, distribution_type = "process",
       distribution = "Dnorm"
@@ -426,10 +461,10 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
 #'
 #' `log_q ~ normal(mean = log(0.5), sd = 0.2)`. The mean and sd are written as
 #' constant expected_mean and log_sd rows whose `target_label` is the
-#' parameter's name in the model. A prior on a parameter with 1 value per year
-#' or age applies to each value. Values that share 1 estimate, such as a time
-#' block, are scored once, so the prior's weight does not depend on how many
-#' years share the estimate. Constant values are scored too, which adds a
+#' parameter's name in the model. A prior on a parameter with 1 value per year,
+#' age, or length applies to each value. Values that share 1 estimate, such as
+#' a time block, are scored once, so the prior's weight does not depend on how
+#' many years share the estimate. Constant values are scored too, which adds a
 #' constant to the objective but does not change the estimates.
 #'
 #' Any parameter can take a prior, named as the model names it:
@@ -445,8 +480,12 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
 #'
 #' @inheritParams add_process
 #' @param formula `target ~ normal(mean = , sd = )`, with the mean and sd on
-#'   the scale of the target.
-#' @return The parameter tibble with the prior's 2 rows added.
+#'   the scale of the target (or the transformed scale when `transform` is
+#'   given).
+#' @param transform Optional character string (`"exp"` or `"inv_logit"`) to
+#'   evaluate the normal prior on `exp(target)` or `inv_logit(0, 1, target)`
+#'   without a Jacobian.
+#' @return The parameter tibble with the prior's rows added.
 #' @keywords setup_default_parameters
 #' @export
 #' @examples
@@ -461,7 +500,21 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
 #'     module_name = "Recruitment"
 #'   )
 #' }
-add_priors <- function(parameters, formula, module_name, fleet = NA_character_) {
+add_priors <- function(parameters,
+                       formula,
+                       module_name,
+                       fleet = NA_character_,
+                       transform = NULL) {
+  if (!is.null(transform) &&
+    (!is.character(transform) || length(transform) != 1 ||
+      !transform %in% c("exp", "inv_logit"))) {
+    cli::cli_abort(c(
+      "x" = "The prior {.arg transform} is {.val {transform}}.",
+      "i" = "{.arg transform} must be {.code NULL}, {.val exp}, or
+      {.val inv_logit}.",
+      "i" = "Give it as {.code add_priors(parameters, transform = \"exp\", ...)}."
+    ))
+  }
   parameters <- add_process_columns(parameters)
   target <- as.character(formula[[2]])
   prior <- formula[[3]]
@@ -473,10 +526,31 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
   }
   # Match the arguments as R would, so normal(log(0.5), 0.2) works too.
   prior_arguments <- as.list(match.call(function(mean, sd) NULL, prior))[-1]
-  # The mean and sd may name variables from where the formula was written.
-  prior_mean <- eval(prior_arguments[["mean"]], environment(formula))
-  prior_sd <- eval(prior_arguments[["sd"]], environment(formula))
-  if (!is_single_number(prior_mean)) {
+  is_target_row <- prior_target_rows(parameters, target, module_name, fleet)
+  target_rows <- dplyr::slice(parameters, which(is_target_row))
+  # The mean and sd may name variables from where the formula was written, or
+  # the target's year, age, or length columns.
+  row_data <- list(
+    year = target_rows[["timing"]],
+    age = target_rows[["age"]],
+    length = target_rows[["length"]]
+  )
+  prior_mean <- eval(
+    prior_arguments[["mean"]], row_data, environment(formula)
+  )
+  prior_sd <- eval(
+    prior_arguments[["sd"]], row_data, environment(formula)
+  )
+  has_prior_row <- !is.na(prior_mean)
+  is_vector_prior <- is.numeric(prior_mean) && is.numeric(prior_sd) &&
+    length(prior_mean) > 1 &&
+    length(prior_mean) == nrow(target_rows) &&
+    length(prior_sd) == nrow(target_rows) &&
+    identical(is.na(prior_mean), is.na(prior_sd)) &&
+    sum(has_prior_row) %in% c(1L, nrow(target_rows)) &&
+    all(is.finite(prior_mean[has_prior_row])) &&
+    all(is.finite(prior_sd[has_prior_row]) & prior_sd[has_prior_row] > 0)
+  if (!is_vector_prior && !is_single_number(prior_mean)) {
     cli::cli_abort(c(
       "x" = "The prior mean of {.val {target}} is
       {.code {deparse(prior_arguments[['mean']])}}.",
@@ -486,7 +560,7 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
     ))
   }
   # The prior sd is written as its log, which is finite only above 0.
-  if (!is_single_number(prior_sd) || prior_sd <= 0) {
+  if (!is_vector_prior && (!is_single_number(prior_sd) || prior_sd <= 0)) {
     cli::cli_abort(c(
       "x" = "The prior sd of {.val {target}} is
       {.code {deparse(prior_arguments[['sd']])}}.",
@@ -494,21 +568,37 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
       "i" = "Give it as {.code {target} ~ normal(mean = 0, sd = 0.5)}."
     ))
   }
-  is_target <- prior_target_rows(parameters, target, module_name, fleet)
-  target_fleets <- unique(parameters[["fleet"]][is_target])
+  target_fleets <- unique(parameters[["fleet"]][is_target_row])
   if (has_prior(parameters, target, module_name, target_fleets)) {
     cli::cli_abort(c(
       "x" = "{.val {target}} already has a prior.",
       "i" = "Use 1 call per target."
     ))
   }
-  template <- dplyr::slice(parameters, which(is_target)[1]) |>
-    dplyr::mutate(
-      age = NA, timing = NA, estimation_type = "constant",
-      map_group = NA_integer_, re_structure = NA_character_,
-      target_label = target, distribution_type = "prior",
-      distribution = "Dnorm"
-    )
+  prior_transform_value <- if (is.null(transform)) NA_character_ else transform
+  if (is_vector_prior) {
+    keep_row <- has_prior_row &
+      (is.na(target_rows[["map_group"]]) |
+        !duplicated(target_rows[["map_group"]]))
+    prior_mean <- prior_mean[keep_row]
+    prior_sd <- prior_sd[keep_row]
+    template <- dplyr::slice(target_rows, which(keep_row)) |>
+      dplyr::mutate(
+        estimation_type = "constant",
+        map_group = NA_integer_, re_structure = NA_character_,
+        target_label = target, distribution_type = "prior",
+        distribution = "Dnorm", prior_transform = prior_transform_value
+      )
+  } else {
+    template <- dplyr::slice(target_rows, 1) |>
+      dplyr::mutate(
+        age = NA_real_, length = NA_real_, timing = NA_real_,
+        estimation_type = "constant",
+        map_group = NA_integer_, re_structure = NA_character_,
+        target_label = target, distribution_type = "prior",
+        distribution = "Dnorm", prior_transform = prior_transform_value
+      )
+  }
   dplyr::bind_rows(
     parameters,
     dplyr::mutate(template, label = "expected_mean", value = prior_mean),
@@ -519,7 +609,8 @@ add_priors <- function(parameters, formula, module_name, fleet = NA_character_) 
 #' The tibble rows a prior's target names
 #'
 #' See add_priors() for how targets are named. A target that has its own
-#' process (e.g., log_devs) cannot also take a prior.
+#' iid or AR1 process (e.g., log_devs) cannot also take a prior; a random
+#' walk has no mean of its own, so its values can still take a prior.
 #' @noRd
 prior_target_rows <- function(parameters, target, module_name, fleet) {
   in_module <- parameters[["module_name"]] == module_name &
@@ -533,6 +624,7 @@ prior_target_rows <- function(parameters, target, module_name, fleet) {
   check_target_rows(parameters, is_target, target, module_name, fleet)
   hyperparameter_labels <- c("expected_mean", "log_sd", "logit_rho")
   if (any(parameters[["distribution_type"]][is_target] %in% "process") &&
+    !all(parameters[["re_structure"]][is_target] %in% "rw") &&
     !any(parameters[["label"]][is_target] %in% hyperparameter_labels)) {
     cli::cli_abort(c(
       "x" = "{.val {target}} has a process, so it cannot also take a prior.",
@@ -654,10 +746,10 @@ is_random_term <- function(formula_term) {
 
 # The tibble column that each grouping variable of a random term indexes.
 # `year` is the `timing` column. Any other variable is its own column.
-process_index_columns <- c(year = "timing", age = "age")
+process_index_columns <- c(year = "timing", age = "age", length = "length")
 
 #' (1 | year) gives iid, ar1(1 | year) AR1, and rw(1 | year) a random walk,
-#' and the same by age
+#' and the same by age or length
 #' @noRd
 parse_random_term <- function(formula_term) {
   process_structure <- switch(as.character(formula_term[[1]]),
@@ -675,7 +767,7 @@ parse_random_term <- function(formula_term) {
     ))
   }
   random_grouping <- paste(deparse(bar[[3]]), collapse = "")
-  groupings <- c(names(process_index_columns), "age:year")
+  groupings <- c(names(process_index_columns), "age:year", "length:year")
   if (!random_grouping %in% groupings) {
     cli::cli_abort(c(
       "x" = "The random term groups by {.val {random_grouping}}.",
@@ -684,12 +776,14 @@ parse_random_term <- function(formula_term) {
   }
   if (process_structure != "iid" &&
     !random_grouping %in% names(process_index_columns)) {
+    dimension_label <- sub(":year$", "", random_grouping)
     cli::cli_abort(c(
       "x" = "{.code {process_structure}()} groups by
       {.val {random_grouping}}.",
-      "i" = "An AR1 process or random walk varies by year or by age, not
-      both. A 2D process is not implemented.",
-      "i" = "Use {.code (1 | age:year)} for an iid process by age and year."
+      "i" = "An AR1 process or random walk varies by year or by
+      {dimension_label}, not both. A 2D process is not implemented.",
+      "i" = "Use {.code (1 | {random_grouping})} for an iid process by
+      {dimension_label} and year."
     ))
   }
   list(structure = process_structure, grouping = random_grouping)
@@ -763,20 +857,21 @@ all_years <- function(parameters) {
   seq(min(timing), max(timing))
 }
 
-#' 1 row per year (and per age, when the formula uses age), keeping values
+#' 1 row per year (and per age or length, when the formula uses them), keeping values
 #' @noRd
-expand_by_year <- function(rows, years, keep_age) {
+expand_by_year <- function(rows, years, keep_age, keep_length = FALSE) {
   if (all(!is.na(rows[["timing"]]))) {
     return(rows)
   }
-  if (!keep_age || all(is.na(rows[["age"]]))) {
+  if ((!keep_age || all(is.na(rows[["age"]]))) &&
+    (!keep_length || all(is.na(rows[["length"]])))) {
     rows <- dplyr::slice(rows, 1)
   }
   # Rows vary fastest, so the result is in year order.
   expanded <- expand.grid(row = seq_len(nrow(rows)), timing = years)
   dplyr::slice(rows, expanded[["row"]]) |>
     dplyr::mutate(timing = expanded[["timing"]]) |>
-    dplyr::arrange(.data[["timing"]], .data[["age"]])
+    dplyr::arrange(.data[["timing"]], .data[["age"]], .data[["length"]])
 }
 
 #' Evaluate the fixed term on each row: a group number per row
@@ -785,17 +880,20 @@ evaluate_fixed_term <- function(fixed, rows, formula_environment) {
   if (identical(fixed, 1)) {
     return(rep(1L, nrow(rows)))
   }
-  # `year` and `age` come from the rows. Other names, such as a vector of
-  # breaks, come from where the formula was written.
+  # `year`, `age`, and `length` come from the rows. Other names, such as a
+  # vector of breaks, come from where the formula was written.
   groups <- eval(
-    fixed, list(year = rows[["timing"]], age = rows[["age"]]),
+    fixed,
+    list(
+      year = rows[["timing"]], age = rows[["age"]], length = rows[["length"]]
+    ),
     formula_environment
   )
   if (anyNA(groups)) {
     cli::cli_abort(c(
       "x" = "The fixed term gives NA for {sum(is.na(groups))} row{?s}.",
-      "i" = "Check the {.code cut()} breaks cover every year and age in the
-      target's rows."
+      "i" = "Check the {.code cut()} breaks cover every year, age, and length
+      in the target's rows."
     ))
   }
   # This usually means the breaks are outside the years, e.g., breaks 10 and
@@ -804,7 +902,7 @@ evaluate_fixed_term <- function(fixed, rows, formula_environment) {
     cli::cli_abort(c(
       "x" = "The fixed term gives the same group for every row.",
       "i" = "Check the {.code cut()} breaks against the target's years (the
-      {.var timing} column) and ages."
+      {.var timing} column), ages, and lengths."
     ))
   }
   as.integer(droplevels(as.factor(groups)))

@@ -47,7 +47,7 @@ initialize_fims <- function(parameters, data) {
   years <- get_start_year(data):get_end_year(data)
   parameters <- add_year_timing(parameters, years)
   # A surplus production model has no log_q or log_Fmort.
-  if (parameters_model_type(parameters) == "CatchAtAge") {
+  if (parameters_model_type(parameters) %in% c("CatchAtAge", "CatchAtLength")) {
     check_fleet_parameter_sizes(parameters, length(years))
   }
   check_parameter_years(parameters, years)
@@ -158,6 +158,13 @@ add_year_timing <- function(parameters, years) {
       length(row) == length(years) * length(ages) && length(years) > 1) {
       parameters[["timing"]][row] <- rep(years, each = length(ages))
     }
+    if ("length" %in% names(parameters)) {
+      lengths <- unique(parameters[["length"]][row])
+      if (all(is.na(parameters[["timing"]][row])) && !anyNA(lengths) &&
+        length(row) == length(years) * length(lengths) && length(years) > 1) {
+        parameters[["timing"]][row] <- rep(years, each = length(lengths))
+      }
+    }
   }
   parameters
 }
@@ -223,13 +230,17 @@ check_parameter_years <- function(parameters, years) {
       sep = "."
     )
   )
+  is_catch_at_length <- parameters_model_type(parameters) == "CatchAtLength"
   for (name in unique(parameters[["name"]])) {
     rows <- parameters[parameters[["name"]] == name, ]
     # The values that start in the 2nd model year and the rows of their
-    # process or prior, such as a process mean by year.
+    # process or prior, such as a process mean by year. In CatchAtLength,
+    # recruitment enters at the end of each model year, so log_r starts in
+    # the 1st model year.
     module_name <- rows[["module_name"]][1]
     target <- dplyr::coalesce(rows[["target_label"]][1], rows[["label"]][1])
-    from_second_year <- (module_name == "Recruitment" &&
+    from_second_year <- (!is_catch_at_length &&
+      module_name == "Recruitment" &&
       target %in% c("log_devs", "log_r")) ||
       (module_name == "Depletion" && target == "log_depletion")
     is_second_year_value <- from_second_year && is.na(rows[["target_label"]][1])
@@ -319,7 +330,15 @@ check_initialize_inputs <- function(parameters, data) {
   # A catch of 0 is left out of the likelihood (initialize_catch()), so an
   # estimated F in that year has nothing in the data to inform it.
   zero_catch <- get_data(data) |>
-    dplyr::filter(.data[["type"]] == "catch", .data[["observed"]] == 0) |>
+    dplyr::filter(
+      .data[["type"]] %in% c("catch", "catch_retained", "catch_discarded")
+    ) |>
+    dplyr::group_by(.data[["fleet"]], .data[["timing"]]) |>
+    dplyr::summarize(
+      all_zero = all(.data[["observed"]] == 0),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(.data[["all_zero"]]) |>
     dplyr::select(dplyr::all_of(c("fleet", "timing")))
   estimated_zero_catch_fmort <- parameters |>
     dplyr::filter(
@@ -354,9 +373,10 @@ check_initialize_inputs <- function(parameters, data) {
   }
   # The surplus production model has no fleet parameters. Its fleets come
   # from the data.
-  is_catch_at_age <- parameters_model_type(parameters) == "CatchAtAge"
+  is_fleet_model <- parameters_model_type(parameters) %in%
+    c("CatchAtAge", "CatchAtLength")
   fleets <- stats::na.omit(unique(parameters[["fleet"]]))
-  if (length(fleets) == 0 && is_catch_at_age) {
+  if (length(fleets) == 0 && is_fleet_model) {
     cli::cli_abort(c(
       "x" = "No fleets found in the provided {.var parameters}.",
       "i" = "The {.var fleet} column is empty or all {.code NA}.",
@@ -367,7 +387,7 @@ check_initialize_inputs <- function(parameters, data) {
   # Only fleets in the parameter tibble are in the model, so data for any
   # other fleet would be left out of the likelihood.
   data_fleets_missing <- setdiff(get_fleets(data), fleets)
-  if (length(data_fleets_missing) > 0 && is_catch_at_age) {
+  if (length(data_fleets_missing) > 0 && is_fleet_model) {
     cli::cli_abort(c(
       "x" = "The data have fleet{?s} {.val {data_fleets_missing}}, which
       {?is/are} not in {.var parameters}.",
@@ -565,7 +585,8 @@ check_recruitment_process <- function(parameters) {
     }
     return(invisible(TRUE))
   }
-  process_label <- unique(setdiff(process_rows[["label"]], "log_sd"))
+  hyperparameter_labels <- c("expected_mean", "log_sd", "logit_rho")
+  process_label <- unique(setdiff(process_rows[["label"]], hyperparameter_labels))
   if (length(process_label) == 0) {
     cli::cli_abort(c(
       "x" = "Missing required inputs for recruitment process random or
@@ -579,7 +600,7 @@ check_recruitment_process <- function(parameters) {
       "i" = check_recruitment_rows
     ))
   }
-  if (all(process_rows[["estimation_type"]][process_rows[["label"]] != "log_sd"] %in% "constant")) {
+  if (all(process_rows[["estimation_type"]][!process_rows[["label"]] %in% hyperparameter_labels] %in% "constant")) {
     cli::cli_abort(c(
       "x" = "Missing required inputs for recruitment process random or
       fixed effects. {.val {process_label}} has a process, but its

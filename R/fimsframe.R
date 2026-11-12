@@ -287,6 +287,9 @@ methods::setMethod(
 #' @param fleet A string, or vector of strings, specifying the name of the
 #'   fleet(s) of interest that you want data for. The strings must
 #'   exactly match strings in the `"fleet"` column of `get_data(x)`.
+#' @param maturity An optional string (`"immature"` or `"mature"`) filtering
+#'   `weight_at_length` rows by maturity stage, or `NULL` (the default) to
+#'   return all `weight_at_length` rows.
 #' @return
 #' All of the `model_*()` functions return vectors of data. Currently, the
 #' order of the data is the same order as the data frame because no arranging
@@ -301,6 +304,14 @@ NULL
 #' Returns a numeric vector of catch data (type `"catch"`) for the
 #' specified fleet(s).
 #'
+#' ## `model_catch_retained()`
+#' Returns a numeric vector of retained catch data (type `"catch_retained"`)
+#' for the specified fleet(s).
+#'
+#' ## `model_catch_discarded()`
+#' Returns a numeric vector of discarded catch data (type `"catch_discarded"`)
+#' for the specified fleet(s).
+#'
 #' ## `model_index()`
 #' Returns a numeric vector of index data (type `"index"`) for the specified
 #' fleet(s).
@@ -311,8 +322,20 @@ NULL
 #'
 #' ## `model_length_comp()`
 #' Returns a numeric vector of length-composition data (type `"length_comp"`)
-#' for the specified fleet(s). This accessor requires that age-to-length
-#' conversion data are present in the `FIMSFrame` object.
+#' for the specified fleet(s).
+#'
+#' ## `model_weight_at_length()`
+#' Returns a numeric vector of empirical weight at length (type
+#' `"weight_at_length"`), ordered by length bin.
+#'
+#' ## `model_terminal_molt_probability_at_length()`
+#' Returns a numeric vector of terminal molt probabilities at length (type
+#' `"terminal_molt_probability_at_length"`), ordered by year (including the
+#' year after the last model year) and length bin.
+#'
+#' ## `model_growth_increment()`
+#' Returns a numeric vector of observed molt increments (type
+#' `"growth_increment"`).
 #'
 #' ## `model_weight_at_age()`
 #' Returns a numeric vector of weight at age (type `"weight_at_age"`), ordered
@@ -374,6 +397,62 @@ methods::setMethod(
   "model_catch",
   "data.frame",
   function(x, fleet) model_catch(FIMSFrame(x), fleet)
+)
+
+#' @export
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setGeneric(
+  "model_catch_retained",
+  function(x, fleet) standardGeneric("model_catch_retained")
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_catch_retained", "FIMSFrame",
+  function(x, fleet) {
+    dplyr::filter(
+      .data = x@data,
+      .data[["type"]] == "catch_retained",
+      .data[["fleet"]] %in% .env$fleet
+    ) |>
+      dplyr::pull(.data[["observed"]])
+  }
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_catch_retained",
+  "data.frame",
+  function(x, fleet) model_catch_retained(FIMSFrame(x), fleet)
+)
+
+#' @export
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setGeneric(
+  "model_catch_discarded",
+  function(x, fleet) standardGeneric("model_catch_discarded")
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_catch_discarded", "FIMSFrame",
+  function(x, fleet) {
+    dplyr::filter(
+      .data = x@data,
+      .data[["type"]] == "catch_discarded",
+      .data[["fleet"]] %in% .env$fleet
+    ) |>
+      dplyr::pull(.data[["observed"]])
+  }
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_catch_discarded",
+  "data.frame",
+  function(x, fleet) model_catch_discarded(FIMSFrame(x), fleet)
 )
 
 #' @export
@@ -633,6 +712,99 @@ methods::setMethod(
   }
 )
 
+#' @export
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setGeneric(
+  "model_weight_at_length",
+  function(x, maturity = NULL) standardGeneric("model_weight_at_length")
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_weight_at_length",
+  "FIMSFrame",
+  function(x, maturity = NULL) {
+    rows <- dplyr::filter(.data = x@data, .data[["type"]] == "weight_at_length")
+    if (!is.null(maturity) && "maturity" %in% colnames(rows)) {
+      rows <- dplyr::filter(rows, .data[["maturity"]] %in% .env[["maturity"]])
+    }
+    rows |>
+      dplyr::arrange(.data[["maturity"]], .data[["length"]]) |>
+      dplyr::pull(.data[["observed"]])
+  }
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_weight_at_length",
+  "data.frame",
+  function(x, maturity = NULL) {
+    model_weight_at_length(FIMSFrame(x), maturity)
+  }
+)
+
+#' @export
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setGeneric(
+  "model_terminal_molt_probability_at_length",
+  function(x) standardGeneric("model_terminal_molt_probability_at_length")
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_terminal_molt_probability_at_length",
+  "FIMSFrame",
+  function(x) {
+    dplyr::filter(
+      .data = x@data,
+      .data[["type"]] == "terminal_molt_probability_at_length"
+    ) |>
+      dplyr::arrange(.data[["timing"]], .data[["length"]]) |>
+      dplyr::pull(.data[["observed"]])
+  }
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_terminal_molt_probability_at_length",
+  "data.frame",
+  function(x) {
+    model_terminal_molt_probability_at_length(FIMSFrame(x))
+  }
+)
+
+#' @export
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setGeneric(
+  "model_growth_increment",
+  function(x) standardGeneric("model_growth_increment")
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_growth_increment",
+  "FIMSFrame",
+  function(x) {
+    dplyr::filter(
+      .data = x@data,
+      .data[["type"]] == "growth_increment"
+    ) |>
+      dplyr::pull(.data[["observed"]])
+  }
+)
+#' @rdname model_
+#' @keywords FIMSFrame
+methods::setMethod(
+  "model_growth_increment",
+  "data.frame",
+  function(x) {
+    model_growth_increment(FIMSFrame(x))
+  }
+)
+
 # methods::setMethod: initialize ----
 
 # Not currently using methods::setMethod(f = "initialize")
@@ -807,12 +979,22 @@ methods::setValidity(
     }
 
     # Ensure composition data sum to 1.0 per group if units are proportions
+    comp_group_columns <- intersect(
+      c("fleet", "timing", "maturity"),
+      colnames(object@data)
+    )
     for (present_type in grep("_comp", present_types, value = TRUE)) {
       test <- object@data |>
         dplyr::filter(.data$type == present_type, .data$observed != -999) |>
-        dplyr::group_by(.data$fleet, .data$timing, .drop = FALSE) |>
+        dplyr::mutate(
+          .comp_link = uncertainty_link(.data[["uncertainty"]])
+        ) |>
+        dplyr::group_by(
+          dplyr::across(dplyr::all_of(c(comp_group_columns, ".comp_link"))),
+          .drop = FALSE
+        ) |>
         dplyr::group_map(.keep = TRUE, \(.x, .y) {
-          validate_composition_data(.x)
+          validate_composition_data(dplyr::select(.x, -".comp_link"))
         })
       if (sum(unlist(test)) > 0) {
         cli::cli_abort(
@@ -933,7 +1115,10 @@ validate_dimension_of_conversion <- function(data, n_groups, n_timings) {
 # weight_at_age would be added to the model with default parameters, so every
 # fleet must have observations.
 validate_fleets_have_observations <- function(data) {
-  observation_types <- c("age_comp", "catch", "index", "length_comp")
+  observation_types <- c(
+    "age_comp", "catch", "catch_discarded", "catch_retained",
+    "index", "length_comp"
+  )
   observed_fleets <- data |>
     dplyr::filter(.data[["type"]] %in% observation_types) |>
     dplyr::pull(.data[["fleet"]])
@@ -1643,8 +1828,11 @@ resolve_ageing_error <- function(data, fleets, ages, years) {
 # chosen from `unit`, and the model holds one unit per fleet for catch and one
 # for index.
 validate_catch_and_index_units <- function(data) {
+  catch_and_index_types <- c(
+    "catch", "catch_discarded", "catch_retained", "index"
+  )
   fleet_units <- data |>
-    dplyr::filter(.data[["type"]] %in% c("catch", "index")) |>
+    dplyr::filter(.data[["type"]] %in% catch_and_index_types) |>
     dplyr::select(dplyr::all_of(c("type", "fleet", "unit"))) |>
     dplyr::distinct()
   unknown_units <- setdiff(fleet_units[["unit"]], c("mt", "number"))
@@ -1655,7 +1843,8 @@ validate_catch_and_index_units <- function(data) {
       "i" = "The {.var unit} of catch and index data must be {.val mt} for
       weight or {.val number} for numbers.",
       "i" = "Use {.code dplyr::count(dplyr::filter(data, type %in% c('catch',
-      'index')), fleet, type, unit)} to find the rows with each unit."
+      'catch_discarded', 'catch_retained', 'index')), fleet, type, unit)} to
+      find the rows with each unit."
     ))
   }
   mixed_units <- fleet_units |>
@@ -1669,7 +1858,110 @@ validate_catch_and_index_units <- function(data) {
       "i" = "Use 1 unit for all catch rows of a fleet and 1 unit for all index
       rows of a fleet.",
       "i" = "Use {.code dplyr::count(dplyr::filter(data, type %in% c('catch',
-      'index')), fleet, type, unit)} to find the rows with each unit."
+      'catch_discarded', 'catch_retained', 'index')), fleet, type, unit)} to
+      find the rows with each unit."
+    ))
+  }
+  invisible(TRUE)
+}
+
+validate_maturity_column <- function(data) {
+  if (!"maturity" %in% colnames(data)) {
+    return(invisible(TRUE))
+  }
+  valid_maturity <- c("immature", "mature")
+  invalid_maturity <- setdiff(
+    stats::na.omit(unique(data[["maturity"]])),
+    valid_maturity
+  )
+  if (length(invalid_maturity) > 0) {
+    cli::cli_abort(c(
+      "x" = "The {.var maturity} column has invalid values:
+      {.val {invalid_maturity}}.",
+      "i" = "Values in {.var maturity} must be {.val immature}, {.val mature},
+      or {.code NA} for combined maturity stages.",
+      "i" = "Count the values with {.code dplyr::count(data, type, maturity)}."
+    ))
+  }
+  invisible(TRUE)
+}
+
+validate_weight_at_length <- function(data, lengths) {
+  weight_data <- dplyr::filter(data, .data[["type"]] == "weight_at_length")
+  if (NROW(weight_data) == 0) {
+    return(invisible(TRUE))
+  }
+  invalid_weights <- weight_data[["observed"]][
+    !is.finite(weight_data[["observed"]]) | weight_data[["observed"]] <= 0
+  ]
+  if (length(invalid_weights) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.var weight_at_length} has values that are missing or not
+      positive: {.val {unique(invalid_weights)}}.",
+      "i" = "Weight at length is used to calculate biomass and catch weight, so
+      every row needs a positive weight.",
+      "i" = "Find the rows with {.code dplyr::filter(data,
+      type == \"weight_at_length\", !is.finite(observed) | observed <= 0)}."
+    ))
+  }
+  maturity_stages <- if ("maturity" %in% colnames(weight_data)) {
+    unique(weight_data[["maturity"]])
+  } else {
+    NA_character_
+  }
+  for (stage in maturity_stages) {
+    stage_rows <- if (is.na(stage)) {
+      weight_data
+    } else {
+      dplyr::filter(weight_data, .data[["maturity"]] == .env[["stage"]])
+    }
+    if (nrow(stage_rows) != length(lengths) ||
+      !setequal(stage_rows[["length"]], lengths)) {
+      cli::cli_abort(c(
+        "x" = "{.var weight_at_length} does not have 1 row for each model
+        length bin ({.val {length(lengths)}} bins).",
+        "i" = "Give 1 {.var weight_at_length} row per length bin for each
+        maturity stage.",
+        "i" = "Count the rows with {.code dplyr::count(dplyr::filter(data,
+        type == \"weight_at_length\"), maturity)}."
+      ))
+    }
+  }
+  invisible(TRUE)
+}
+
+validate_terminal_molt_probability_at_length <- function(data, lengths, years) {
+  molt_data <- dplyr::filter(
+    data,
+    .data[["type"]] == "terminal_molt_probability_at_length"
+  )
+  if (NROW(molt_data) == 0) {
+    return(invisible(TRUE))
+  }
+  invalid_values <- molt_data[["observed"]][
+    !is.finite(molt_data[["observed"]]) |
+      molt_data[["observed"]] < 0 |
+      molt_data[["observed"]] > 1
+  ]
+  if (length(invalid_values) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.var terminal_molt_probability_at_length} has values outside
+      [0, 1]: {.val {unique(invalid_values)}}.",
+      "i" = "Each value is the probability that a molting immature individual
+      molts to maturity, so it must be between 0 and 1.",
+      "i" = "Find the rows with {.code dplyr::filter(data,
+      type == \"terminal_molt_probability_at_length\",
+      !is.finite(observed) | observed < 0 | observed > 1)}."
+    ))
+  }
+  if (!setequal(molt_data[["length"]], lengths)) {
+    cli::cli_abort(c(
+      "x" = "{.var terminal_molt_probability_at_length} does not cover all
+      model length bins ({.val {length(lengths)}} bins).",
+      "i" = "Give 1 {.var terminal_molt_probability_at_length} row per model
+      length bin for each year.",
+      "i" = "Check the length bins with {.code dplyr::count(dplyr::filter(data,
+      type == \"terminal_molt_probability_at_length\"), length)}."
     ))
   }
   invisible(TRUE)
@@ -1823,12 +2115,14 @@ validate_weight_at_age <- function(data, ages, years) {
 # 0 or less makes the objective NaN. A catch of 0 is allowed because it is
 # treated as a year with no fishing (see setup_default_Fleet()).
 validate_lognormal_observations <- function(data) {
+  catch_types <- c("catch", "catch_discarded", "catch_retained")
+  positive_types <- c("index", "growth_increment")
   invalid_rows <- data |>
     dplyr::filter(
-      .data[["type"]] %in% c("catch", "index"),
+      .data[["type"]] %in% c(catch_types, positive_types),
       .data[["observed"]] != -999,
       .data[["observed"]] < 0 |
-        (.data[["type"]] == "index" & .data[["observed"]] == 0)
+        (.data[["type"]] %in% positive_types & .data[["observed"]] == 0)
     )
   # Return before parsing so data without an uncertainty column still work.
   if (NROW(invalid_rows) == 0) {
@@ -1852,7 +2146,8 @@ validate_lognormal_observations <- function(data) {
       "i" = "A lognormal distribution needs observations greater than 0. A
       catch of 0 is allowed and means no fishing. Use -999 for a missing
       observation, or a distribution that allows 0, e.g., {.code dnorm}.",
-      "i" = "Use {.code dplyr::filter(data, type %in% c('catch', 'index'),
+      "i" = "Use {.code dplyr::filter(data, type %in% c('catch',
+      'catch_discarded', 'catch_retained', 'index', 'growth_increment'),
       observed != -999, observed <= 0)} to find the rows."
     ))
   }
@@ -2050,18 +2345,28 @@ FIMSFrame <- function(data) {
   data_to_use_4_timing <- dplyr::filter(
     data,
     !.data$type %in% c(
-      "age_to_length_conversion", "weight_at_age", "ageing_error"
+      "age_to_length_conversion", "weight_at_age", "ageing_error",
+      "weight_at_length", "terminal_molt_probability_at_length",
+      "growth_increment"
     )
   ) |>
     dplyr::pull(.data$timing)
   start_year <- as.integer(floor(min(data_to_use_4_timing, na.rm = TRUE)))
   end_year <- as.integer(floor(max(data_to_use_4_timing, na.rm = TRUE)))
+  molt_timings <- data |>
+    dplyr::filter(.data$type == "terminal_molt_probability_at_length") |>
+    dplyr::pull(.data$timing) |>
+    stats::na.omit()
+  if (length(molt_timings) > 0) {
+    end_year <- min(end_year, as.integer(floor(max(molt_timings))) - 1L)
+  }
   n_years <- as.integer(end_year - start_year + 1)
   years <- start_year:end_year
 
   validate_fleets_have_observations(data)
   validate_catch_and_index_units(data)
   validate_lognormal_observations(data)
+  validate_maturity_column(data)
 
   # Get the fleets represented in the data
   fleets <- unique(na.omit(data[["fleet"]]))
@@ -2069,9 +2374,10 @@ FIMSFrame <- function(data) {
 
   if ("age" %in% colnames(data)) {
     if (all(is.na(data[["age"]]))) {
-      # Catch and index data alone, as for a surplus production model, have
-      # no ages. Every other data type is fit at age or length.
-      if (!all(data[["type"]] %in% c("catch", "index"))) {
+      # Catch and index data alone, as for a surplus production model, or
+      # catch-at-length data with weight_at_length, have no ages.
+      if (!all(data[["type"]] %in% c("catch", "index")) &&
+        !"weight_at_length" %in% data[["type"]]) {
         cli::cli_abort(c(
           "x" = "The {.var age} column exists in {.var data} but they are all
           {.code NA}.",
@@ -2122,10 +2428,20 @@ FIMSFrame <- function(data) {
       lengths <- numeric()
     } else {
       resolved_fleet_length_bins <- resolve_fleet_length_bins(data)
-      lengths <- sort(unique(unlist(resolved_fleet_length_bins, use.names = FALSE)))
+      weight_at_length_bins <- data |>
+        dplyr::filter(.data$type == "weight_at_length", !is.na(.data$length)) |>
+        dplyr::pull(.data$length) |>
+        unique() |>
+        sort()
+      lengths <- sort(unique(c(
+        unlist(resolved_fleet_length_bins, use.names = FALSE),
+        weight_at_length_bins
+      )))
 
-      # Check that the age column exists b/c conversion data depends on it
-      if (!"age" %in% colnames(data)) {
+      # Check that the age column exists b/c conversion data depends on it,
+      # unless weight_at_length is present (CatchAtLength).
+      if (!"age" %in% colnames(data) &&
+        !"weight_at_length" %in% data[["type"]]) {
         cli::cli_abort(
           "You have length-composition data, which requires having an age column
           because you have to convert lengths to ages using the
@@ -2159,6 +2475,12 @@ FIMSFrame <- function(data) {
     ages = ages,
     years = start_year:(end_year + 1)
   )
+  validate_weight_at_length(data, lengths = lengths)
+  validate_terminal_molt_probability_at_length(
+    data,
+    lengths = lengths,
+    years = start_year:(end_year + 1)
+  )
   validate_ageing_error(data, ages = ages, years = years)
 
   # Work on filling in missing data with -999 and arrange in the correct
@@ -2168,10 +2490,32 @@ FIMSFrame <- function(data) {
       .data$timing >= start_year | is.na(.data$timing)
     ) |>
     tibble::as_tibble()
-  missing_time_series <- create_missing_data(
+  catch_types <- c("catch", "catch_discarded", "catch_retained")
+  catch_fleets <- unique(stats::na.omit(
+    formatted_data[["fleet"]][formatted_data[["type"]] %in% catch_types]
+  ))
+  has_projection_survey <- "weight_at_length" %in% formatted_data[["type"]] &&
+    any(
+      formatted_data[["type"]] %in% c("index", "length_comp") &
+        formatted_data[["timing"]] == end_year + 1L,
+      na.rm = TRUE
+    )
+  survey_years <- if (has_projection_survey) {
+    start_year:(end_year + 1L)
+  } else {
+    years
+  }
+  missing_catch <- create_missing_data(
     data = formatted_data,
-    timings = years
+    timings = years,
+    types = catch_types
   )
+  missing_index <- create_missing_data(
+    data = formatted_data,
+    timings = survey_years,
+    types = "index"
+  )
+  missing_time_series <- dplyr::bind_rows(missing_catch, missing_index)
   if ("age" %in% colnames(formatted_data)) {
     missing_ages <- create_missing_data(
       data = formatted_data,
@@ -2211,10 +2555,11 @@ FIMSFrame <- function(data) {
         return(formatted_data[0, ])
       }
 
+      fleet_timings <- if (fleet_i %in% catch_fleets) years else survey_years
       create_missing_data(
         data = fleet_length_data,
         bins = bins,
-        timings = years,
+        timings = fleet_timings,
         column = "length",
         types = "length_comp"
       )
@@ -2225,11 +2570,22 @@ FIMSFrame <- function(data) {
       expected_n = purrr::map_int(fleet_length_bins, length)
     )
 
-    summary_by_name <- dplyr::count(
-      missing_lengths,
-      .data$fleet,
-      .data$timing
-    ) |>
+    length_count_columns <- intersect(
+      c("fleet", "timing", "maturity"),
+      colnames(missing_lengths)
+    )
+    missing_lengths_for_count <- missing_lengths
+    if ("uncertainty" %in% colnames(missing_lengths_for_count)) {
+      missing_lengths_for_count <- missing_lengths_for_count |>
+        dplyr::mutate(
+          .comp_link = uncertainty_link(.data[["uncertainty"]])
+        )
+      length_count_columns <- c(length_count_columns, ".comp_link")
+    }
+    summary_by_name <- missing_lengths_for_count |>
+      dplyr::count(
+        dplyr::across(dplyr::all_of(length_count_columns))
+      ) |>
       dplyr::left_join(expected_length_counts, by = "fleet") |>
       dplyr::filter(.data$n != .data$expected_n) |>
       dplyr::summarize(
@@ -2266,7 +2622,7 @@ FIMSFrame <- function(data) {
     missing_lengths
   )
   sort_order <- intersect(
-    c("fleet", "type", "timing", "age", "length"),
+    c("fleet", "type", "maturity", "timing", "age", "length"),
     colnames(formatted_data)
   )
   complete_data <- dplyr::full_join(
@@ -2291,6 +2647,23 @@ FIMSFrame <- function(data) {
 }
 
 # Unexported functions ----
+uncertainty_link <- function(uncertainty_values) {
+  if (is.null(uncertainty_values)) {
+    return(character(0))
+  }
+  vapply(
+    uncertainty_values,
+    function(uncertainty_value) {
+      if (is.na(uncertainty_value) || !grepl("^\\s*~", uncertainty_value)) {
+        return(NA_character_)
+      }
+      parse_data_distribution(uncertainty_value)[["link"]]
+    },
+    character(1),
+    USE.NAMES = FALSE
+  )
+}
+
 create_missing_data <- function(
   data,
   bins,
@@ -2301,12 +2674,29 @@ create_missing_data <- function(
   bin_column <- if (!missing(column)) {
     rlang::sym(column)
   }
-  use_this_data <- data |>
-    dplyr::group_by(.data$type, .data$fleet)
+  filtered_data <- dplyr::filter(data, .data$type %in% types)
+  if (NROW(filtered_data) == 0) {
+    return(filtered_data[0, ])
+  }
+  group_columns <- intersect(c("type", "fleet", "maturity"), colnames(data))
+  has_multiple_links <- FALSE
+  if ("uncertainty" %in% colnames(filtered_data) &&
+    identical(types, "length_comp")) {
+    filtered_data[[".comp_link"]] <- uncertainty_link(
+      filtered_data[["uncertainty"]]
+    )
+    links <- unique(stats::na.omit(filtered_data[[".comp_link"]]))
+    if (length(links) > 1) {
+      has_multiple_links <- TRUE
+      group_columns <- c(group_columns, ".comp_link")
+    }
+  }
+  use_this_data <- filtered_data |>
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_columns)))
+  join_columns <- c(group_columns, "unit", "timing")
   out_data <- if (missing(bins)) {
     # This only pertains to annual data without bins
     use_this_data |>
-      dplyr::filter(.data$type %in% types) |>
       tidyr::expand(
         !!rlang::sym("unit"),
         !!rlang::sym("timing") := timings
@@ -2314,14 +2704,13 @@ create_missing_data <- function(
       dplyr::anti_join(
         y = dplyr::select(
           use_this_data,
-          dplyr::all_of(c("type", "fleet", "unit", "timing"))
+          dplyr::all_of(join_columns)
         ),
-        by = c("type", "fleet", "unit", "timing")
+        by = join_columns
       )
   } else {
+    join_columns <- c(join_columns, rlang::as_string(bin_column))
     use_this_data |>
-      dplyr::group_by(.data$type, .data$fleet) |>
-      dplyr::filter(.data$type %in% types) |>
       tidyr::expand(
         !!rlang::sym("unit"),
         !!rlang::sym("timing") := timings,
@@ -2330,12 +2719,22 @@ create_missing_data <- function(
       dplyr::anti_join(
         y = dplyr::select(
           use_this_data,
-          dplyr::all_of(
-            c("type", "fleet", "unit", "timing", rlang::as_string(bin_column))
-          )
+          dplyr::all_of(join_columns)
         ),
-        by = c("type", "fleet", "unit", "timing", rlang::as_string(bin_column))
+        by = join_columns
       )
+  }
+  if (has_multiple_links) {
+    link_uncertainty <- filtered_data |>
+      dplyr::filter(!is.na(.data[[".comp_link"]]), !is.na(.data[["uncertainty"]])) |>
+      dplyr::summarize(
+        uncertainty = .data[["uncertainty"]][1],
+        .by = dplyr::all_of(group_columns)
+      )
+    out_data <- out_data |>
+      dplyr::ungroup() |>
+      dplyr::left_join(link_uncertainty, by = group_columns) |>
+      dplyr::select(-".comp_link")
   }
   out_data |>
     dplyr::mutate(

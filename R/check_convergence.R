@@ -633,18 +633,24 @@ check_sdreport_convergence <- function(
 #' @noRd
 label_nll_components <- function(model_data) {
   data_type_labels <- c(
-    catch = "catch", index = "index", age_comp = "agecomp",
+    catch = "catch",
+    catch_retained = "catch_retained",
+    catch_discarded = "catch_discarded",
+    index = "index",
+    age_comp = "agecomp",
     length_comp = "lengthcomp",
-    conditional_age_at_length = "conditional_age_at_length"
+    conditional_age_at_length = "conditional_age_at_length",
+    growth_increment = "growth_increment"
   )
   c(
     purrr::map_chr(model_data[["densities"]], "target"),
     purrr::map_chr(model_data[["likelihoods"]], function(likelihood) {
-      paste(
-        likelihood[["fleet"]],
-        data_type_labels[[likelihood[["data_type"]]]],
-        sep = "_"
-      )
+      type_label <- data_type_labels[[likelihood[["data_type"]]]]
+      if (is.na(likelihood[["fleet"]])) {
+        type_label
+      } else {
+        paste(likelihood[["fleet"]], type_label, sep = "_")
+      }
     })
   )
 }

@@ -1,7 +1,8 @@
-# Selectivity modules
+# Selectivity and retention modules
 #
-# Each function returns selectivity at age, a value between 0 and 1, for 1
-# fleet. `age` is the age in years (e.g., 1:12), not an index. Parameters are
+# Each function returns selectivity or retention at age or length, a value
+# between 0 and 1, for 1 fleet. `age` or `length` is the value in years or
+# length units (e.g., 1:12 or 27.5:132.5), not an index. Parameters are
 # named as in the `label` column of the parameter tibble and are on the scale
 # the label says (natural unless it starts with log_ or logit_). Selectivity
 # is not rescaled to a maximum of 1, so a dome may peak below 1.
@@ -63,10 +64,40 @@ age_specific_selectivity <- function(age, logit_sel_at_age) {
   inv_logit(0, 1, logit_sel_at_age)
 }
 
+#' Length-specific selectivity
+#'
+#' 1 value per length bin, estimated on the logit scale:
+#' S(l) = 1 / (1 + exp(-x_l)). 1 value can also be given for all length bins.
+#'
+#' @param length Length-bin midpoints (or lower edges).
+#' @param logit_sel_at_length Selectivity on the logit scale: 1 value per
+#'   length bin, or 1 value for all length bins.
+#' @noRd
+length_specific_selectivity <- function(length, logit_sel_at_length) {
+  if (length(logit_sel_at_length) == 1) {
+    logit_sel_at_length <- logit_sel_at_length[rep(1, length(length))]
+  }
+  if (length(logit_sel_at_length) != length(length)) {
+    cli::cli_abort(c(
+      "x" = "Length-specific selectivity has {.val {length(logit_sel_at_length)}}
+      value{?s} of {.var logit_sel_at_length}.",
+      "i" = "It needs 1 value per length bin ({.val {length(length)}}), or 1 for
+      all length bins.",
+      "i" = "Count the values with {.code dplyr::count(parameters, fleet,
+      label, timing)}."
+    ))
+  }
+  inv_logit(0, 1, logit_sel_at_length)
+}
+
 # Module types, by the `module_type` in the parameter tibble. To add a type,
 # write its function above and add 1 line here.
 selectivity_functions <- list(
   Logistic = logistic_selectivity,
   DoubleLogistic = double_logistic_selectivity,
-  AgeSpecific = age_specific_selectivity
+  AgeSpecific = age_specific_selectivity,
+  LengthSpecific = length_specific_selectivity
 )
+
+# Retention uses the same curve family as selectivity.
+retention_functions <- selectivity_functions

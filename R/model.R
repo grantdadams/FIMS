@@ -2,8 +2,9 @@
 #
 # fims_model() is what RTMB tapes. It puts the parameters into module groups,
 # calls the model's predictions (catch_at_age() for a catch-at-age model,
-# surplus_production() for a surplus production model), adds the negative
-# log-likelihood of priors, processes and data, and reports.
+# catch_at_length() for a catch-at-length model, and surplus_production() for a
+# surplus production model), adds the negative log-likelihood of priors,
+# processes and data, and reports.
 
 #' Joint negative log-likelihood of a FIMS model
 #'
@@ -26,8 +27,8 @@ fims_model <- function(parameters, model_data) {
 #' @inheritParams fims_model
 #' @return A list with the flat `parameters` (split parameters put back
 #'   together) and the model's predictions (`biology`, `population` and
-#'   `fleets` for catch at age, `population` and `fleets` for surplus
-#'   production).
+#'   `fleets` for catch at age and catch at length, `population` and `fleets`
+#'   for surplus production).
 #' @noRd
 model_predictions <- function(parameters, model_data) {
   parameters <- assemble_split_parameters(
@@ -44,6 +45,7 @@ model_predictions <- function(parameters, model_data) {
   # estimated, from the flat parameters.
   predictions <- switch(model_data[["model_type"]],
     CatchAtAge = catch_at_age(module_parameters, model_data),
+    CatchAtLength = catch_at_length(module_parameters, model_data),
     SurplusProduction = surplus_production(
       module_parameters, model_data, parameters
     )
@@ -76,18 +78,28 @@ density_inputs <- function(density_entry, parameters, population) {
   # its estimated values (process_densities()). A mean with 1 value per
   # target value is subset the same way, so each mean stays with its value.
   positions <- density_entry[["positions"]]
+  hyperparameters <- lapply(density_entry[["hyperparameters"]], function(name) {
+    parameters[[name]]
+  })
   if (!is.null(positions)) {
     if (length(density_mean) == length(x)) {
       density_mean <- density_mean[positions]
     }
+    if (length(hyperparameters[["log_sd"]]) == length(x)) {
+      hyperparameters[["log_sd"]] <- hyperparameters[["log_sd"]][positions]
+    }
     x <- x[positions]
+  }
+  if (!is.null(density_entry[["transform"]])) {
+    x <- switch(density_entry[["transform"]],
+      exp = exp(x),
+      inv_logit = inv_logit(0, 1, x)
+    )
   }
   list(
     x = x,
     mean = density_mean,
-    hyperparameters = lapply(density_entry[["hyperparameters"]], function(name) {
-      parameters[[name]]
-    }),
+    hyperparameters = hyperparameters,
     steps = density_entry[["steps"]]
   )
 }
@@ -127,8 +139,13 @@ model_likelihood <- function(parameters, model_data, model) {
   # sdlog = 0.01)" compares catch with log_catch_expected (the `link`).
   observation_lpdf <- numeric(0)
   for (component in model_data[["likelihoods"]]) {
-    # Log scale for dlnorm, proportions for dmultinom.
-    predicted <- model[["fleets"]][[component[["fleet"]]]][[component[["link"]]]]
+    # Log scale for dlnorm, proportions for dmultinom. Population-level data
+    # sets (fleet = NA, such as growth_increment) link to model$population.
+    predicted <- if (is.na(component[["fleet"]])) {
+      model[["population"]][[component[["link"]]]]
+    } else {
+      model[["fleets"]][[component[["fleet"]]]][[component[["link"]]]]
+    }
     log_density <- do.call(
       likelihood_families[[component[["family"]]]][["lpdf"]],
       c(

@@ -119,7 +119,11 @@ redraw_random_effects <- function(parameters, input) {
 draw_observations <- function(model, model_data) {
   draws <- list()
   for (component in model_data[["likelihoods"]]) {
-    predicted <- model[["fleets"]][[component[["fleet"]]]][[component[["link"]]]]
+    predicted <- if (is.na(component[["fleet"]])) {
+      model[["population"]][[component[["link"]]]]
+    } else {
+      model[["fleets"]][[component[["fleet"]]]][[component[["link"]]]]
+    }
     draws[[component[["name"]]]] <- do.call(
       likelihood_families[[component[["family"]]]][["draw"]],
       c(
@@ -143,16 +147,30 @@ write_simulated_data <- function(input, simulated) {
   data <- get_data(frame)
   start_year <- get_start_year(frame)
   ages <- get_ages(frame)
+  is_catch_at_length <- identical(
+    input[["model_data"]][["model_type"]], "CatchAtLength"
+  )
   for (component in input[["model_data"]][["likelihoods"]]) {
     values <- simulated[[component[["name"]]]]
     fleet <- component[["fleet"]]
     data_type <- component[["data_type"]]
+    if (is.na(fleet) && data_type == "growth_increment") {
+      is_row <- which(is.na(data[["fleet"]]) & data[["type"]] == "growth_increment")
+      rows <- dplyr::slice(data, is_row)
+      new_values <- as.vector(values)
+      data[["observed"]][is_row] <- dplyr::coalesce(new_values, rows[["observed"]])
+      next
+    }
     is_row <- which(data[["fleet"]] %in% fleet & data[["type"]] == data_type)
+    if (is_catch_at_length && data_type == "length_comp") {
+      resolved <- resolve_length_comp_links(dplyr::slice(data, is_row))
+      is_row <- is_row[resolved[["resolved_link"]] %in% component[["link"]]]
+    }
     rows <- dplyr::slice(data, is_row)
     year <- rows[["timing"]] - start_year + 1
     fleet_data <- input[["model_data"]][["fleets"]][[fleet]]
     length_bins <- fleet_data[["length_bins"]]
-    if (data_type %in% c("catch", "index")) {
+    if (data_type %in% c("catch", "catch_retained", "catch_discarded", "index")) {
       new_values <- as.vector(values)[year]
     } else {
       row_index <- if (data_type == "conditional_age_at_length") {
@@ -182,7 +200,7 @@ write_simulated_data <- function(input, simulated) {
 
 #' Simulation self-test: simulate, refit, and compare with the truth
 #'
-#' The self-test is for catch-at-age models.
+#' The self-test is for catch-at-age and catch-at-length models.
 #'
 #' Each data set is drawn after a call to set.seed(), so the self-test
 #' changes the state of the random number generator for the rest of the
@@ -248,6 +266,16 @@ run_fims_self_test <- function(fit, number_of_simulations = 10,
     relative_error <- function(name, index = seq_along(truth[[name]])) {
       estimate[[name]][index] / truth[[name]][index] - 1
     }
+    relative_error_terminal_depletion <- if (
+      !is.null(truth[["spawning_biomass_ratio"]])
+    ) {
+      relative_error("spawning_biomass_ratio", terminal)
+    } else {
+      (estimate[["spawning_biomass"]][terminal] /
+        estimate[["spawning_biomass"]][1]) /
+        (truth[["spawning_biomass"]][terminal] /
+          truth[["spawning_biomass"]][1]) - 1
+    }
     tibble::tibble(
       simulation = i,
       converged = get_opt(refit)[["convergence"]] == 0 &&
@@ -255,8 +283,7 @@ run_fims_self_test <- function(fit, number_of_simulations = 10,
       max_gradient = get_max_gradient(refit),
       relative_error_terminal_spawning_biomass =
         relative_error("spawning_biomass", terminal),
-      relative_error_terminal_depletion =
-        relative_error("spawning_biomass_ratio", terminal),
+      relative_error_terminal_depletion = relative_error_terminal_depletion,
       relative_error_mean_recruitment = mean(estimate[["expected_recruitment"]]) /
         mean(truth[["expected_recruitment"]]) - 1,
       max_abs_relative_error_spawning_biomass =

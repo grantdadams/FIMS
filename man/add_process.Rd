@@ -41,8 +41,8 @@ Rules:
 \code{module_name} and \code{fleet}.
 \item 1 call per target. A second call is an error.
 \item Formula variables are the target's index columns: \code{year} (from
-\code{timing}) and \code{age}. A random term groups by \code{year}, \code{age} or
-\code{age:year}.
+\code{timing}), \code{age}, and \code{length}. A random term groups by \code{year}, \code{age},
+\code{length}, \code{age:year}, or \code{length:year}.
 \item With no random term, the fixed term says which rows share 1 estimate.
 With a random term, it defines the \code{expected_mean} the process values
 vary around, and each non-constant row is its own process value.
@@ -86,7 +86,8 @@ age and year.
 \item \code{log_q ~ rw(1 | year)}: a random walk.
 \item \code{logit_sel_at_age ~ rw(1 | age)}: a random walk from each age to the next,
 for \code{AgeSpecific} selectivity. \code{(1 | age)} and \code{ar1(1 | age)} give iid
-and AR1 processes by age.
+and AR1 processes by age, and \code{(1 | length)}, \code{ar1(1 | length)}, and
+\code{rw(1 | length)} do the same by length.
 }
 
 These breaks fit data with years 1 to 30, as in \code{data_big}. When the data

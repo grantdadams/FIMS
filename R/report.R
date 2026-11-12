@@ -19,6 +19,8 @@
 # - "year_length": years by the fleet's length bins.
 # - "conditional_age_at_length": 1 row per year and length bin with
 #   conditional age-at-length data, by ages.
+# - "growth_increment": 1 value per observed molt increment row, by pre-molt
+#   length.
 # - "na": 1 value, not by year.
 # Population quantities cover the model years, some with 1 more year for the
 # start of the year after the last model year. Fleet quantities cover the
@@ -46,6 +48,15 @@ quantity_dimensions <- c(
   harvest_rate_at_msy = "na",
   biomass_at_msy = "na",
   maximum_sustainable_yield = "na",
+  mortality_M_immature = "year_length",
+  mortality_M_mature = "year_length",
+  mortality_Z_immature = "year_length",
+  mortality_Z_mature = "year_length",
+  numbers_at_length_immature = "year_length",
+  numbers_at_length_mature = "year_length",
+  total_numbers_at_length = "year_length",
+  growth_increment_expected = "growth_increment",
+  log_growth_increment_expected = "growth_increment",
   # Fleet quantities
   catch_numbers_at_age = "year_age",
   catch_weight_at_age = "year_age",
@@ -53,18 +64,40 @@ quantity_dimensions <- c(
   index_weight_at_age = "year_age",
   catch_numbers = "year",
   catch_weight = "year",
+  catch_retained_numbers = "year",
+  catch_retained_weight = "year",
+  catch_discarded_numbers = "year",
+  catch_discarded_weight = "year",
   index_numbers = "year",
   index_weight = "year",
   catch_expected = "year",
+  catch_retained_expected = "year",
+  catch_discarded_expected = "year",
   index_expected = "year",
   log_catch_expected = "year",
+  log_catch_retained_expected = "year",
+  log_catch_discarded_expected = "year",
   log_index_expected = "year",
   agecomp_expected = "year_age",
   agecomp_proportion = "year_age",
   lengthcomp_expected = "year_length",
   lengthcomp_proportion = "year_length",
+  lengthcomp_retained_expected = "year_length",
+  lengthcomp_retained_proportion = "year_length",
+  lengthcomp_discarded_expected = "year_length",
+  lengthcomp_discarded_proportion = "year_length",
+  lengthcomp_immature_expected = "year_length",
+  lengthcomp_immature_proportion = "year_length",
+  lengthcomp_mature_expected = "year_length",
+  lengthcomp_mature_proportion = "year_length",
   catch_numbers_at_length = "year_length",
+  catch_weight_at_length = "year_length",
+  catch_retained_numbers_at_length = "year_length",
+  catch_retained_weight_at_length = "year_length",
+  catch_discarded_numbers_at_length = "year_length",
+  catch_discarded_weight_at_length = "year_length",
   index_numbers_at_length = "year_length",
+  index_weight_at_length = "year_length",
   conditional_age_at_length_proportion = "conditional_age_at_length",
   catchability = "na"
 )
@@ -184,6 +217,40 @@ population_quantities <- function(model, model_type) {
       "biomass", "depletion", "harvest_rate", "harvest_rate_at_msy",
       "biomass_at_msy", "maximum_sustainable_yield"
     )])
+  }
+  if (model_type == "CatchAtLength") {
+    biology <- model[["biology"]]
+    population <- model[["population"]]
+    fleets <- model[["fleets"]]
+    quantities <- list(
+      biomass = population[["biomass"]],
+      expected_recruitment = population[["expected_recruitment"]],
+      mortality_F = flatten_by_year(biology[["mortality_F"]]),
+      mortality_M_immature = flatten_by_year(biology[["mortality_M"]][["immature"]]),
+      mortality_M_mature = flatten_by_year(biology[["mortality_M"]][["mature"]]),
+      mortality_Z_immature = flatten_by_year(biology[["mortality_Z"]][["immature"]]),
+      mortality_Z_mature = flatten_by_year(biology[["mortality_Z"]][["mature"]]),
+      numbers_at_length_immature = flatten_by_year(
+        population[["numbers_at_length_immature"]]
+      ),
+      numbers_at_length_mature = flatten_by_year(
+        population[["numbers_at_length_mature"]]
+      ),
+      total_numbers_at_length = flatten_by_year(
+        population[["total_numbers_at_length"]]
+      ),
+      spawning_biomass = population[["spawning_biomass"]],
+      sum_selectivity = flatten_by_year(biology[["sum_selectivity"]]),
+      total_catch_numbers = Reduce(`+`, lapply(fleets, `[[`, "catch_numbers")),
+      total_catch_weight = Reduce(`+`, lapply(fleets, `[[`, "catch_weight"))
+    )
+    if (!is.null(population[["growth_increment_expected"]])) {
+      quantities[["growth_increment_expected"]] <-
+        population[["growth_increment_expected"]]
+      quantities[["log_growth_increment_expected"]] <-
+        population[["log_growth_increment_expected"]]
+    }
+    return(quantities)
   }
   biology <- model[["biology"]]
   population <- model[["population"]]

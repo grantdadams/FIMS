@@ -4,26 +4,37 @@
 \alias{add_priors}
 \title{Add a normal prior on 1 parameter}
 \usage{
-add_priors(parameters, formula, module_name, fleet = NA_character_)
+add_priors(
+  parameters,
+  formula,
+  module_name,
+  fleet = NA_character_,
+  transform = NULL
+)
 }
 \arguments{
 \item{parameters}{The parameter tibble.}
 
 \item{formula}{\code{target ~ normal(mean = , sd = )}, with the mean and sd on
-the scale of the target.}
+the scale of the target (or the transformed scale when \code{transform} is
+given).}
 
 \item{module_name, fleet}{Which module the target belongs to.}
+
+\item{transform}{Optional character string (\code{"exp"} or \code{"inv_logit"}) to
+evaluate the normal prior on \code{exp(target)} or \code{inv_logit(0, 1, target)}
+without a Jacobian.}
 }
 \value{
-The parameter tibble with the prior's 2 rows added.
+The parameter tibble with the prior's rows added.
 }
 \description{
 \code{log_q ~ normal(mean = log(0.5), sd = 0.2)}. The mean and sd are written as
 constant expected_mean and log_sd rows whose \code{target_label} is the
-parameter's name in the model. A prior on a parameter with 1 value per year
-or age applies to each value. Values that share 1 estimate, such as a time
-block, are scored once, so the prior's weight does not depend on how many
-years share the estimate. Constant values are scored too, which adds a
+parameter's name in the model. A prior on a parameter with 1 value per year,
+age, or length applies to each value. Values that share 1 estimate, such as
+a time block, are scored once, so the prior's weight does not depend on how
+many years share the estimate. Constant values are scored too, which adds a
 constant to the objective but does not change the estimates.
 }
 \details{

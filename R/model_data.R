@@ -20,8 +20,12 @@
 #' @return The model data list (the `model_data` element of initialize_fims()).
 #' @noRd
 initialize_model_data <- function(parameters, data) {
-  if (parameters_model_type(parameters) == "SurplusProduction") {
+  model_type <- parameters_model_type(parameters)
+  if (model_type == "SurplusProduction") {
     return(initialize_surplus_production_data(parameters, data))
+  }
+  if (model_type == "CatchAtLength") {
+    return(initialize_catch_at_length_data(parameters, data))
   }
   fleet_names <- parameters |>
     dplyr::pull(.data[["fleet"]]) |>
@@ -138,15 +142,23 @@ recruitment_process_type <- function(recruitment_labels) {
 #'
 #' A tibble with Depletion rows, as from
 #' `setup_default_parameters(model_type = "SurplusProduction")`, is a surplus
-#' production model. Any other is a catch-at-age model.
+#' production model. A tibble with `LinearGammaIncrement` growth or initial
+#' numbers at length (`log_init_nal_immature`, `log_init_nal_mature`) is a
+#' catch-at-length model. Any other is a catch-at-age model.
 #'
 #' @param parameters The parameter tibble.
-#' @return "SurplusProduction" or "CatchAtAge", the `model_type` of the model
-#'   data.
+#' @return `"SurplusProduction"`, `"CatchAtLength"`, or `"CatchAtAge"`, the
+#'   `model_type` of the model data.
 #' @noRd
 parameters_model_type <- function(parameters) {
   if ("Depletion" %in% parameters[["module_name"]]) {
     "SurplusProduction"
+  } else if ("LinearGammaIncrement" %in% parameters[["module_type"]] ||
+    any(
+      c("log_init_nal_immature", "log_init_nal_mature") %in%
+        parameters[["label"]]
+    )) {
+    "CatchAtLength"
   } else {
     "CatchAtAge"
   }
@@ -817,4 +829,405 @@ ageing_error_matrices <- function(data, fleet) {
     return(one_matrix(rows[["observed"]]))
   }
   lapply(years, function(year) one_matrix(rows[["observed"]][rows[["timing"]] == year]))
+}
+
+# Catch at length --------------------------------------------------------------
+
+#' Read the data and module types the catch-at-length model needs
+#'
+#' @inheritParams initialize_model_data
+#' @return The model data list (the `model_data` element of initialize_fims()).
+#' @noRd
+initialize_catch_at_length_data <- function(parameters, data) {
+  fleet_names <- parameters |>
+    dplyr::pull(.data[["fleet"]]) |>
+    unique() |>
+    stats::na.omit() |>
+    as.character()
+  n_years <- get_n_years(data)
+  lengths <- get_lengths(data)
+  n_lengths <- get_n_lengths(data)
+  growth_type <- module_type(parameters, "Growth")
+  if (is.null(growth_modules[[growth_type]])) {
+    cli::cli_abort(c(
+      "x" = "There is no growth module {.val {growth_type}}.",
+      "i" = "The growth modules are {.val {names(growth_modules)}}.",
+      "i" = "Check the module types with {.code dplyr::distinct(parameters,
+      module_name, module_type)}."
+    ))
+  }
+  length_edges <- edges_from_lower_edges(lengths)
+  length_midpoints <- (length_edges[-1] + length_edges[-length(length_edges)]) / 2
+
+  weight_values <- model_weight_at_length(data, maturity = "mature")
+  if (length(weight_values) == 0) {
+    weight_values <- model_weight_at_length(data)
+  }
+  if (length(weight_values) == 0 ||
+    !length(weight_values) %in% c(n_lengths, n_years * n_lengths, (n_years + 1) * n_lengths)) {
+    cli::cli_abort(c(
+      "x" = "{.arg data} has {.val {length(weight_values)}} {.val weight_at_length}
+      values for {.val {n_lengths}} length bins and {.val {n_years}} years.",
+      "i" = "Provide 1 row per length bin, or 1 row per year and length bin."
+    ))
+  }
+  if (length(weight_values) == n_years * n_lengths) {
+    weight_values <- c(
+      weight_values,
+      utils::tail(weight_values, n_lengths)
+    )
+  }
+  weight_at_length <- matrix(
+    weight_values,
+    nrow = n_years + 1,
+    ncol = n_lengths,
+    byrow = TRUE
+  )
+  terminal_molt_values <- model_terminal_molt_probability_at_length(data)
+  if (length(terminal_molt_values) == 0 ||
+    !length(terminal_molt_values) %in% c(n_lengths, n_years * n_lengths, (n_years + 1) * n_lengths)) {
+    cli::cli_abort(c(
+      "x" = "{.arg data} has {.val {length(terminal_molt_values)}}
+      {.val terminal_molt_probability_at_length} values for
+      {.val {n_lengths}} length bins and {.val {n_years}} years.",
+      "i" = "Provide 1 row per length bin, or 1 row per year and length bin."
+    ))
+  }
+  if (length(terminal_molt_values) == n_years * n_lengths) {
+    terminal_molt_values <- c(
+      terminal_molt_values,
+      utils::tail(terminal_molt_values, n_lengths)
+    )
+  }
+  terminal_molt_probability <- matrix(
+    terminal_molt_values,
+    nrow = n_years + 1,
+    ncol = n_lengths,
+    byrow = TRUE
+  )
+
+  recruitment_rows <- dplyr::filter(
+    parameters, .data[["module_name"]] == "Recruitment"
+  )
+  max_recruit_length_bin <- min(3L, n_lengths)
+
+  populations <- list(population = list(
+    module_types = list(
+      growth = growth_type,
+      recruitment = module_type(parameters, "Recruitment"),
+      recruitment_process = recruitment_process_type(recruitment_rows[["label"]])
+    ),
+    growth_inputs = growth_modules[[growth_type]][["inputs"]](
+      data, parameters, length_edges
+    ),
+    length_edges = length_edges,
+    length_midpoints = length_midpoints,
+    weight_at_length = weight_at_length,
+    terminal_molt_probability = terminal_molt_probability,
+    m_fractions = c(0.62, 0.01, 0.37),
+    max_recruit_length_bin = max_recruit_length_bin,
+    fleets = fleet_names
+  ))
+
+  fleets <- lapply(stats::setNames(fleet_names, fleet_names), function(fleet) {
+    initialize_catch_at_length_fleet(
+      data, parameters, fleet, lengths, length_midpoints
+    )
+  })
+  fleet_likelihoods <- do.call(c, lapply(fleet_names, function(fleet) {
+    initialize_catch_at_length_likelihoods(data, fleet, fleets[[fleet]])
+  }))
+  population_likelihoods <- initialize_population_likelihoods(data)
+
+  list(
+    model_type = "CatchAtLength",
+    n_years = n_years,
+    start_year = get_start_year(data),
+    ages = numeric(0),
+    n_ages = 0L,
+    lengths = lengths,
+    n_lengths = n_lengths,
+    populations = populations,
+    fleets = fleets,
+    likelihoods = c(fleet_likelihoods, population_likelihoods),
+    adreport = FALSE
+  )
+}
+
+#' 1 fleet's data and settings for the catch-at-length model
+#' @noRd
+initialize_catch_at_length_fleet <- function(data, parameters, fleet, lengths,
+                                             length_midpoints) {
+  n_years <- get_n_years(data)
+  n_lengths <- length(lengths)
+  fleet_rows <- dplyr::filter(
+    get_data(data), .data[["fleet"]] %in% .env[["fleet"]]
+  )
+  data_types <- unique(fleet_rows[["type"]])
+  check_composition_sizes(fleet_rows, fleet)
+
+  has_catch <- any(
+    c("catch", "catch_retained", "catch_discarded") %in% data_types
+  )
+  has_catch_retained <- "catch_retained" %in% data_types
+  has_catch_discarded <- "catch_discarded" %in% data_types
+
+  if (has_catch && "length_comp" %in% data_types) {
+    check_zero_catch_compositions(fleet_rows, fleet)
+  }
+
+  max_fleet_year <- max(fleet_rows[["timing"]], na.rm = TRUE)
+  n_index_years <- if (is.finite(max_fleet_year) &&
+    max_fleet_year > get_end_year(data)) {
+    n_years + 1L
+  } else {
+    n_years
+  }
+  index_maturity <- if ("index" %in% data_types) {
+    unique(fleet_rows[["maturity"]][fleet_rows[["type"]] == "index"])[1]
+  } else {
+    NA_character_
+  }
+
+  length_comp_series <- list()
+  if ("length_comp" %in% data_types) {
+    composition_rows <- resolve_length_comp_links(
+      dplyr::filter(fleet_rows, .data[["type"]] == "length_comp")
+    )
+    series_links <- unique(stats::na.omit(composition_rows[["resolved_link"]]))
+    n_composition_years <- if (has_catch) n_years else n_index_years
+    for (link_name in series_links) {
+      series_rows <- dplyr::filter(
+        composition_rows, .data[["resolved_link"]] == .env[["link_name"]]
+      ) |>
+        dplyr::filter(.data[["length"]] %in% lengths) |>
+        dplyr::arrange(.data[["timing"]], match(.data[["length"]], lengths))
+      counts <- series_rows |>
+        dplyr::mutate(
+          sample_size = ifelse(
+            .data[["observed"]] == -999, 1,
+            unlist(parse_data_distribution(.data[["uncertainty"]])[["size"]])
+          ),
+          count = ifelse(
+            .data[["unit"]] == "number", .data[["observed"]],
+            .data[["observed"]] * .data[["sample_size"]]
+          )
+        ) |>
+        dplyr::pull(.data[["count"]])
+      check_comp_dimensions(
+        counts, n_composition_years, n_lengths, "length_comp", fleet, series_rows
+      )
+      length_comp_series[[link_name]] <- matrix(
+        missing_to_na(counts), n_composition_years, n_lengths,
+        byrow = TRUE
+      )
+    }
+  }
+
+  list(
+    module_types = list(
+      selectivity = module_type(parameters, "Selectivity", fleet),
+      retention = module_type(parameters, "Retention", fleet)
+    ),
+    has_catch = has_catch,
+    has_catch_retained = has_catch_retained,
+    has_catch_discarded = has_catch_discarded,
+    observed_catch_units = fleet_units(fleet_rows, "catch"),
+    observed_catch_retained_units = fleet_units(fleet_rows, "catch_retained"),
+    observed_catch_discarded_units = fleet_units(fleet_rows, "catch_discarded"),
+    observed_index_units = fleet_units(fleet_rows, "index"),
+    n_index_years = n_index_years,
+    index_maturity = index_maturity,
+    length_bins = lengths,
+    length_bin_midpoints = length_midpoints,
+    length_comp = length_comp_series
+  )
+}
+
+#' Refuse catch composition observations in years where a fishing fleet has 0
+#' catch
+#' @noRd
+check_zero_catch_compositions <- function(fleet_rows, fleet) {
+  zero_catch_years <- fleet_rows |>
+    dplyr::filter(
+      .data[["type"]] %in% c("catch", "catch_retained", "catch_discarded")
+    ) |>
+    dplyr::group_by(.data[["timing"]]) |>
+    dplyr::summarize(
+      all_zero = all(.data[["observed"]] == 0),
+      .groups = "drop"
+    ) |>
+    dplyr::filter(.data[["all_zero"]]) |>
+    dplyr::pull(.data[["timing"]])
+  if (length(zero_catch_years) == 0) {
+    return(invisible(TRUE))
+  }
+  zero_catch_composition_years <- fleet_rows |>
+    dplyr::filter(
+      .data[["type"]] == "length_comp",
+      .data[["timing"]] %in% zero_catch_years,
+      !is.na(.data[["observed"]]),
+      .data[["observed"]] != -999
+    ) |>
+    dplyr::pull(.data[["timing"]]) |>
+    unique()
+  if (length(zero_catch_composition_years) > 0) {
+    cli::cli_abort(c(
+      "x" = "Fleet {.val {fleet}} has observed {.val length_comp} data in
+      year{?s} {.val {zero_catch_composition_years}}, when catch is 0.",
+      "i" = "Catch compositions come from Baranov catch numbers at length, so
+      a year with 0 catch has 0 expected catch at every length. Set
+      {.var observed} to {.val -999} or remove the composition rows in years
+      with 0 catch.",
+      "i" = "Find the rows with {.code dplyr::filter(get_data(data),
+      fleet == \"{fleet}\", type == \"length_comp\", timing %in%
+      c({paste(zero_catch_composition_years, collapse = ', ')}))}."
+    ))
+  }
+  invisible(TRUE)
+}
+
+#' 1 likelihood entry per data set of a fleet in the catch-at-length model
+#' @noRd
+initialize_catch_at_length_likelihoods <- function(data, fleet, fleet_data) {
+  fleet_rows <- dplyr::filter(
+    get_data(data), .data[["fleet"]] %in% .env[["fleet"]]
+  )
+  present_types <- unique(fleet_rows[["type"]])
+  likelihoods <- list()
+
+  for (data_type in intersect(
+    c("index", "catch", "catch_retained", "catch_discarded"),
+    present_types
+  )) {
+    observed <- switch(data_type,
+      index = missing_to_na(model_index(data, fleet)),
+      catch = initialize_catch(data, fleet),
+      catch_retained = {
+        values <- missing_to_na(model_catch_retained(data, fleet))
+        values[values %in% 0] <- NA
+        values
+      },
+      catch_discarded = {
+        values <- missing_to_na(model_catch_discarded(data, fleet))
+        values[values %in% 0] <- NA
+        values
+      }
+    )
+    data_type_rows <- dplyr::filter(fleet_rows, .data[["type"]] == data_type)
+    uncertainty <- parse_data_distribution(data_type_rows[["uncertainty"]])
+    likelihood_family <- unique(stats::na.omit(uncertainty[["family"]]))
+    likelihoods[[length(likelihoods) + 1]] <- list(
+      name = make.names(paste(fleet, data_type, sep = "_")),
+      fleet = fleet,
+      data_type = data_type,
+      family = likelihood_family,
+      link = unique(stats::na.omit(uncertainty[["link"]])),
+      observed = observed,
+      parameters = shape_like_observed(
+        likelihood_families[[likelihood_family]][["parameters"]](uncertainty),
+        observed
+      )
+    )
+  }
+
+  if ("length_comp" %in% present_types) {
+    composition_rows <- resolve_length_comp_links(
+      dplyr::filter(fleet_rows, .data[["type"]] == "length_comp")
+    )
+    for (link_name in names(fleet_data[["length_comp"]])) {
+      observed <- fleet_data[["length_comp"]][[link_name]]
+      series_rows <- dplyr::filter(
+        composition_rows,
+        .data[["resolved_link"]] == .env[["link_name"]],
+        .data[["length"]] %in% fleet_data[["length_bins"]]
+      ) |>
+        dplyr::arrange(
+          .data[["timing"]],
+          match(.data[["length"]], fleet_data[["length_bins"]])
+        )
+      uncertainty <- parse_data_distribution(series_rows[["uncertainty"]])
+      likelihood_family <- unique(stats::na.omit(uncertainty[["family"]]))
+      likelihoods[[length(likelihoods) + 1]] <- list(
+        name = make.names(paste(fleet, link_name, sep = "_")),
+        fleet = fleet,
+        data_type = "length_comp",
+        family = likelihood_family,
+        link = link_name,
+        observed = observed,
+        parameters = shape_like_observed(
+          likelihood_families[[likelihood_family]][["parameters"]](uncertainty),
+          observed
+        )
+      )
+    }
+  }
+  likelihoods
+}
+
+#' Resolve length composition link names per series and fill missing-year rows
+#' @noRd
+resolve_length_comp_links <- function(composition_rows) {
+  composition_rows[["parsed_link"]] <- vapply(
+    composition_rows[["uncertainty"]],
+    function(uncertainty_value) {
+      if (is.na(uncertainty_value)) {
+        return(NA_character_)
+      }
+      parse_data_distribution(uncertainty_value)[["link"]]
+    },
+    character(1)
+  )
+  composition_rows[["resolved_link"]] <- dplyr::case_when(
+    composition_rows[["parsed_link"]] == "lengthcomp_proportion" &
+      composition_rows[["maturity"]] %in% "immature" ~
+      "lengthcomp_immature_proportion",
+    composition_rows[["parsed_link"]] == "lengthcomp_proportion" &
+      composition_rows[["maturity"]] %in% "mature" ~
+      "lengthcomp_mature_proportion",
+    .default = composition_rows[["parsed_link"]]
+  )
+  composition_rows |>
+    dplyr::group_by(.data[["maturity"]]) |>
+    dplyr::mutate(
+      resolved_link = if (
+        length(unique(stats::na.omit(.data[["resolved_link"]]))) == 1L
+      ) {
+        dplyr::coalesce(
+          .data[["resolved_link"]],
+          unique(stats::na.omit(.data[["resolved_link"]]))
+        )
+      } else {
+        .data[["resolved_link"]]
+      }
+    ) |>
+    dplyr::ungroup()
+}
+
+#' Population-level likelihood entries (fleet = NA, such as growth_increment)
+#' @noRd
+initialize_population_likelihoods <- function(data) {
+  population_rows <- dplyr::filter(
+    get_data(data),
+    is.na(.data[["fleet"]]),
+    .data[["type"]] == "growth_increment"
+  )
+  if (nrow(population_rows) == 0) {
+    return(list())
+  }
+  observed <- missing_to_na(population_rows[["observed"]])
+  uncertainty <- parse_data_distribution(population_rows[["uncertainty"]])
+  likelihood_family <- unique(stats::na.omit(uncertainty[["family"]]))
+  list(list(
+    name = "population_growth_increment",
+    fleet = NA_character_,
+    data_type = "growth_increment",
+    family = likelihood_family,
+    link = unique(stats::na.omit(uncertainty[["link"]])),
+    observed = observed,
+    parameters = shape_like_observed(
+      likelihood_families[[likelihood_family]][["parameters"]](uncertainty),
+      observed
+    )
+  ))
 }

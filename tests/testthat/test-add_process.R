@@ -639,14 +639,14 @@ test_that("`add_process()` returns correct error messages for a process by age",
     regexp = "rw(1 | year)",
     fixed = TRUE
   )
-  #' @description Test that `add_process()` errors for a random term grouped by length, which no parameter is indexed by.
+  #' @description Test that `add_process()` errors for a random term grouped by length on a target that varies by age.
   expect_error(
     object = add_process(
       parameters_with_init_naa,
       log_init_naa ~ rw(1 | length),
       module_name = "Population"
     ),
-    regexp = "groups\\s+by"
+    regexp = "does\\s+not\\s+vary\\s+by\\s+length"
   )
 })
 
