@@ -88,12 +88,13 @@ model is evaluated without an outer optimizer. If every value is held
 constant, use \code{optimize = FALSE}.
 
 While it runs, \code{fit_fims()} records each matrix product as 1 atomic
-operation, with \code{RTMB::TapeConfig(atomic = "enable")}, and compresses the
-Hessian of the random effects, with
-\code{TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")}. These give
-the same values, to rounding, with much less memory when there are random
-effects. Both settings are global to the R session, so it restores the
-previous settings when it returns.
+operation, with \code{RTMB::TapeConfig(atomic = "enable")}. This gives the same
+values, to rounding, with less memory and faster gradients when there are
+random effects. The setting is global to the R session, so it restores the
+previous setting when it returns. To use less memory again, at the cost of
+a slower gradient, compress the Hessian of the random effects before
+calling \code{fit_fims()}, with
+\code{TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")}.
 }
 \seealso{
 \itemize{
