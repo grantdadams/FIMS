@@ -1120,6 +1120,16 @@ test_that("`initialize_fims()` returns correct error messages for a process with
     object = initialize_fims(parameters, data = data_10_years),
     regexp = "vary\\s+by\\s+year\\s+and\\s+by\\s+age"
   )
+  # Recruitment deviations held constant in every year except year 2.
+  one_estimated_dev <- setup_default_parameters(data_10_years) |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      label == "log_devs" & timing > 2, "constant", estimation_type
+    ))
+  #' @description Test that `initialize_fims()` errors for a process with only 1 estimated value, because the density leaves constant values out and needs at least 2 estimated values.
+  expect_error(
+    object = suppressWarnings(initialize_fims(one_estimated_dev, data = data_10_years)),
+    regexp = "at\\s+least\\s+2\\s+estimated\\s+values"
+  )
 })
 
 test_that("`initialize_fims()` errors for a catch unit it cannot map", {

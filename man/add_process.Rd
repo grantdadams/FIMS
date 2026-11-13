@@ -60,8 +60,8 @@ values.
 constant and leaves it out of its density, whatever its
 \code{distribution_type}, e.g., \code{log_Fmort} at -200 in a year with no catch,
 or the oldest age of \code{AgeSpecific} selectivity. An AR1 process or random
-walk steps over it. Across k years or ages the random walk sd is
-sd * sqrt(k), and the AR1 correlation is rho^k with the conditional sd
+walk steps over it. Across k years or ages the random walk SD is
+sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
 sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
 years or ages, so years or ages that are not consecutive also count as
 k steps. Blocks with no random term cannot mix constant and
@@ -101,10 +101,10 @@ is a smoothness penalty on the differences between ages. A penalty with
 weight w, \code{w * sum(diff(x)^2) / 2}, equals the negative log density of a
 random walk with sd = 1 / sqrt(w), up to a constant.
 
-An estimated process sd on \code{logit_sel_at_age} needs a selectivity curve
+An estimated process SD on \code{logit_sel_at_age} needs a selectivity curve
 that does not saturate. Where selectivity is near 1, the data hardly
-inform the logit values, so the sd and those values can drift together.
-If the curve saturates, hold the sd constant
+inform the logit values, so the SD and those values can drift together.
+If the curve saturates, hold the SD constant
 (\code{estimation_type = "constant"}).
 }
 \examples{

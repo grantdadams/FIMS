@@ -397,6 +397,21 @@ test_that("`add_process()` returns correct error messages", {
     ),
     regexp = "only\\s+constant\\s+values"
   )
+  # Only year 1 is estimated and years 2 to 6 are constant.
+  one_estimated <- small_parameters |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      label == "log_Fmort" & timing > 1, "constant", estimation_type
+    ))
+  #' @description Test that `add_process()` errors for a process with only 1 estimated value, because the density leaves constant values out and needs at least 2 estimated values.
+  expect_error(
+    object = add_process(
+      one_estimated,
+      log_Fmort ~ rw(1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ),
+    regexp = "at\\s+least\\s+2\\s+estimated\\s+values"
+  )
   with_prior <- small_parameters |>
     add_priors(
       log_q ~ normal(mean = log(0.5), sd = 0.2),

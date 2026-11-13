@@ -38,8 +38,8 @@
 #'    constant and leaves it out of its density, whatever its
 #'    `distribution_type`, e.g., `log_Fmort` at -200 in a year with no catch,
 #'    or the oldest age of `AgeSpecific` selectivity. An AR1 process or random
-#'    walk steps over it. Across k years or ages the random walk sd is
-#'    sd * sqrt(k), and the AR1 correlation is rho^k with the conditional sd
+#'    walk steps over it. Across k years or ages the random walk SD is
+#'    sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
 #'    sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
 #'    years or ages, so years or ages that are not consecutive also count as
 #'    k steps. Blocks with no random term cannot mix constant and
@@ -76,10 +76,10 @@
 #' weight w, `w * sum(diff(x)^2) / 2`, equals the negative log density of a
 #' random walk with sd = 1 / sqrt(w), up to a constant.
 #'
-#' An estimated process sd on `logit_sel_at_age` needs a selectivity curve
+#' An estimated process SD on `logit_sel_at_age` needs a selectivity curve
 #' that does not saturate. Where selectivity is near 1, the data hardly
-#' inform the logit values, so the sd and those values can drift together.
-#' If the curve saturates, hold the sd constant
+#' inform the logit values, so the SD and those values can drift together.
+#' If the curve saturates, hold the SD constant
 #' (`estimation_type = "constant"`).
 #'
 #' @param parameters The parameter tibble.
@@ -277,7 +277,7 @@ check_process <- function(parameters, formula, module_name, fleet,
       "x" = "{.val {target}} varies by year and by age, so it cannot take a
       process by age.",
       "i" = "A process by age needs 1 row per age and no years
-      ({.var timing} NA). A 2D process is not implemented. Use
+      ({.var timing} of {.code NA}). A 2D process is not implemented. Use
       {.code (1 | age:year)} for an iid process by age and year.",
       "i" = "Count the rows by year and age with
       {.code dplyr::filter(parameters, label == \"{target}\") |>
@@ -291,9 +291,22 @@ check_process <- function(parameters, formula, module_name, fleet,
       AR1 or iid process."
     ))
   }
-  # The density leaves constant values out, so a block of only constant
-  # values would have a mean that nothing informs.
+  # The density leaves constant values out, so a process needs at least 2
+  # estimated values, and a block of only constant values would have a mean
+  # that nothing informs.
   is_constant <- rows[["estimation_type"]] == "constant"
+  n_estimated <- if (all(is_constant)) nrow(rows) else sum(!is_constant)
+  if (n_estimated < 2) {
+    cli::cli_abort(c(
+      "x" = "{.val {target}} has {.val {n_estimated}} estimated
+      {cli::qty(n_estimated)}value{?s}.",
+      "i" = "A process leaves constant values out of its density, so it needs
+      at least 2 estimated values.",
+      "i" = "Count the values by estimation type with
+      {.code dplyr::filter(parameters, label == \"{target}\") |>
+      dplyr::count(fleet, estimation_type)}."
+    ))
+  }
   if (process_structure != "rw" && any(!is_constant) &&
     !all(group %in% group[!is_constant])) {
     cli::cli_abort(c(

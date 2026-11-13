@@ -258,19 +258,23 @@ process_steps <- function(target_rows, is_estimated, target) {
   steps
 }
 
-#' Stop when a process has no estimated values
+#' Stop when a process has fewer than 2 estimated values
 #'
-#' With every value constant, the process informs only its own
-#' hyperparameters. When the values equal the mean, e.g., deviations fixed at
-#' 0, an estimated sd goes to 0 and the objective is unbounded.
+#' With every value constant, or only 1 estimated, a random walk has no step,
+#' an AR1 process has no pair of values, and an iid process around an
+#' estimated mean has 0 degrees of freedom, so an estimated sd can go to 0 and
+#' the objective is unbounded.
 #' @noRd
 check_estimated_process <- function(rows, target) {
-  if (all(rows[["estimation_type"]] == "constant")) {
+  n_estimated <- sum(rows[["estimation_type"]] != "constant")
+  if (n_estimated < 2) {
     cli::cli_abort(c(
-      "x" = "The process on {.val {target}} has no estimated values.",
-      "i" = "A process needs estimated values ({.val random_effects} or
-      {.val fixed_effects}). On constant values it cannot inform the
-      estimates, and an estimated process sd can go to 0. Estimate the
+      "x" = "The process on {.val {target}} has {.val {n_estimated}}
+      estimated {cli::qty(n_estimated)}value{?s}.",
+      "i" = "A process leaves constant values out of its density and needs at
+      least 2 estimated values ({.val random_effects} or
+      {.val fixed_effects}). With fewer than 2 it has no step or variance to
+      inform, and an estimated process sd can go to 0. Estimate at least 2
       values or remove the process.",
       "i" = "Check the estimation types with
       {.code dplyr::distinct(parameters, module_name, fleet, label,
