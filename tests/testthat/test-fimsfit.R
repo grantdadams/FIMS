@@ -439,8 +439,7 @@ test_that("`fit_fims()` gives the same values as with TMB's default tape setting
   objective <- obj[["fn"]](starting_values)
   gradient <- obj[["gr"]](starting_values)
   # fit_fims() restored the session's settings, which are the defaults here,
-  # so retaping records the same model without atomic matrix products and
-  # with an uncompressed Hessian.
+  # so retaping records the same model without atomic matrix products.
   obj[["retape"]]()
   #' @description Test that `fit_fims()` gives the same objective as tapes with TMB's default settings.
   expect_equal(
@@ -490,8 +489,10 @@ test_that("`fit_fims()` restores the user's tape settings", {
   # then fails whether fit_fims() keeps its own setting or resets to RTMB's
   # defaults.
   user_tape_config <- RTMB::TapeConfig(atomic = "disable")
-  TMB::config(tmbad.sparse_hessian_compress = 0, DLL = "RTMB")
-  # Random effects, so that fit_fims() has a Hessian to compress.
+  # Compression is on here and off by default, so the check below fails if
+  # fit_fims() changes it.
+  TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")
+  # Random effects, so that fit_fims() tapes a Hessian.
   fit <- default_parameters |>
     initialize_fims(data = data_10_years) |>
     fit_fims(optimize = FALSE)
@@ -500,10 +501,10 @@ test_that("`fit_fims()` restores the user's tape settings", {
     object = RTMB::TapeConfig(),
     expected = user_tape_config
   )
-  #' @description Test that `fit_fims()` puts back the user's Hessian compression setting when it returns.
+  #' @description Test that `fit_fims()` leaves the user's Hessian compression setting as it is.
   expect_equal(
     object = TMB::config(DLL = "RTMB")[["tmbad.sparse_hessian_compress"]],
-    expected = 0
+    expected = 1
   )
   #' @description Test that `fit_fims(optimize = FALSE)` tapes the Hessian of the random effects before it restores the settings.
   expect_false(
