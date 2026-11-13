@@ -115,6 +115,15 @@ test_that("`parse_data_distribution()` returns correct outputs for edge cases", 
     ))[["sdlog"]],
     list(0.1000000000000001, 0.1)
   )
+
+  #' @description Test that `dlnorm()` accepts `bias_correct` and defaults unspecified rows to FALSE.
+  expect_equal(
+    parse_data_distribution(c(
+      "~ dlnorm(meanlog = log_index_expected, sdlog = 0.2, bias_correct = TRUE)",
+      "~ dlnorm(meanlog = log_index_expected, sdlog = 0.2)"
+    ))[["bias_correct"]],
+    list(TRUE, FALSE)
+  )
 })
 
 ## Error handling ----
@@ -165,6 +174,13 @@ test_that("`parse_data_distribution()` returns correct error messages", {
   expect_error(
     parse_data_distribution("~dlnorm(meanlog = x, sdlog = 0)"),
     "`sdlog` must be positive",
+    fixed = TRUE
+  )
+
+  #' @description Test that `bias_correct` in `dlnorm()` must be TRUE or FALSE.
+  expect_error(
+    parse_data_distribution("~dlnorm(meanlog = x, sdlog = 0.1, bias_correct = 'yes')"),
+    "`bias_correct` must be `TRUE` or `FALSE`",
     fixed = TRUE
   )
 })

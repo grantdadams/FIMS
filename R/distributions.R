@@ -71,26 +71,40 @@ normal_lpdf <- function(observed, expected, log_sd) {
 
 #' Lognormal log density for data
 #'
-#' log(observed) ~ Normal(log_expected, sd), as the density of the observation
+#' log(observed) ~ Normal(meanlog, sd), as the density of the observation
 #' itself: dlnorm(x) = dnorm(log(x)) - log(x). So it includes the -log(x)
 #' Jacobian term. The term does not depend on the parameters, so it changes
-#' the objective but not the estimates.
+#' the objective but not the estimates. When `bias_correct` is `FALSE` (the
+#' default), `meanlog = log_expected` so the median of `observed` is
+#' `exp(log_expected)`. When `bias_correct` is `TRUE`, `meanlog =
+#' log_expected - 0.5 * sd^2` so the mean of `observed` is `exp(log_expected)`.
 #'
 #' @param observed Observed values on the natural scale.
 #' @param log_expected Expected values on the log scale.
 #' @param log_sd Log of the standard deviation of log(observed).
+#' @param bias_correct Logical (length 1 or `length(observed)`): subtract
+#'   `0.5 * sd^2` from `log_expected` so `E[observed] = exp(log_expected)`?
+#'   Defaults to `FALSE`.
 #' @noRd
-lognormal_lpdf <- function(observed, log_expected, log_sd) {
+lognormal_lpdf <- function(observed, log_expected, log_sd,
+                           bias_correct = FALSE) {
   # RTMB: lets `x[i] <- value` store AD values in a plain vector.
   "[<-" <- RTMB::ADoverload("[<-")
   n_observations <- length(observed)
-  check_density_lengths(n_observations, log_expected = log_expected, log_sd = log_sd)
+  check_density_lengths(
+    n_observations,
+    log_expected = log_expected,
+    log_sd = log_sd,
+    bias_correct = bias_correct
+  )
   log_expected <- rep_len(log_expected, n_observations)
   standard_deviation <- rep_len(exp(log_sd), n_observations)
+  bias_correct <- rep_len(as.numeric(bias_correct), n_observations)
+  meanlog <- log_expected - 0.5 * bias_correct * standard_deviation^2
   is_observed <- !is.na(observed)
   log_density <- numeric(n_observations)
   log_density[is_observed] <- RTMB::dlnorm(
-    observed[is_observed], log_expected[is_observed],
+    observed[is_observed], meanlog[is_observed],
     standard_deviation[is_observed],
     log = TRUE
   )
@@ -192,11 +206,15 @@ dmultinom_robust <- function(x, size = NULL, prob, log = FALSE) {
 # same shape as `observed` (NA where `observed` is NA). Used by
 # simulate_fims(), with ordinary numbers.
 
-lognormal_draw <- function(observed, log_expected, log_sd) {
+lognormal_draw <- function(observed, log_expected, log_sd,
+                           bias_correct = FALSE) {
   n_observations <- length(observed)
+  standard_deviation <- rep_len(exp(log_sd), n_observations)
+  bias_correct <- rep_len(as.numeric(bias_correct), n_observations)
+  meanlog <- rep_len(log_expected, n_observations) -
+    0.5 * bias_correct * standard_deviation^2
   draws <- exp(stats::rnorm(
-    n_observations, rep_len(log_expected, n_observations),
-    rep_len(exp(log_sd), n_observations)
+    n_observations, meanlog, standard_deviation
   ))
   # rnorm() returns a vector, so rebuild a composition matrix.
   if (is.matrix(observed)) {
@@ -404,7 +422,13 @@ likelihood_families <- list(
     draw = lognormal_draw,
     distribution = "log_normal",
     parameters = function(uncertainty) {
-      list(log_sd = log(unlist(uncertainty[["sdlog"]])))
+      parameters <- list(log_sd = log(unlist(uncertainty[["sdlog"]])))
+      if (!is.null(uncertainty[["bias_correct"]])) {
+        parameters[["bias_correct"]] <- as.logical(
+          unlist(uncertainty[["bias_correct"]])
+        )
+      }
+      parameters
     }
   ),
   dnorm = list(

@@ -367,6 +367,46 @@ test_that("`LengthSpecific` selectivity and `dmultinom_robust()` match analytica
   )
 })
 
+test_that("`lognormal_lpdf()` and `lognormal_draw()` support `bias_correct = TRUE`", {
+  observed <- c(100, 150, NA_real_)
+  log_expected <- c(log(110), log(140), log(120))
+  sdlog <- 0.3
+  log_sd <- log(sdlog)
+
+  lpdf_uncorrected <- FIMS:::lognormal_lpdf(
+    observed, log_expected, log_sd, bias_correct = FALSE
+  )
+  lpdf_corrected <- FIMS:::lognormal_lpdf(
+    observed, log_expected, log_sd, bias_correct = TRUE
+  )
+
+  #' @description Test that `lognormal_lpdf(..., bias_correct = TRUE)` subtracts 0.5 * sd^2 from meanlog.
+  expect_equal(
+    object = lpdf_corrected[1:2],
+    expected = stats::dlnorm(
+      observed[1:2], log_expected[1:2] - 0.5 * sdlog^2, sdlog, log = TRUE
+    ),
+    tolerance = 1e-12
+  )
+  #' @description Test that `lognormal_lpdf(..., bias_correct = FALSE)` uses log_expected as meanlog.
+  expect_equal(
+    object = lpdf_uncorrected[1:2],
+    expected = stats::dlnorm(observed[1:2], log_expected[1:2], sdlog, log = TRUE),
+    tolerance = 1e-12
+  )
+
+  set.seed(42)
+  draws_corrected <- FIMS:::lognormal_draw(
+    rep(1, 50000), log(200), log(0.4), bias_correct = TRUE
+  )
+  #' @description Test that `lognormal_draw(..., bias_correct = TRUE)` has sample mean close to exp(log_expected).
+  expect_equal(
+    object = mean(draws_corrected),
+    expected = 200,
+    tolerance = 2
+  )
+})
+
 test_that("`add_process()` by length and `add_priors()` with transform work in `CatchAtLength`", {
   logit_values <- c(-1.5, -0.5, 0.5, 1.5)
   rw_sd <- 0.5

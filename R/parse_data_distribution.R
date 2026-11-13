@@ -110,6 +110,10 @@ parse_data_distribution <- function(expr) {
     output$family[[i]] <- parsed$family
     output$link[[i]] <- rlang::as_label(parsed$link)
     for (parameter in names(parsed$parameters)) {
+      if (is.null(output[[parameter]])) {
+        default_value <- if (parameter == "bias_correct") FALSE else NA
+        output[[parameter]] <- rep(list(default_value), length(expr))
+      }
       output[[parameter]][[i]] <- parsed$parameters[[parameter]]
     }
   }
@@ -147,6 +151,9 @@ parse_one_data_distribution <- function(expr) {
   # Extract the distribution family name
   dist_name <- as.character(right_hand[[1]])
   dist_formals <- names(formals(dist_name))
+  if (dist_name == "dlnorm") {
+    dist_formals <- c(dist_formals, "bias_correct")
+  }
   args_list <- as.list(right_hand[-1])
   link_name <- dplyr::filter(
     FIMS::fims_distributions,
@@ -189,6 +196,18 @@ parse_one_data_distribution <- function(expr) {
       x = "{.var sdlog} must be positive",
       i = "In your distribution, {expr}, you passed {eval(args_list$sdlog)}"
     ))
+  }
+  if (dist_name == "dlnorm" && "bias_correct" %in% names(args_list)) {
+    bias_correct_value <- eval(args_list[["bias_correct"]])
+    if (!is.logical(bias_correct_value) ||
+      length(bias_correct_value) != 1L ||
+      is.na(bias_correct_value)) {
+      cli::cli_abort(c(
+        x = "{.var bias_correct} must be {.code TRUE} or {.code FALSE}",
+        i = "In your distribution, {expr}, you passed {deparse(args_list$bias_correct)}"
+      ))
+    }
+    args_list[["bias_correct"]] <- bias_correct_value
   }
 
 
