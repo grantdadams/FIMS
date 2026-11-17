@@ -41,8 +41,8 @@ Rules:
 \code{module_name} and \code{fleet}.
 \item 1 call per target. A second call is an error.
 \item Formula variables are the target's index columns: \code{year} (from
-\code{timing}) and \code{age}. A random term groups by \code{year}, \code{age} or
-\code{age:year}.
+\code{timing}), \code{age}, and \code{length}. A random term groups by \code{year}, \code{age},
+\code{length}, \code{age:year}, or \code{length:year}.
 \item With no random term, the fixed term says which rows share 1 estimate.
 With a random term, it defines the \code{expected_mean} the process values
 vary around, and each non-constant row is its own process value.
@@ -64,9 +64,10 @@ walk steps over it. Across k years or ages the random walk SD is
 sd * sqrt(k), and the AR1 correlation is rho^k with conditional SD
 sd * sqrt((1 - rho^(2k)) / (1 - rho^2)). k is the difference of the
 years or ages, so years or ages that are not consecutive also count as
-k steps. A process with only 1 estimated value must hold its mean, sd
-and rho constant, so it is a penalty on that value. Blocks with no
-random term cannot mix constant and
+k steps. By length, k is the number of length bins between the values.
+A process with only 1 estimated value must hold its mean, sd and rho
+constant, so it is a penalty on that value. Blocks with no random term
+cannot mix constant and
 estimated rows. A prior (\code{\link[=add_priors]{add_priors()}}) is different: it still scores
 a constant value. A known value with a prior is still informative, and
 a likelihood profile, which holds the profiled value constant, keeps the
@@ -88,7 +89,8 @@ age and year.
 \item \code{log_q ~ rw(1 | year)}: a random walk.
 \item \code{logit_sel_at_age ~ rw(1 | age)}: a random walk from each age to the next,
 for \code{AgeSpecific} selectivity. \code{(1 | age)} and \code{ar1(1 | age)} give iid
-and AR1 processes by age.
+and AR1 processes by age, and \code{(1 | length)}, \code{ar1(1 | length)}, and
+\code{rw(1 | length)} do the same by length.
 }
 
 These breaks fit data with years 1 to 30, as in \code{data_big}. When the data

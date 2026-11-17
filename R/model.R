@@ -88,6 +88,12 @@ density_inputs <- function(density_entry, parameters, population) {
     })
     x <- x[positions]
   }
+  if (!is.null(density_entry[["transform"]])) {
+    x <- switch(density_entry[["transform"]],
+      exp = exp(x),
+      inv_logit = inv_logit(0, 1, x)
+    )
+  }
   list(
     x = x,
     mean = density_mean,
