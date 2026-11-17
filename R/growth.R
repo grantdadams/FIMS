@@ -306,6 +306,63 @@ weight_at_length <- function(fish_length, length_weight_a, length_weight_b) {
   length_weight_a * ad_max(fish_length, 1e-8)^length_weight_b
 }
 
+#' Linear molt increment with gamma postmolt size transition
+#'
+#' Mean molt increment at premolt midpoint `L_l` is
+#' `growth_intercept + growth_slope * L_l`. Post-molt size follows a gamma
+#' distribution with scale `growth_scale` and shape
+#' `(L_l + mean_increment_l) / growth_scale`, integrated over the population
+#' bin edges at and above bin `l` and normalized to sum to 1 (`GROWTH_SIZEGAMMA`
+#' in GMACS). No individual shrinks below bin `l`. When growth-increment
+#' observations are present, expected increments at their premolt lengths are
+#' also returned.
+#'
+#' @param length_edges Edges of the population length bins (`n_lengths + 1`).
+#' @param length_midpoints Midpoints of the population length bins.
+#' @param observed_premolt_lengths Premolt lengths of `growth_increment`
+#'   observations, or `numeric(0)`.
+#' @param growth_intercept,growth_slope Intercept and slope of the linear mean
+#'   molt increment.
+#' @param growth_scale Gamma scale parameter (> 0).
+#' @return A list with `mean_increment_at_length`,
+#'   `growth_transition` (`n_lengths` by `n_lengths`),
+#'   `growth_increment_expected`, and `log_growth_increment_expected`.
+#' @noRd
+linear_gamma_increment_growth <- function(length_edges,
+                                          length_midpoints,
+                                          observed_premolt_lengths,
+                                          growth_intercept,
+                                          growth_slope,
+                                          growth_scale) {
+  # RTMB: lets `x[i, ] <- value` store AD values in a plain matrix.
+  "[<-" <- RTMB::ADoverload("[<-")
+  n_lengths <- length(length_midpoints)
+  mean_increment <- growth_intercept + growth_slope * length_midpoints
+  shape <- (length_midpoints + mean_increment) / growth_scale
+  scaled_edges <- length_edges / growth_scale
+  growth_transition <- matrix(0, n_lengths, n_lengths)
+  for (bin in seq_len(n_lengths)) {
+    cumulative <- RTMB::pgamma(
+      scaled_edges[bin:(n_lengths + 1)],
+      shape = shape[bin]
+    )
+    row_probability <- diff(cumulative)
+    growth_transition[bin, bin:n_lengths] <- row_probability /
+      sum(row_probability)
+  }
+  growth_increment_expected <- if (length(observed_premolt_lengths) > 0) {
+    growth_intercept + growth_slope * observed_premolt_lengths
+  } else {
+    numeric(0)
+  }
+  list(
+    mean_increment_at_length = mean_increment,
+    growth_transition = growth_transition,
+    growth_increment_expected = growth_increment_expected,
+    log_growth_increment_expected = log(growth_increment_expected)
+  )
+}
+
 # Inputs ----------------------------------------------------------------------
 #
 # Each takes the FIMSFrame, the parameter tibble and the population length
@@ -470,5 +527,27 @@ growth_modules <- list(
     inputs = von_bertalanffy_schnute_growth_inputs,
     models_length = TRUE,
     working_scale = von_bertalanffy_schnute_working_scale
+  ),
+  LinearGammaIncrement = list(
+    evaluate = linear_gamma_increment_growth,
+    inputs = function(data, parameters, population_edges) {
+      lengths <- get_lengths(data)
+      length_edges <- edges_from_lower_edges(lengths)
+      length_midpoints <- (length_edges[-1] +
+        length_edges[-length(length_edges)]) / 2
+      # Missing increments (-999) keep their rows, so the expected
+      # increments line up with the likelihood rows, which score them as NA.
+      growth_rows <- dplyr::filter(
+        get_data(data),
+        .data[["type"]] == "growth_increment"
+      )
+      list(
+        length_edges = length_edges,
+        length_midpoints = length_midpoints,
+        observed_premolt_lengths = growth_rows[["length"]]
+      )
+    },
+    models_length = FALSE,
+    working_scale = function(rows) rep(NA_character_, nrow(rows))
   )
 )
