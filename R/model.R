@@ -89,6 +89,13 @@ density_inputs <- function(density_entry, parameters, population) {
     })
     x <- x[positions]
   }
+  # Only a prior with a transform, such as a prior on M for log_M, has one.
+  if (utils::hasName(density_entry, "transform")) {
+    x <- switch(density_entry[["transform"]],
+      exp = exp(x),
+      inv_logit = inv_logit(0, 1, x)
+    )
+  }
   list(
     x = x,
     mean = density_mean,

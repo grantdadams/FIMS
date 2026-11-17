@@ -77,7 +77,7 @@ initialize_parameters <- function(parameters) {
   parameter_table <- parameter_table |>
     dplyr::arrange(
       factor(.data[["name"]], levels = unique(.data[["name"]])),
-      .data[["timing"]], .data[["age"]]
+      .data[["timing"]], .data[["age"]], .data[["length"]]
     )
 
   model_parameters <- list()
@@ -189,8 +189,9 @@ flat_label <- function(parameters) {
 #' @noRd
 add_process_columns <- function(parameters) {
   defaults <- list(
+    length = NA_real_,
     map_group = NA_integer_, target_label = NA_character_,
-    re_structure = NA_character_
+    re_structure = NA_character_, prior_transform = NA_character_
   )
   for (column in names(defaults)) {
     if (!column %in% names(parameters)) {
@@ -206,23 +207,37 @@ shape_parameter <- function(rows) {
   value <- rows[["value"]]
   has_timing <- all(!is.na(rows[["timing"]]))
   has_age <- all(!is.na(rows[["age"]]))
+  has_length <- all(!is.na(rows[["length"]]))
   if (!has_timing) {
     return(value)
   }
   n_years <- dplyr::n_distinct(rows[["timing"]])
-  n_ages <- if (has_age) dplyr::n_distinct(rows[["age"]]) else 1
-  if (n_years * n_ages != length(value)) {
+  n_columns <- if (has_age) {
+    dplyr::n_distinct(rows[["age"]])
+  } else if (has_length) {
+    dplyr::n_distinct(rows[["length"]])
+  } else {
+    1
+  }
+  if (n_years * n_columns != length(value)) {
+    column_label <- if (has_age) {
+      " and age"
+    } else if (has_length) {
+      " and length"
+    } else {
+      ""
+    }
     cli::cli_abort(c(
       "x" = "Parameter {.val {rows[['name']][1]}} has
       {.val {length(value)}} row{?s}.",
-      "i" = "It needs 1 row per year{if (has_age) ' and age' else ''}
-      ({.val {n_years * n_ages}}).",
+      "i" = "It needs 1 row per year{column_label}
+      ({.val {n_years * n_columns}}).",
       "i" = "Count its rows by year with {.code dplyr::count(parameters,
       module_name, fleet, label, timing)}."
     ))
   }
-  # Rows are sorted by timing, then age, so fill by row (year).
-  matrix(value, n_years, n_ages, byrow = TRUE)
+  # Rows are sorted by timing, then age or length, so fill by row (year).
+  matrix(value, n_years, n_columns, byrow = TRUE)
 }
 
 #' Position of each row's value in as.vector(value)
@@ -286,7 +301,9 @@ check_finite_values <- function(parameter_table) {
 #' @noRd
 check_unique_rows <- function(parameter_table) {
   repeated <- parameter_table |>
-    dplyr::count(.data[["name"]], .data[["timing"]], .data[["age"]]) |>
+    dplyr::count(
+      .data[["name"]], .data[["timing"]], .data[["age"]], .data[["length"]]
+    ) |>
     dplyr::filter(.data[["n"]] > 1) |>
     dplyr::pull(.data[["name"]]) |>
     unique()
@@ -297,18 +314,21 @@ check_unique_rows <- function(parameter_table) {
     } else {
       paste0("fleet == \"", first[["fleet"]], "\"")
     }
+    has_length <- !is.na(first[["length"]])
+    dimension_label <- if (has_length) "length" else "age"
     cli::cli_abort(c(
       "x" = "{.val {repeated}} {?has/have} more than 1 row with the same
-      {.var timing} and {.var age}.",
+      {.var timing} and {.var {dimension_label}}.",
       "i" = "Each value needs its own row, with its year in {.var timing}
-      and its {.var age} when it varies by age. The rows are sorted by
-      {.var timing} and {.var age} before they are used, so a value that
-      changes by year needs its year in {.var timing}.",
+      and its {.var {dimension_label}} when it varies by {dimension_label}.
+      The rows are sorted by {.var timing} and {.var {dimension_label}} before
+      they are used, so a value that changes by year needs its year in
+      {.var timing}.",
       "i" = "Find the rows of {.val {repeated[1]}} with
       {.code dplyr::filter(parameters, module_name ==
       \"{first[['module_name']]}\", {fleet_filter},
       label == \"{first[['original_label']]}\") |>
-      dplyr::count(timing, age) |> dplyr::filter(n > 1)}."
+      dplyr::count(timing, {dimension_label}) |> dplyr::filter(n > 1)}."
     ))
   }
   invisible(parameter_table)
