@@ -80,11 +80,26 @@ evaluate_by_year <- function(functions, module_type, ages, parameters,
                              n_years) {
   # RTMB: lets `x[i, ] <- value` store AD values in a plain matrix.
   "[<-" <- RTMB::ADoverload("[<-")
+  module_function <- functions[[module_type]]
+  grid_name <- if (!is.null(module_function) &&
+    "length" %in% names(formals(module_function))) {
+    "length"
+  } else {
+    "age"
+  }
+  call_at_grid <- function(year_parameters) {
+    do.call(
+      call_module,
+      c(
+        list(functions, module_type),
+        stats::setNames(list(ages), grid_name),
+        list(parameters = year_parameters)
+      )
+    )
+  }
   is_by_year <- vapply(parameters, is.matrix, logical(1))
   if (!any(is_by_year)) {
-    at_age <- call_module(functions, module_type,
-      age = ages, parameters = parameters
-    )
+    at_age <- call_at_grid(parameters)
     return(RTMB::matrix(at_age, n_years, length(ages), byrow = TRUE))
   }
   by_year <- matrix(0, n_years, length(ages))
@@ -92,9 +107,7 @@ evaluate_by_year <- function(functions, module_type, ages, parameters,
     year_parameters <- lapply(parameters, function(value) {
       if (is.matrix(value)) value[year, ] else value
     })
-    by_year[year, ] <- call_module(functions, module_type,
-      age = ages, parameters = year_parameters
-    )
+    by_year[year, ] <- call_at_grid(year_parameters)
   }
   by_year
 }
@@ -117,8 +130,10 @@ per_year <- function(value, n_years) {
 #' Module parameters evaluated with evaluate_by_year() or per_year() can.
 #' Growth, the stock-recruit parameters, and the depletion model's growth
 #' rate, carrying capacity, shape and initial depletion cannot, because the
-#' model reads them as 1 value. Initial numbers at age and proportion female
-#' cannot, because the model reads them by age only.
+#' model reads them as 1 value, nor can the recruit size parameters and
+#' discard mortality of a catch-at-length model. Initial numbers at age or
+#' length and proportion female cannot, because the model reads them by age
+#' or length only.
 #'
 #' @param label The parameter labels.
 #' @param module_name The modules they belong to.
@@ -128,6 +143,9 @@ can_vary_by_year <- function(label, module_name) {
   module_name != "Growth" &
     !(module_name == "Depletion" & !label %in% c("log_depletion", "log_sd")) &
     !label %in% c(
-      "log_rzero", "logit_steep", "log_init_naa", "proportion_female"
+      "log_rzero", "logit_steep", "log_init_naa", "proportion_female",
+      "log_init_nal_immature", "log_init_nal_mature",
+      "log_recruit_alpha", "log_recruit_beta", "max_recruit_length_bin",
+      "discard_mortality"
     )
 }
