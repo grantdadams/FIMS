@@ -4,9 +4,14 @@ fims_input_types <- c(
   "ageing_error",
   "index",
   "catch",
+  "catch_discarded",
+  "catch_retained",
+  "growth_increment",
   "length_bin",
   "length_comp",
-  "weight_at_age"
+  "terminal_molt_probability_at_length",
+  "weight_at_age",
+  "weight_at_length"
 )
 
 usethis::use_data(fims_input_types, overwrite = TRUE)
