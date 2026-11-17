@@ -127,3 +127,75 @@
 #' @seealso
 #' * [data_limited_tuna]
 "data_limited_tuna_results"
+
+#' Male-only snow crab input data frame
+#'
+#' Data based on the 2025 GMACS assessment model of male eastern Bering Sea
+#' snow crab (*Chionoecetes opilio*), 1982 to 2025, for the catch-at-length
+#' model (`model_type = "CatchAtLength"`). It has the columns of [data_big]
+#' and a `maturity` column (`"immature"`, `"mature"`, or `NA` for both).
+#' Length is the lower edge of 22 carapace width bins from 25 to 135 mm. The
+#' fleets are the directed pot fishery (`Pot_Fishery`, retained and discarded
+#' catch), groundfish trawl bycatch (`Trawl_Bycatch`), and the NMFS bottom
+#' trawl survey before and after its 1989 change (`NMFS_Trawl_1982`,
+#' `NMFS_Trawl_1989`). Catch and the survey index are in metric tons, and
+#' weight at length in metric tons per crab. It also has molt increments (mm)
+#' by premolt length (`growth_increment`) and the terminal molt probability
+#' at postmolt length by year (`terminal_molt_probability_at_length`). Length
+#' compositions use the robust normal approximation to the multinomial, as
+#' in GMACS. Catch compositions from the 2 years with no pot fishery (2022
+#' and 2023) are left out. The source code to make this dataset, and the
+#' GMACS files it reads, are in `data-raw/data_snow_crab.R` and
+#' `data-raw/snow_crab`.
+#'
+#' @format
+#' A data frame with `r NROW(data_snow_crab)` observations of
+#' `r NCOL(data_snow_crab)` variables.
+#' @source `Models/26_gmacs_male_only` in
+#'   \url{https://github.com/szuwalski/snow_sept} at commit
+#'   `b49b3f1ea78fa100c47de223dd560a71ac1dbd1f`.
+#' @seealso
+#' * [parameters_snow_crab]
+#' * [data_snow_crab_results]
+"data_snow_crab"
+
+#' Male-only snow crab parameters at the GMACS estimates
+#'
+#' The parameter tibble for [data_snow_crab], with every value set to its
+#' GMACS estimate. Numbers are in crabs, so log recruitment and log initial
+#' numbers at length are `log(1000)` larger than in GMACS, which counts
+#' thousands of crabs. Survey selectivity at length is on the logit scale.
+#' The GMACS smoothness penalties are random walks by length with fixed sd.
+#' Log recruitment has an AR1 process with fixed sd and rho. The GMACS
+#' normal priors are on the natural scale of each parameter.
+#'
+#' @format A tibble with the structure returned by
+#'   [setup_default_parameters()].
+#' @seealso
+#' * [data_snow_crab]
+#' * [data_snow_crab_results]
+"parameters_snow_crab"
+
+#' Reference values for the male-only snow crab model
+#'
+#' Values from an R version of the GMACS male-only snow crab model, which
+#' reproduces the GMACS objective at the GMACS estimates. `model` is
+#' `"gmacs"` for the R version in its GMACS form at the GMACS estimates,
+#' `"gmacs_par"` for the FIMS form at the GMACS estimates
+#' ([parameters_snow_crab]), and `"fit"` for the FIMS form fit with nlminb to
+#' the same data as [data_snow_crab]. The FIMS form differs from GMACS in the
+#' ways listed in `data-raw/data_snow_crab.R`. `label` is `objective` (the
+#' negative log likelihood plus penalties and priors, as the R version of
+#' GMACS computes it, not the FIMS objective), `spawning_biomass` (mature
+#' male biomass in metric tons at the start of the third season),
+#' `expected_recruitment` (crabs), `catch_retained_expected` and
+#' `catch_discarded_expected` (metric tons), or `index_expected` (survey
+#' biomass of mature males in metric tons).
+#'
+#' @format A tibble with columns `model`, `label`, `year`, `value`, and
+#'   `fleet`. `fleet` is `NA` for the objective, spawning biomass and
+#'   recruitment.
+#' @seealso
+#' * [data_snow_crab]
+#' * [parameters_snow_crab]
+"data_snow_crab_results"

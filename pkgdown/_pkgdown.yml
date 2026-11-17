@@ -25,6 +25,8 @@ reference:
   - ends_with("_big")
   - ends_with("_big_optimized")
   - starts_with("data_limited_tuna")
+  - ends_with("_snow_crab")
+  - data_snow_crab_results
   - fims_input_types
   - fims_distributions
 
