@@ -102,6 +102,8 @@ navbar:
           href: articles/fims-demo-projections.html
         - text: A surplus production model in FIMS
           href: articles/fims-demo-surplus-production.html
+        - text: A catch-at-length model of snow crab in FIMS
+          href: articles/fims-demo-snow-crab.html
         - text: Running a diagnostics on a FIMS model
           href: articles/fims-diagnostics.html
         - text: -------

@@ -1,0 +1,162 @@
+---
+title: "Catch-at-Length Stock Assessment in FIMS: Eastern Bering Sea Snow Crab"
+output: github_document
+vignette: >
+  %\VignetteIndexEntry{Catch-at-Length Stock Assessment in FIMS: Eastern Bering Sea Snow Crab}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+withr::local_options(list(
+  cli.num_colors = 1,
+  crayon.enabled = FALSE,
+  pillar.subtle = FALSE
+))
+```
+
+## Overview
+
+The catch-at-length model (`model_type = "CatchAtLength"`) tracks numbers at length in 2 maturity stages (`"immature"` and `"mature"`) with no age dimension. It is meant for crab and other size-structured stocks that grow by molting and stop growing after a terminal molt to maturity. This vignette fits the male-only model of eastern Bering Sea (EBS) snow crab (*Chionoecetes opilio*) and compares it with the GMACS assessment model it was converted from.
+
+Each model year $y$ has 3 seasons, with fractions $m_1 = 0.62$, $m_2 = 0.01$, and $m_3 = 0.37$ of natural mortality $M_{s,y}$ for stage $s$. These fractions are fixed in the model.
+
+1. **Season 1 (start of the year)**: the survey index and survey length compositions are predicted, then natural mortality $M_{s,y} m_1$ acts.
+2. **Season 2 (fishery)**: fishing mortality and natural mortality $M_{s,y} m_2$ act together. Total, retained, and discarded catch come from the Baranov catch equation. Fleet $f$ has capture selectivity $S_{f,y,l}$, retention $R_{f,y,l}$, and discard mortality $d_f$, so its fishing mortality is
+   $$F_{f,y,l} = F_{f,y} S_{f,y,l} \left(R_{f,y,l} + (1 - R_{f,y,l}) d_f\right)$$
+3. **Season 3 (spawning, molting, and recruitment)**: mature male biomass (`spawning_biomass`) is computed at the start of the season. After natural mortality $M_{s,y} m_3$, immature crabs molt through the `LinearGammaIncrement` size-transition matrix. A proportion $\phi_{y,l}$ (`terminal_molt_probability_at_length`) of crabs molting into length bin $l$ become mature, and the rest stay immature. Recruits enter the 3 smallest length bins with a gamma size distribution (`GammaLength`).
+
+```{r library, warning=FALSE, message=FALSE}
+library(FIMS)
+library(dplyr)
+library(ggplot2)
+```
+
+## Data
+
+`data_snow_crab` holds the data from the GMACS model for 1982 to 2025. The 4 fleets are the directed pot fishery (`Pot_Fishery`), groundfish trawl bycatch (`Trawl_Bycatch`), and the NMFS bottom trawl survey before and after its 1989 change (`NMFS_Trawl_1982` and `NMFS_Trawl_1989`). Length is the lower edge of 22 carapace width bins from 25 to 135 mm. `data-raw/data_snow_crab.R` makes the data from the GMACS input files.
+
+A catch-at-length model uses the usual long data frame with `age = NA` and length bins in `length`, plus an optional `maturity` column (`"immature"`, `"mature"`, or `NA` for both stages). Besides `"catch"`, `"index"`, and `"length_comp"`, `FIMSFrame()` accepts 5 data types for these models:
+
+- `"catch_retained"` and `"catch_discarded"`: retained catch and all discards, alive or dead, fit with `dlnorm` to `log_catch_retained_expected` and `log_catch_discarded_expected`.
+- `"weight_at_length"`: weight by length bin and maturity stage, with `fleet = NA`.
+- `"terminal_molt_probability_at_length"`: probability of the terminal molt to maturity after molting into each length bin, by year.
+- `"growth_increment"`: molt increments by premolt length (`fleet = NA`, `timing = NA`), fit with `dlnorm` to `log_growth_increment_expected`.
+
+Length compositions link to their prediction through `prob` in the `uncertainty` formula:
+
+- `lengthcomp_retained_proportion` for retained catch.
+- `lengthcomp_discarded_proportion` for discarded catch.
+- `lengthcomp_proportion` for total catch or for survey compositions, by maturity stage if `maturity` is given.
+
+The GMACS model fits length compositions with the robust normal approximation to the multinomial (Fournier et al. 1990), `robust_normal_multinomial`. It is not a normalized density. Simulated data from it are drawn from a multinomial with the same sample size.
+
+```{r fimsframe}
+snow_crab_frame <- FIMSFrame(data_snow_crab)
+data_snow_crab |>
+  dplyr::count(type, fleet, maturity)
+```
+
+## Parameters
+
+`setup_default_parameters(data, model_type = "CatchAtLength")` builds a default parameter tibble with these modules:
+
+- `Population`: `log_M` (1 value by default), `log_M_immature_offset` (log of immature M over mature M in the first model year, constant at -1 by default), and `log_init_nal_immature` and `log_init_nal_mature` (1 per length bin).
+- `Growth`: `LinearGammaIncrement` with `growth_intercept`, `growth_slope`, and `growth_scale`.
+- `Recruitment`: `GammaLength` with `log_recruit_alpha` (log mean length of recruits, mm), `log_recruit_beta` (log gamma scale, mm), and `log_r` by year.
+- `Selectivity` and `Retention`: `Logistic`, `DoubleLogistic`, or `LengthSpecific` (`logit_sel_at_length`, 1 per length bin).
+- `Fleet`: `log_Fmort`, `log_q`, and `discard_mortality`, which is not estimated.
+
+`parameters_snow_crab` is that tibble with each value set to its GMACS estimate and the GMACS settings carried over. Processes and priors are added with `add_process()` and `add_priors()`. In `data-raw/data_snow_crab.R`, for example, the GMACS smoothness penalty on survey selectivity becomes a random walk by length, and the GMACS normal prior on natural mortality becomes a prior on `exp(log_M)`:
+
+```{r parameters-code, eval=FALSE}
+parameters |>
+  add_process(
+    logit_sel_at_length ~ rw(1 | length),
+    module_name = "Selectivity",
+    fleet = "NMFS_Trawl_1989",
+    estimation_type = "fixed_effects",
+    sd = list(value = selectivity_sd, estimation_type = "constant")
+  ) |>
+  add_priors(
+    log_M ~ normal(
+      mean = dplyr::if_else(year == 1982, prior_mean, NA_real_),
+      sd = dplyr::if_else(year == 1982, prior_sd, NA_real_)
+    ),
+    module_name = "Population",
+    transform = "exp"
+  )
+```
+
+```{r parameters}
+parameters_snow_crab |>
+  dplyr::filter(estimation_type != "constant") |>
+  dplyr::count(module_name, fleet, label)
+```
+
+## Fit
+
+```{r fit}
+fit <- parameters_snow_crab |>
+  initialize_fims(data = snow_crab_frame) |>
+  fit_fims(get_sd = FALSE)
+get_max_gradient(fit)
+```
+
+`nlminb` stops with false convergence at a maximum gradient of about 0.002, so `fit_fims()` warns. The R version of GMACS reaches a gradient below 1e-6 only after Newton steps with the exact Hessian, which `fit_fims()` does not have yet. The 2 fits still give nearly the same mature male biomass, as the comparison below shows.
+
+## Comparison with GMACS
+
+`data_snow_crab_results` holds results from the GMACS fit (`"gmacs"`) and from an R version of GMACS in the FIMS form, at the GMACS estimates (`"gmacs_par"`) and refit (`"fit"`). The FIMS form of the model differs from GMACS in these ways:
+
+- the index likelihood keeps its full constant;
+- there is no recruitment bias correction and no first-difference penalty on recruitment deviations;
+- log F is 1 value per year, with no penalty on the mean log F deviation;
+- uniform priors add no constant;
+- logistic selectivity is not divided by its value in the last length bin;
+- catch compositions come from Baranov catch with each stage's own Z, and there are none in the 2 years with no pot fishery;
+- survey selectivity is smoothed on the logit scale instead of the log scale;
+- the base immature M offset is fixed at its GMACS lower bound of -1, and its 2019 block is still estimated.
+
+```{r comparison}
+years <- 1982:2025
+reference <- function(model, label) {
+  data_snow_crab_results |>
+    dplyr::filter(
+      .data[["model"]] == !!model,
+      .data[["label"]] == !!label
+    ) |>
+    dplyr::pull(value)
+}
+report <- get_report(fit)
+mmb <- tibble::tibble(
+  year = years,
+  GMACS = reference("gmacs", "spawning_biomass"),
+  `R version of GMACS, FIMS form` = reference("fit", "spawning_biomass"),
+  FIMS = report[["spawning_biomass"]][[1]]
+)
+mmb |>
+  dplyr::filter(year %in% c(1982, 2000, 2025)) |>
+  dplyr::mutate(`FIMS vs GMACS (%)` = 100 * (FIMS / GMACS - 1))
+
+# Largest relative difference between FIMS and the R version of GMACS
+max(abs(mmb[["FIMS"]] / mmb[["R version of GMACS, FIMS form"]] - 1))
+
+mmb |>
+  tidyr::pivot_longer(-year, names_to = "model", values_to = "mmb") |>
+  dplyr::filter(model != "R version of GMACS, FIMS form") |>
+  ggplot(aes(x = year, y = mmb / 1000, linetype = model)) +
+  geom_line() +
+  labs(
+    x = "Year", y = "Mature male biomass (1000 metric tons)",
+    linetype = NULL
+  ) +
+  theme_classic()
+```
+
+The FIMS fit matches the R version of GMACS in the same form. Its mature male biomass differs from the GMACS estimates by `r round(min(100 * (mmb[["FIMS"]] / mmb[["GMACS"]] - 1)), 2)`% to `r round(max(100 * (mmb[["FIMS"]] / mmb[["GMACS"]] - 1)), 2)`%, because of the changes listed above.
+
+## References
+
+Fournier, D.A., Sibert, J.R., Majkowski, J., and Hampton, J. 1990. MULTIFAN a likelihood-based method for estimating growth parameters and age composition from multiple length frequency data sets illustrated using data for southern bluefin tuna (*Thunnus maccoyii*). Canadian Journal of Fisheries and Aquatic Sciences 47: 301-317.
