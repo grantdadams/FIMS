@@ -32,7 +32,7 @@
 #'
 
 # The C++ build: NOAA-FIMS main at the commit the RTMB model starts from.
-cpp_sha <- "a739d031bb62d04f9366231182682b9ee389c1e2"
+cpp_sha <- "2fe4a67cb4f23376574e5f024a72ae0c69d35fae"
 
 ###############################################################################
 # Load the C++ build
@@ -83,8 +83,9 @@ if (!exists("CreateTMBModel", envir = asNamespace("FIMS"))) {
 # "<module>.<module id>.<label>.<parameter id>". Selectivity and Fleet module
 # ids follow the fleet order of the tibble, because initialize_fims() creates 1
 # of each per fleet, in that order. The recruitment log_sd belongs to the
-# recruitment process's dnorm module. Growth parameters are estimated on the
-# log scale under their natural-scale labels, as in the tibble.
+# recruitment process's dnorm module. Growth parameters keep their
+# natural-scale labels, as in the tibble, though they are estimated on a log,
+# logit or log-difference scale.
 cpp_parameter_keys <- function(cpp_names, fleets) {
   parts <- strsplit(cpp_names, ".", fixed = TRUE)
   module <- purrr::map_chr(parts, 1)
