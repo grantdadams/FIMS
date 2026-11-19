@@ -891,6 +891,31 @@ test_that("`initialize_fims()` returns correct error messages", {
     "needs rows for each year from model\\s+year"
   )
 
+  # 1 row per model year for a parameter the model reads by age only
+  # (proportion_female) and for 1 it reads as 1 value (log_rzero).
+  years <- get_start_year(data):get_end_year(data)
+  by_year <- function(target_label) {
+    target_rows <- default_parameters[["label"]] == target_label
+    default_parameters |>
+      dplyr::filter(!target_rows) |>
+      dplyr::bind_rows(
+        default_parameters |>
+          dplyr::filter(target_rows) |>
+          dplyr::slice(rep(1, length(years))) |>
+          dplyr::mutate(timing = years)
+      )
+  }
+  #' @description Test that `initialize_fims()` errors for proportion female by year, which the model reads by age only.
+  expect_error(
+    initialize_fims(parameters = by_year("proportion_female"), data = data),
+    "does\\s+not\\s+read\\s+it\\s+by\\s+year"
+  )
+  #' @description Test that `initialize_fims()` errors for log_rzero by year, which the model reads as 1 value.
+  expect_error(
+    initialize_fims(parameters = by_year("log_rzero"), data = data),
+    "does\\s+not\\s+read\\s+it\\s+by\\s+year"
+  )
+
   proportions_no_size <- data_big |>
     dplyr::mutate(uncertainty = dplyr::if_else(
       type == "age_comp" & fleet == "survey1",
