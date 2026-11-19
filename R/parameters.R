@@ -345,7 +345,8 @@ check_shared_values <- function(name, value, map_level) {
 #' sdreport's names are matched to rows by map level, so the levels are read
 #' again from the map that RTMB uses. A parameter with no map entry has 1
 #' level per value. Each row's estimation type follows RTMB too, so a
-#' constant row given a level in the map is estimated.
+#' constant row given a level in the map is estimated. It stops when the map
+#' changes the levels of a parameter with a prior.
 #'
 #' @param input The input to fit_fims(), with the `parameters`, `map` and
 #'   `random` given to RTMB::MakeADFun().
@@ -356,6 +357,7 @@ levels_from_map <- function(input) {
   parameter_table <- input[["parameter_table"]]
   parameters <- input[["parameters"]]
   map <- input[["map"]]
+  stored_level <- parameter_table[["rtmb_level"]]
   for (name in names(parameters)) {
     rows <- which(parameter_table[["rtmb_name"]] == name)
     # RTMB reads a parameter and its map in the order of as.vector(value).
@@ -367,6 +369,30 @@ levels_from_map <- function(input) {
     }
     check_shared_values(name, as.vector(parameters[[name]]), map_level)
     parameter_table[["rtmb_level"]][rows] <- map_level[position]
+  }
+  # A prior scores each estimate once, by the levels initialize_fims() set,
+  # so it would not follow a map edited by hand. A process scores every
+  # value, so it gives the same objective however the values are shared.
+  prior_targets <- unlist(lapply(
+    input[["model_data"]][["densities"]],
+    function(density) {
+      if (density[["distribution_type"]] == "prior") density[["target"]]
+    }
+  ))
+  remapped_targets <- purrr::keep(unique(prior_targets), function(target) {
+    rows <- parameter_table[["name"]] == target
+    !identical(stored_level[rows], parameter_table[["rtmb_level"]][rows])
+  })
+  if (length(remapped_targets) > 0) {
+    cli::cli_abort(c(
+      "x" = "{.code input[[\"map\"]]} was edited for {.val {remapped_targets}},
+      which {?has a prior/have priors}.",
+      "i" = "A prior is scored once per estimate, as {.fn initialize_fims}
+      set them, so it does not follow an edited map.",
+      "i" = "Share values with the {.var map_group} column, or hold them
+      constant with {.var estimation_type} {.val constant}, in the parameter
+      tibble. Then run {.fn initialize_fims} again."
+    ))
   }
   # RTMB holds a value with no level at its starting value and integrates
   # out the parameters named in `random`.

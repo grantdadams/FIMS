@@ -527,6 +527,44 @@ test_that("`fit_fims()` reads shared and constant values from a map edited by na
   )
 })
 
+test_that("`fit_fims()` gives a process the same objective with values shared in the map or with map_group", {
+  # A penalized process on fleet1's log_Fmort, with a constant sd, so the
+  # penalty is bounded.
+  process_parameters <- default_parameters |>
+    add_process(
+      log_Fmort ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1",
+      estimation_type = "fixed_effects",
+      sd = list(value = 1, estimation_type = "constant")
+    )
+  hand_shared_input <- initialize_fims(
+    process_parameters,
+    data = data_10_years
+  )
+  hand_shared_input[["map"]][["Fleet.fleet1.log_Fmort"]] <- factor(
+    c(1, 1, 2:9)
+  )
+  grouped_input <- process_parameters |>
+    dplyr::mutate(
+      map_group = dplyr::if_else(
+        label == "log_Fmort" & fleet %in% "fleet1",
+        c(1L, 1L, 2:9)[timing],
+        NA_integer_
+      )
+    ) |>
+    initialize_fims(data = data_10_years)
+  starting_objective <- function(input) {
+    obj <- get_obj(fit_fims(input, optimize = FALSE))
+    obj[["fn"]](obj[["par"]])
+  }
+  #' @description Test that `fit_fims()` gives the same objective for a process on years 1 and 2 shared in a map edited by name as shared with `map_group`, because a process scores every value.
+  expect_equal(
+    object = starting_objective(hand_shared_input),
+    expected = starting_objective(grouped_input)
+  )
+})
+
 test_that("`fit_fims()` gives the same values as with TMB's default tape settings", {
   # The recruitment deviations are random effects, so the Laplace
   # approximation and its Hessian are part of the comparison.
@@ -702,6 +740,23 @@ test_that("`fit_fims()` returns correct error messages", {
   expect_error(
     object = fit_fims(unequal_start_input, optimize = FALSE),
     regexp = "different\\s+starting\\s+values"
+  )
+  # The prior is scored once per estimate as initialize_fims() set them, so
+  # it would score years 1 and 2 twice after they are shared by hand.
+  prior_input <- default_parameters |>
+    add_priors(
+      log_Fmort ~ normal(mean = -1, sd = 0.5),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    initialize_fims(data = data_10_years)
+  prior_input[["map"]][["Fleet.fleet1.log_Fmort"]] <- factor(
+    rep(1:2, c(2, 8))
+  )
+  #' @description Test that `fit_fims()` errors when a map edited by name shares values that have a prior.
+  expect_error(
+    object = fit_fims(prior_input, optimize = FALSE),
+    regexp = "which\\s+has\\s+a\\s+prior"
   )
   #' @description Test that `fit_fims()` errors for an input that did not come from `initialize_fims()`.
   expect_error(
