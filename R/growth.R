@@ -29,19 +29,23 @@ ewaa_growth <- function(weight_at_age) {
 #' and rises linearly from 0 to L1 below a1. Length at age is normal. Its SD
 #' comes from 1 of 2 options:
 #' - interpolation: the SD changes linearly with mean length from sd1 at a1
-#'   to sd2 at a2.
+#'   to sd2 at a2. It is sd1 below a1 and sd2 above a2.
 #' - delta method: SD = L(a) * sd(log L(a)), where the variance of log L(a)
 #'   comes from a covariance matrix of log L1, log L2 and log k
 #'   (delta_method_length_sd()).
 #' Weight at length is W = alpha L^beta.
 #'
-#' These parameters are estimated on a log or logit scale, which keeps each
-#' in its valid range, while the parameter tibble shows natural-scale values.
-#' initialize_fims() transforms them (growth_modules), so the arguments here
-#' are named log_* or logit_*.
+#' These parameters are estimated on a log, logit or log-difference scale,
+#' which keeps each in its valid range and L2 above L1, while the parameter
+#' tibble shows natural-scale values. initialize_fims() transforms them
+#' (growth_modules), so the arguments here are named log_*, logit_* or
+#' log_difference_*.
 #'
 #' @param age Ages in years.
-#' @param log_mean_length_old Log of L2.
+#' @param log_mean_length_old,log_difference_mean_length_old L2, either on the
+#'   log scale (when L2 is constant), or (when L2 is estimated) as the log of
+#'   the difference L2 - L1, so L2 stays above L1: L2 = L1 + exp(x). 1 of the
+#'   2 is given.
 #' @param log_mean_length_young,logit_mean_length_young L1, either on the log
 #'   scale, or (when L1 is estimated and L2 is constant) on a logit scale
 #'   bounded by 0 and L2, so L1 stays below L2: L1 = L2 / (1 + exp(-x)). 1 of
@@ -62,12 +66,13 @@ ewaa_growth <- function(weight_at_age) {
 #'   probability of each population length bin at each age.
 #' @noRd
 von_bertalanffy_schnute_growth <- function(age,
-                                           log_mean_length_old,
                                            log_growth_coefficient,
                                            log_length_weight_a,
                                            log_length_weight_b,
                                            reference_ages,
                                            length_edges,
+                                           log_mean_length_old = NULL,
+                                           log_difference_mean_length_old = NULL,
                                            log_mean_length_young = NULL,
                                            logit_mean_length_young = NULL,
                                            log_length_at_age_sd_young = NULL,
@@ -78,35 +83,41 @@ von_bertalanffy_schnute_growth <- function(age,
                                            mean_length_young_mean_length_old_logit_corr = NULL,
                                            mean_length_young_growth_coefficient_logit_corr = NULL,
                                            mean_length_old_growth_coefficient_logit_corr = NULL) {
-  mean_length_old <- exp(log_mean_length_old)
   # Which arguments are given is set by the tibble (data), not by an
-  # estimated value, so this `if` is safe on the tape.
-  mean_length_young <- if (is.null(logit_mean_length_young)) {
-    exp(log_mean_length_young)
+  # estimated value, so these `if`s are safe on the tape.
+  if (is.null(log_difference_mean_length_old)) {
+    mean_length_old <- exp(log_mean_length_old)
+    mean_length_young <- if (is.null(logit_mean_length_young)) {
+      exp(log_mean_length_young)
+    } else {
+      inv_logit(0, mean_length_old, logit_mean_length_young)
+    }
   } else {
-    inv_logit(0, mean_length_old, logit_mean_length_young)
+    mean_length_young <- exp(log_mean_length_young)
+    mean_length_old <- mean_length_young + exp(log_difference_mean_length_old)
   }
   growth_coefficient <- exp(log_growth_coefficient)
   length_weight_a <- exp(log_length_weight_a)
   length_weight_b <- exp(log_length_weight_b)
 
-  length_at <- function(at_age) {
-    von_bertalanffy_length_at_age(
-      at_age, mean_length_young, mean_length_old, growth_coefficient,
-      reference_ages[1], reference_ages[2]
-    )
-  }
-  mean_length <- length_at(age)
+  mean_length <- von_bertalanffy_length_at_age(
+    age, mean_length_young, mean_length_old, growth_coefficient,
+    reference_ages[1], reference_ages[2]
+  )
 
   sd_length <- if (is.null(log_sd_mean_length_young)) {
-    # SD changes linearly with mean length between the reference ages.
-    length_young <- length_at(reference_ages[1])
-    length_old <- length_at(reference_ages[2])
+    # Between the reference ages, (L(a) - L1) / (L2 - L1) is the growth
+    # fraction, so this is linear in mean length. Holding the age inside the
+    # reference ages holds the SD at sd1 below a1 and at sd2 above a2, rather
+    # than extrapolating it. Ages and reference ages are data.
     sd_young <- exp(log_length_at_age_sd_young)
     sd_old <- exp(log_length_at_age_sd_old)
-    slope <- (sd_old - sd_young) /
-      ad_max(ad_fabs(length_old - length_young), 1e-8)
-    ad_max(sd_young + slope * (mean_length - length_young), 1e-8)
+    interpolation_age <- pmin(pmax(age, reference_ages[1]), reference_ages[2])
+    ad_max(
+      sd_young + (sd_old - sd_young) *
+        growth_fraction(interpolation_age, growth_coefficient, reference_ages),
+      1e-8
+    )
   } else {
     correlation <- function(logit_corr) inv_logit(-1, 1, logit_corr)
     delta_method_length_sd(
@@ -163,11 +174,10 @@ von_bertalanffy_length_at_age <- function(age, mean_length_young,
                                           mean_length_old, growth_coefficient,
                                           reference_age_young,
                                           reference_age_old) {
-  denominator <- 1 - exp(-growth_coefficient *
-    (reference_age_old - reference_age_young))
-  numerator <- 1 - exp(-growth_coefficient * (age - reference_age_young))
   von_bertalanffy <- mean_length_young + (mean_length_old - mean_length_young) *
-    numerator / ad_max(ad_fabs(denominator), 1e-8)
+    growth_fraction(
+      age, growth_coefficient, c(reference_age_young, reference_age_old)
+    )
   is_younger <- reference_age_young > 0 & age < reference_age_young
   linear <- mean_length_young * pmax(age, 0) / reference_age_young
   if (any(is_younger)) {
@@ -178,14 +188,34 @@ von_bertalanffy_length_at_age <- function(age, mean_length_young,
   }
 }
 
+#' Fraction of the growth from L1 to L2 reached at each age
+#'
+#' (1 - exp(-k (a - a1))) / (1 - exp(-k (a2 - a1))), which is 0 at a1 and 1
+#' at a2. It is written as expm1(-k (a - a1)) / expm1(-k (a2 - a1)). When
+#' k (a2 - a1) is small, 1 - exp() subtracts 2 numbers near 1 and loses
+#' digits, but expm1() does not. So the fraction approaches the linear
+#' fraction (a - a1) / (a2 - a1) as k approaches 0, without a guard or a
+#' branch on k. k must be above 0, which exp(log k) ensures.
+#'
+#' @param age Ages in years.
+#' @param growth_coefficient k.
+#' @param reference_ages c(a1, a2).
+#' @return The fraction at each age.
+#' @noRd
+growth_fraction <- function(age, growth_coefficient, reference_ages) {
+  expm1(-growth_coefficient * (age - reference_ages[1])) /
+    expm1(-growth_coefficient * (reference_ages[2] - reference_ages[1]))
+}
+
 #' SD of length at age by the delta method
 #'
 #' Var(log L(a)) = g' S g, where g is the gradient of log L(a) with respect to
 #' (log L1, log L2, log k) and S their covariance matrix, built from their SDs
-#' and correlations (L1 with L2, L1 with k, L2 with k). Then
+#' and correlations (L1 with L2, L1 with k, L2 with k). These are the log
+#' lengths themselves, also when L2 is estimated as log(L2 - L1). Then
 #' SD = L(a) sqrt(Var(log L(a))). Below the young reference age, log L(a)
-#' depends on L1 only. The smooth guards (ad_fabs(), ad_max()) keep the
-#' derivatives defined where a denominator or a length is near 0.
+#' depends on L1 only. The smooth guards (ad_max()) keep the derivatives
+#' defined where a length or the variance is near 0.
 #'
 #' @param age Ages in years.
 #' @param mean_length Mean length at each age.
@@ -201,20 +231,23 @@ delta_method_length_sd <- function(age, mean_length, mean_length_young,
   reference_age_young <- reference_ages[1]
   is_younger <- reference_age_young > 0 & age < reference_age_young
 
-  # Ages at or above the young reference age.
+  # Ages at or above the young reference age. The ratio is growth_fraction(),
+  # written out so its derivative with respect to k uses the same expm1()
+  # terms. That derivative loses relative precision as k approaches 0, but it
+  # is used only times k (the gradient with respect to log k), which keeps
+  # the error near machine precision.
   age_from_young <- age - reference_age_young
   reference_span <- reference_ages[2] - reference_age_young
-  exp_numerator <- exp(-growth_coefficient * age_from_young)
-  exp_denominator <- exp(-growth_coefficient * reference_span)
-  numerator <- 1 - exp_numerator
-  denominator <- ad_max(ad_fabs(1 - exp_denominator), 1e-8)
+  numerator <- expm1(-growth_coefficient * age_from_young)
+  denominator <- expm1(-growth_coefficient * reference_span)
   ratio <- numerator / denominator
   length_difference <- mean_length_old - mean_length_young
   length_safe <- ad_max(
     mean_length_young + length_difference * ratio, 1e-8
   )
-  d_ratio_d_k <- (age_from_young * exp_numerator * denominator -
-    numerator * reference_span * exp_denominator) / (denominator * denominator)
+  d_ratio_d_k <- (reference_span * exp(-growth_coefficient * reference_span) *
+    numerator - age_from_young * exp(-growth_coefficient * age_from_young) *
+    denominator) / (denominator * denominator)
   gradient_young <- (1 - ratio) / length_safe
   gradient_old <- ratio / length_safe
   gradient_k <- length_difference * d_ratio_d_k / length_safe
@@ -315,13 +348,17 @@ von_bertalanffy_schnute_growth_inputs <- function(data, parameters,
 #' The scale each von Bertalanffy parameter is estimated on
 #'
 #' The tibble shows natural values, but 7 of them are estimated on the log
-#' scale, which keeps them positive. When L1 is estimated and L2 is constant,
-#' L1 is instead on a logit scale bounded by 0 and L2, which keeps L1 below
-#' L2. The delta-method SDs and correlations are given on their working
-#' scales already (log_sd_*, *_logit_corr).
+#' scale, which keeps them positive. 2 settings keep L2 above L1 instead:
+#' - When L2 is estimated, it is estimated as log(L2 - L1) (log_difference),
+#'   so L2 = L1 + exp(x).
+#' - When L1 is estimated and L2 is constant, L1 is on a logit scale bounded
+#'   by 0 and L2.
+#' The delta-method SDs and correlations are given on their working scales
+#' already (log_sd_*, *_logit_corr).
 #'
 #' @param rows The Growth rows of the parameter tibble.
-#' @return "log", "logit" or NA (no transform) for each row.
+#' @return "log", "logit", "log_difference" or NA (no transform) for each
+#'   row.
 #' @noRd
 von_bertalanffy_schnute_working_scale <- function(rows) {
   is_estimated <- function(label) {
@@ -337,6 +374,9 @@ von_bertalanffy_schnute_working_scale <- function(rows) {
   if (is_estimated("mean_length_young") && !is_estimated("mean_length_old")) {
     working_scale[rows[["label"]] == "mean_length_young"] <- "logit"
   }
+  if (is_estimated("mean_length_old")) {
+    working_scale[rows[["label"]] == "mean_length_old"] <- "log_difference"
+  }
   working_scale
 }
 
@@ -347,9 +387,10 @@ von_bertalanffy_schnute_working_scale <- function(rows) {
 # - inputs: its non-parameter inputs, from the data.
 # - models_length: TRUE if it gives length at age, so fleets' age-to-length
 #   keys come from growth.
-# - working_scale: the scale each tibble row is estimated on ("log", "logit"
-#   or NA). initialize_fims() transforms them and names them log_* or
-#   logit_*. Rows labeled reference_age_* are data (see `inputs`).
+# - working_scale: the scale each tibble row is estimated on ("log", "logit",
+#   "log_difference" or NA). initialize_fims() transforms them and names them
+#   log_*, logit_* or log_difference_*. Rows labeled reference_age_* are data
+#   (see `inputs`).
 growth_modules <- list(
   EWAA = list(
     evaluate = ewaa_growth,

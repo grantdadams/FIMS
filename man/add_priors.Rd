@@ -33,7 +33,8 @@ Any parameter can take a prior, named as the model names it:
 \code{log_q}.
 \item A growth parameter estimated on a log or logit scale by that label, such
 as \code{log_mean_length_young ~ normal(mean = log(280), sd = 0.1)}, so the
-prior's scale is the one the label says.
+prior's scale is the one the label says. An estimated \code{mean_length_old}
+is \code{log_difference_mean_length_old}, the log of \code{mean_length_old - mean_length_young}.
 \item A process's own parameter by its flat name, such as \code{log_q_log_sd} for
 the sd of a process on \code{log_q}, and the recruitment \code{log_sd} as \code{log_sd}.
 \item An estimated likelihood parameter by its Data label, such as

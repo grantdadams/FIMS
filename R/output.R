@@ -98,9 +98,10 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
       }
     }
   }
-  # Growth parameters estimated on a log or logit scale are shown on the
-  # natural scale under their tibble labels. The logit for L1 is bounded by 0
-  # and L2 (mean_length_old), in length units.
+  # Growth parameters estimated on a log, logit or log-difference scale are
+  # shown on the natural scale under their tibble labels. The logit for L1 is
+  # bounded by 0 and L2 (mean_length_old), in length units. An estimated L2 is
+  # L1 + exp(x), and L1 is then on the log scale.
   estimated <- parameter_table[["estimated"]]
   is_log <- parameter_table[["working_scale"]] %in% "log"
   estimated[is_log] <- exp(estimated[is_log])
@@ -108,6 +109,12 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
   if (any(is_logit)) {
     mean_length_old <- exp(values[["Growth.log_mean_length_old"]])
     estimated[is_logit] <- inv_logit(0, mean_length_old, estimated[is_logit])
+  }
+  is_log_difference <- parameter_table[["working_scale"]] %in% "log_difference"
+  if (any(is_log_difference)) {
+    mean_length_young <- exp(values[["Growth.log_mean_length_young"]])
+    length_difference <- exp(estimated[is_log_difference])
+    estimated[is_log_difference] <- mean_length_young + length_difference
   }
   parameter_table[["estimated"]] <- estimated
   # Their standard errors go on the same scale, by the delta method. For
@@ -120,6 +127,32 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
   if (any(is_logit)) {
     uncertainty[is_logit] <- estimated[is_logit] *
       (1 - estimated[is_logit] / mean_length_old) * uncertainty[is_logit]
+  }
+  if (any(is_log_difference)) {
+    # L2 = L1 + exp(x). With L1 constant, se(L2) = (L2 - L1) se(x). With L1
+    # estimated too, L2 depends on 2 estimates: se(L2) = sqrt(g' S g), with
+    # g = (L2 - L1, L1) the gradient of L2 with respect to (x, log L1) and S
+    # their covariance. The sdreport has no covariance of a random effect
+    # with another parameter, so then se(L2) is NA.
+    is_young <- parameter_table[["module_name"]] %in% "Growth" &
+      parameter_table[["original_label"]] %in% "mean_length_young"
+    covariance_names <- c(
+      parameter_table[["rtmb_name"]][is_log_difference],
+      parameter_table[["rtmb_name"]][is_young]
+    )
+    if (!parameter_table[["estimation_type"]][is_young] %in%
+      c("fixed_effects", "random_effects")) {
+      uncertainty[is_log_difference] <- length_difference *
+        uncertainty[is_log_difference]
+    } else if (all(covariance_names %in% names(sdreport[["par.fixed"]]))) {
+      index <- match(covariance_names, names(sdreport[["par.fixed"]]))
+      gradient_old <- c(length_difference, mean_length_young)
+      uncertainty[is_log_difference] <- sqrt(drop(
+        gradient_old %*% sdreport[["cov.fixed"]][index, index] %*% gradient_old
+      ))
+    } else {
+      uncertainty[is_log_difference] <- NA_real_
+    }
   }
   parameter_table[["uncertainty"]] <- uncertainty
   # A prior's or process's own parameters are named after their target
