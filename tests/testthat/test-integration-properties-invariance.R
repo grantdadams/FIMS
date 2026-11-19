@@ -59,11 +59,11 @@ test_that("the order of data rows and fleets does not change the model", {
 })
 
 test_that("inputs repeated in every year match the inputs given once", {
-  # 1 row per year in year order makes an input time-varying. FIMS reads the
-  # rows in the order given, not by timing (#1875). All 5 inputs are repeated
-  # in 1 run to keep the file fast. The -recruitment and -observations files
-  # check the maturity inflection point and survey1 log_q by year, and the end
-  # of this test checks the fleet1 selectivity inflection point.
+  # 1 row per year, with the year in timing, makes an input time-varying. All
+  # 5 inputs are repeated in 1 run to keep the file fast. The -recruitment and
+  # -observations files check the maturity inflection point and survey1 log_q
+  # by year, and the end of this test checks the fleet1 selectivity inflection
+  # point.
   repeated_inputs <- tibble::tribble(
     ~module_name, ~label, ~fleet,
     "Maturity", "inflection_point", NA,

@@ -84,8 +84,7 @@ test_that("expected survey index is q times selected biomass in each year", {
 
 test_that("expected survey index uses the q of each year", {
   # q differs in every year, so a q taken from the wrong year changes the
-  # expected index. FIMS reads the log_q rows in the order given, not by
-  # timing, so the test adds them in year order.
+  # expected index.
   catchability <- seq(1.5, 3.5, length.out = n_years)
   log_q_by_year <- parameters |>
     dplyr::filter(label == "log_q", fleet == "survey1") |>

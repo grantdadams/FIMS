@@ -11,7 +11,10 @@
 #' (initialize_densities()).
 #'
 #' @param parameters A tibble of parameters, as from setup_default_parameters(),
-#'   add_process() and add_priors().
+#'   add_process() and add_priors(). The rows of a parameter with more than 1
+#'   value are used in order of `timing`, then `age`, not in the order they
+#'   appear in the tibble. So each row needs its own combination of `timing`
+#'   and `age`.
 #' @param data A FIMSFrame, or a data frame that FIMSFrame() accepts.
 #' @return A list with `parameters`, `map` and `random` for
 #'   RTMB::MakeADFun(), the model data (`model_data`), the parameter table
@@ -45,7 +48,6 @@ initialize_fims <- function(parameters, data) {
   }
   check_initialize_inputs(parameters, data)
   years <- get_start_year(data):get_end_year(data)
-  parameters <- add_year_timing(parameters, years)
   check_fleet_parameter_sizes(parameters, length(years))
   check_parameter_years(parameters, years)
   model_parameters <- initialize_parameters(parameters)
@@ -133,30 +135,6 @@ hold_unused_process_parameters <- function(map, parameter_table, used_names) {
   parameter_table[["estimation_type"]][is_unused] <- "constant"
   parameter_table[["rtmb_level"]][is_unused] <- NA_integer_
   list(map = map, parameter_table = parameter_table)
-}
-
-#' Give year-major rows their years
-#'
-#' A parameter can be given as 1 row per age for every year, with no
-#' `timing`, in year-major order (for example time-varying age-specific
-#' selectivity).
-#' This writes those years into `timing`, so the rest of the code sees an
-#' ordinary year-by-age parameter.
-#'
-#' @inheritParams initialize_fims
-#' @param years The model years.
-#' @noRd
-add_year_timing <- function(parameters, years) {
-  key <- paste(parameters[["module_name"]], parameters[["fleet"]], parameters[["label"]])
-  for (parameter in unique(key)) {
-    row <- which(key == parameter)
-    ages <- unique(parameters[["age"]][row])
-    if (all(is.na(parameters[["timing"]][row])) && !anyNA(ages) &&
-      length(row) == length(years) * length(ages) && length(years) > 1) {
-      parameters[["timing"]][row] <- rep(years, each = length(ages))
-    }
-  }
-  parameters
 }
 
 #' Check the number of log_q and log_Fmort values of each fleet
