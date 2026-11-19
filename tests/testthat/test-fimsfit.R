@@ -428,6 +428,40 @@ test_that("`fit_fims()` holds constant values at their starting values", {
   )
 })
 
+test_that("`fit_fims()` gives standard errors when only a later fleet has length data", {
+  # fleet1 comes before survey1, so fleet1's length quantities are empty and
+  # survey1's are not.
+  survey_length_data <- FIMS::data_big |>
+    dplyr::filter(
+      is.na(timing) |
+        timing <= dplyr::if_else(type == "weight_at_age", 11, 10),
+      !(type == "length_comp" & fleet %in% "fleet1")
+    ) |>
+    FIMSFrame()
+  # Only log_rzero and the recruitment deviations are estimated, which keeps
+  # the fit fast.
+  fit <- setup_default_parameters(survey_length_data) |>
+    dplyr::mutate(
+      estimation_type = dplyr::if_else(
+        estimation_type == "fixed_effects" & label != "log_rzero",
+        "constant",
+        estimation_type
+      )
+    ) |>
+    initialize_fims(data = survey_length_data) |>
+    fit_fims()
+  adreport <- get_sdreport(fit)[["value"]]
+  #' @description Test that `fit_fims()` gives survey1's length composition proportions in the sdreport the same values as in the report, when fleet1 has no length data.
+  expect_equal(
+    object = unname(adreport[names(adreport) == "lengthcomp_proportion"]),
+    expected = get_report(fit)[["lengthcomp_proportion"]][[2]]
+  )
+  survey_length_rows <- get_estimates(fit) |>
+    dplyr::filter(label == "lengthcomp_proportion")
+  #' @description Test that `fit_fims()` gives every length composition proportion of survey1 a finite standard error.
+  expect_true(all(is.finite(survey_length_rows[["uncertainty"]])))
+})
+
 test_that("`fit_fims()` gives the same values as with TMB's default tape settings", {
   # The recruitment deviations are random effects, so the Laplace
   # approximation and its Hessian are part of the comparison.

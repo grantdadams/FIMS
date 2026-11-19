@@ -72,6 +72,9 @@ quantity_dimensions <- c(
 #' @param likelihood Output of model_likelihood().
 #' @noRd
 report_model <- function(model_data, model, likelihood) {
+  # RTMB: lets c() keep AD values when the first fleet's value is empty, as
+  # for a fleet without length data. Base c() would drop the AD class.
+  "c" <- RTMB::ADoverload("c")
   n_years <- model_data[["n_years"]]
   biology <- model[["biology"]]
   fleets <- model[["fleets"]]
