@@ -71,15 +71,15 @@ compare_hindcast <- function(projection_fit) {
   no_projection_estimates <- get_estimates(no_projection_fit) |>
     dplyr::filter(estimation_type == "fixed_effects") |>
     dplyr::select(
-      module_name, fleet, label, year_i, age,
+      module_name, fleet, label, year, age,
       base_estimate = estimated, base_uncertainty = uncertainty
     )
   projection_estimates <- get_estimates(projection_fit) |>
-    dplyr::select(module_name, fleet, label, year_i, age, estimated, uncertainty)
+    dplyr::select(module_name, fleet, label, year, age, estimated, uncertainty)
   no_projection_estimates |>
     dplyr::left_join(
       projection_estimates,
-      by = c("module_name", "fleet", "label", "year_i", "age")
+      by = c("module_name", "fleet", "label", "year", "age")
     ) |>
     dplyr::mutate(
       difference_in_standard_errors =

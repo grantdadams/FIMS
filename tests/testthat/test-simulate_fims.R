@@ -173,7 +173,7 @@ test_that("`simulate_fims()` draws normal compositions cell by cell", {
     fit_fims(optimize = FALSE)
   expected <- get_estimates(normal_fit) |>
     dplyr::filter(label == "agecomp_expected", fleet == "survey1") |>
-    dplyr::select(timing = "year_i", "age", "expected")
+    dplyr::select(timing = "year", "age", "expected")
   simulated_mean <- withr::with_seed(
     1,
     simulate_fims(normal_fit, number_of_simulations = 50)
