@@ -92,7 +92,12 @@ is the returned object from \code{\link[=setup_default_parameters]{setup_default
 \code{\link[=get_report]{get_report()}} returns the model report, with every quantity the model
 passes to \code{REPORT()}.
 
-\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}.
+\code{\link[=get_obj]{get_obj()}} returns the output from \code{\link[RTMB:MakeADFun]{RTMB::MakeADFun()}}. The object holds
+its own data, so its methods use the model that made the fit, also after
+another model is set up or after the fit is read with \code{\link[=readRDS]{readRDS()}}. After
+\code{\link[=readRDS]{readRDS()}}, RTMB records the model again the first time a method is called.
+\code{\link[=get_report]{get_report()}}, \code{\link[=get_gradient]{get_gradient()}}, and \code{\link[=get_estimates]{get_estimates()}} return values stored
+during fitting, so they do not evaluate the model again.
 
 \code{\link[=get_opt]{get_opt()}} returns the output from \code{\link[=nlminb]{nlminb()}}, which is the minimizer used
 in \code{\link[=fit_fims]{fit_fims()}}.

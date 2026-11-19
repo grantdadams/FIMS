@@ -512,6 +512,26 @@ test_that("`fit_fims()` restores the user's tape settings", {
   )
 })
 
+test_that("`get_obj()` uses the model that made the fit after another model and `readRDS()`", {
+  fit <- default_parameters |>
+    initialize_fims(data = data_10_years) |>
+    fit_fims(optimize = FALSE)
+  obj <- get_obj(fit)
+  objective <- obj[["fn"]](obj[["par"]])
+  # Another model, with 30 years of data, set up after the first
+  data_30_years <- FIMSFrame(FIMS::data_big)
+  other_fit <- setup_default_parameters(data_30_years) |>
+    initialize_fims(data = data_30_years) |>
+    fit_fims(optimize = FALSE)
+  #' @description Test that `get_obj()` gives the objective of the model that made the fit after another model is set up.
+  expect_equal(object = obj[["fn"]](obj[["par"]]), expected = objective)
+  saved_fit <- withr::local_tempfile(fileext = ".rds")
+  saveRDS(fit, saved_fit)
+  read_obj <- get_obj(readRDS(saved_fit))
+  #' @description Test that `get_obj()` gives the objective of the model that made the fit after the fit is read with `readRDS()`.
+  expect_equal(object = read_obj[["fn"]](read_obj[["par"]]), expected = objective)
+})
+
 ## Edge handling ----
 test_that("`fit_fims()` returns correct outputs for edge cases", {
   random_effects_only_fit <- default_parameters |>
