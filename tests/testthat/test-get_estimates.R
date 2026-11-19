@@ -141,7 +141,7 @@ test_that("`get_estimates()` reports the log density of each value", {
   log_devs <- dplyr::filter(estimates, label == "log_devs")
   #' @description Test that `get_estimates()` gives the recruitment deviations 1 row per deviation, in years 2 to 30.
   expect_equal(
-    object = log_devs[["year_i"]],
+    object = log_devs[["year"]],
     expected = 2:30
   )
   #' @description Test that the `likelihood` of each recruitment deviation is the Normal(0, sd) log density of its own value.
@@ -161,7 +161,7 @@ test_that("`get_estimates()` reports the log density of each value", {
     dplyr::arrange(timing)
   catch_rows <- estimates |>
     dplyr::filter(fleet == "fleet1", label == "catch_expected") |>
-    dplyr::arrange(year_i)
+    dplyr::arrange(year)
   log_catch_expected <- get_report(fit)[["log_catch_expected"]][[1]]
   #' @description Test that the `likelihood` of each fleet1 catch row is the lognormal log density of the observed catch in data_big.
   expect_equal(
@@ -462,13 +462,14 @@ test_that("`get_estimates()` reports calendar years in JSON and estimates", {
     initialize_fims(data = data_4_model) |>
     fit_fims(optimize = FALSE)
 
-  model_output <- jsonlite::fromJSON(
-    get_model_output(fit),
-    simplifyVector = FALSE
-  )
+  # The model output is the get_estimates() table as JSON.
+  model_output <- jsonlite::fromJSON(get_model_output(fit))
+  spawning_biomass_years <- model_output[["year"]][
+    model_output[["label"]] == "spawning_biomass"
+  ]
   #' @description Test that the model JSON contains calendar years including the extra population year.
   expect_equal(
-    object = as.integer(unlist(model_output[["year"]])),
+    object = as.integer(spawning_biomass_years),
     expected = c(years, max(years) + 1L)
   )
 
@@ -477,6 +478,7 @@ test_that("`get_estimates()` reports calendar years in JSON and estimates", {
     dplyr::filter(.data$label == "log_Fmort", .data$fleet == "fleet1")
   #' @description Test that estimates expose calendar years and no positional year index.
   expect_equal(object = log_Fmort[["year"]], expected = years)
+  expect_false("year_i" %in% names(estimates))
   clear()
 })
 
@@ -509,7 +511,7 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
       .data[["observed"]] != -999
     )
   standard_deviation <- 0.5 + 0.2 * survey_comps[["age"]] +
-    0.1 * survey_comps[["year_i"]]
+    0.1 * survey_comps[["year"]]
   #' @description Test that each composition cell's likelihood uses the sd given on its own data row.
   expect_equal(
     object = survey_comps[["likelihood"]],
@@ -556,7 +558,7 @@ test_that("`get_estimates()` pairs a conditional age-at-length sd with its own c
     expected = stats::dnorm(
       caal_estimates[["observed"]], caal_estimates[["expected"]],
       1 + 0.1 * caal_estimates[["age"]] + caal_estimates[["length"]] / 1000 +
-        0.01 * caal_estimates[["year_i"]],
+        0.01 * caal_estimates[["year"]],
       log = TRUE
     )
   )
@@ -586,7 +588,7 @@ test_that("`get_estimates()` keeps non-finite values and column types", {
   estimates[["likelihood"]][1:3] <- c(-Inf, Inf, NaN)
   estimates[["fleet"]][1] <- NA
   stored <- FIMS:::estimates_to_json(estimates)
-  #' @description Test that the estimates stored in a fit read back unchanged, with -Inf, Inf, NaN, a missing string and an integer `year_i`.
+  #' @description Test that the estimates stored in a fit read back unchanged, with -Inf, Inf, NaN, a missing string and an integer `year`.
   expect_identical(
     object = FIMS:::estimates_from_json(stored),
     expected = estimates
@@ -643,7 +645,7 @@ test_that("`get_estimates()` lists a process sd and conditional age-at-length", 
   #' @description Test that `get_estimates()` gives conditional age-at-length rows their years, length bins and ages.
   expect_equal(
     object = dplyr::distinct(
-      caal_estimates, .data[["year_i"]], .data[["length"]]
+      caal_estimates, .data[["year"]], .data[["length"]]
     ) |>
       nrow(),
     expected = 6
@@ -653,7 +655,7 @@ test_that("`get_estimates()` lists a process sd and conditional age-at-length", 
     object = caal_estimates |>
       dplyr::summarize(
         total = sum(.data[["estimated"]]),
-        .by = c("year_i", "length")
+        .by = c("year", "length")
       ) |>
       dplyr::pull(.data[["total"]]),
     expected = rep(1, 6)

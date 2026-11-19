@@ -9,7 +9,7 @@
 
 estimate_columns <- c(
   "module_name", "module_id", "module_type", "label", "type", "type_id",
-  "parameter_id", "fleet", "year_i", "age", "length", "input", "estimated",
+  "parameter_id", "fleet", "year", "age", "length", "input", "estimated",
   "expected", "observed", "estimation_type", "uncertainty", "distribution",
   "input_type", "lpdf", "likelihood", "log_sd", "log_like_cv", "gradient"
 )
@@ -159,9 +159,7 @@ parameter_rows <- function(input, obj, gradient, sdreport, values) {
   dplyr::bind_rows(parameter_table, reference_ages) |>
     dplyr::mutate(
       type = "vector",
-      # A position from 1 (the first model year), not the calendar year in
-      # `timing`.
-      year_i = .data[["timing"]] - input[["model_data"]][["start_year"]] + 1,
+      year = .data[["timing"]],
       input = .data[["value"]],
       distribution = dplyr::if_else(
         .data[["name"]] %in% process_log_sd_names, "normal", NA_character_
@@ -258,7 +256,7 @@ derived_quantity_rows <- function(input, report, sdreport, population_names) {
       rows[[length(rows) + 1]] <- tibble::tibble(
         module_name = if (is_fleet) "Fleet" else "Population",
         label = name, fleet = groups[i],
-        year_i = dimensions[["year_i"]], age = dimensions[["age"]],
+        year = dimensions[["year"]], age = dimensions[["age"]],
         length = dimensions[["length"]],
         # A value that is not finite (for example the log of a catch of 0) is
         # shown as -999, the code for a missing value.
@@ -290,7 +288,7 @@ weight_at_age_rows <- function(input) {
   weights <- flatten_by_year(weight_at_age)
   tibble::tibble(
     module_name = "Growth", module_type = "EWAA", label = "weight_at_age",
-    type = "vector", year_i = dimensions[["year_i"]], age = dimensions[["age"]],
+    type = "vector", year = dimensions[["year"]], age = dimensions[["age"]],
     input = weights,
     estimated = weights,
     estimation_type = "constant"
@@ -310,17 +308,20 @@ weight_at_age_rows <- function(input) {
 #' @param model_data The `model_data` element of initialize_fims().
 #' @param fleet The fleet, for a quantity by length bin or conditional
 #'   age-at-length.
-#' @return A list with `year_i`, `age` and `length`, with 1 value per value
-#'   of the quantity, or NA when it is not by age or by length bin.
+#' @return A list with `year` (the calendar year), `age` and `length`, with 1
+#'   value per value of the quantity, or NA when it is not by age or by length
+#'   bin.
 #' @noRd
 value_dimensions <- function(name, dimension, n_values, model_data,
                              fleet = NA) {
   ages <- model_data[["ages"]]
+  # The model data number years from 1, the first model year.
+  first_year <- model_data[["start_year"]]
   if (dimension == "conditional_age_at_length") {
     rows <- model_data[["fleets"]][[fleet]][["conditional_age_at_length"]]
     length_bins <- model_data[["fleets"]][[fleet]][["length_bins"]]
     return(list(
-      year_i = rep(rows[["year"]], each = length(ages)),
+      year = rep(first_year + rows[["year"]] - 1L, each = length(ages)),
       age = rep(ages, length(rows[["year"]])),
       length = rep(length_bins[rows[["length_bin"]]], each = length(ages))
     ))
@@ -345,7 +346,7 @@ value_dimensions <- function(name, dimension, n_values, model_data,
     ))
   }
   list(
-    year_i = rep(seq_len(n_years), each = length(columns)),
+    year = rep(first_year + seq_len(n_years) - 1L, each = length(columns)),
     age = if (dimension == "year_age") rep(ages, n_years) else NA,
     length = if (dimension == "year_length") rep(columns, n_years) else NA
   )

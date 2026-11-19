@@ -108,8 +108,8 @@ The proportion mature at age enters spawning biomass in each year, as numbers at
 ```{r output}
 fit <- fit_fims(input, optimize = FALSE)
 get_estimates(fit) |>
-  dplyr::filter(label == "proportion_mature_at_age", year_i == 1) |>
-  dplyr::select(dplyr::all_of(c("module_name", "label", "year_i", "age", "estimated")))
+  dplyr::filter(label == "proportion_mature_at_age", year == 1) |>
+  dplyr::select(dplyr::all_of(c("module_name", "label", "year", "age", "estimated")))
 ```
 
 ## Where to look
