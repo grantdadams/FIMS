@@ -338,6 +338,37 @@ check_shared_values <- function(name, value, map_level) {
   invisible(value)
 }
 
+#' Each row's map level in the map the fit uses
+#'
+#' initialize_fims() stores each row's map level, but `input[["map"]]` can be
+#' edited by name before fit_fims(). Standard errors, gradients and the
+#' sdreport's names are matched to rows by map level, so the levels are read
+#' again from the map that RTMB uses. A row with no level is held constant. A
+#' parameter with no map entry has 1 level per value.
+#'
+#' @param parameter_table The `parameter_table` from initialize_fims().
+#' @param parameters,map The parameters and map given to RTMB::MakeADFun().
+#' @return `parameter_table` with `rtmb_level` and `estimation_type` from
+#'   `map`.
+#' @noRd
+levels_from_map <- function(parameter_table, parameters, map) {
+  for (name in names(parameters)) {
+    rows <- which(parameter_table[["rtmb_name"]] == name)
+    # RTMB reads a parameter and its map in the order of as.vector(value).
+    position <- value_position(parameter_table[rows, ], parameters[[name]])
+    map_level <- if (is.null(map[[name]])) {
+      seq_along(parameters[[name]])
+    } else {
+      as.integer(map[[name]])
+    }
+    check_shared_values(name, as.vector(parameters[[name]]), map_level)
+    parameter_table[["rtmb_level"]][rows] <- map_level[position]
+  }
+  is_held <- is.na(parameter_table[["rtmb_level"]])
+  parameter_table[["estimation_type"]][is_held] <- "constant"
+  parameter_table
+}
+
 #' Growth parameters on the scale they are estimated on
 #'
 #' The tibble gives natural-scale values, but some growth parameters are

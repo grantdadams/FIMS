@@ -462,6 +462,38 @@ test_that("`fit_fims()` gives standard errors when only a later fleet has length
   expect_true(all(is.finite(survey_length_rows[["uncertainty"]])))
 })
 
+test_that("`fit_fims()` reads shared and constant values from a map edited by name", {
+  # The 2 time blocks of blocked_fit, set in the map instead of map_group.
+  hand_mapped_input <- initialize_fims(default_parameters, data = data_10_years)
+  hand_mapped_input[["map"]][["Fleet.fleet1.log_Fmort"]] <- factor(
+    rep(1:2, c(2, 8))
+  )
+  # The fit ends with a maximum gradient just above 0.001, as blocked_fit
+  # does, which gives a warning.
+  hand_mapped_fit <- suppressWarnings(fit_fims(hand_mapped_input))
+  #' @description Test that `fit_fims()` with time blocks set in the map by name gives the same estimates, standard errors, gradients and estimation types as the same time blocks set with `map_group`.
+  expect_equal(
+    object = get_estimates(hand_mapped_fit),
+    expected = blocked_estimates
+  )
+  #' @description Test that `fit_fims()` with time blocks set in the map by name names each estimate in the sdreport by the same parameter id as with `map_group`.
+  expect_equal(
+    object = names(get_sdreport(hand_mapped_fit)[["par.fixed"]]),
+    expected = names(get_sdreport(blocked_fit)[["par.fixed"]])
+  )
+
+  constant_input <- initialize_fims(default_parameters, data = data_10_years)
+  constant_input[["map"]][["Recruitment.log_rzero"]] <- factor(NA)
+  log_rzero <- fit_fims(constant_input, optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(label == "log_rzero")
+  #' @description Test that `fit_fims()` lists a value mapped to NA by name as constant.
+  expect_equal(
+    object = log_rzero[["estimation_type"]],
+    expected = "constant"
+  )
+})
+
 test_that("`fit_fims()` gives the same values as with TMB's default tape settings", {
   # The recruitment deviations are random effects, so the Laplace
   # approximation and its Hessian are part of the comparison.
@@ -623,6 +655,20 @@ test_that("`fit_fims()` returns correct error messages", {
   expect_error(
     object = fit_fims(p_map_input, optimize = FALSE),
     regexp = "map_group"
+  )
+  unequal_start_input <- initialize_fims(
+    default_parameters,
+    data = data_10_years
+  )
+  unequal_start_input[["map"]][["Fleet.fleet1.log_Fmort"]] <- factor(
+    rep(1:2, c(2, 8))
+  )
+  unequal_start_input[["parameters"]][["Fleet.fleet1.log_Fmort"]][2] <-
+    unequal_start_input[["parameters"]][["Fleet.fleet1.log_Fmort"]][1] + 1
+  #' @description Test that `fit_fims()` errors when values that share 1 estimate in a map edited by name have different starting values.
+  expect_error(
+    object = fit_fims(unequal_start_input, optimize = FALSE),
+    regexp = "different\\s+starting\\s+values"
   )
   #' @description Test that `fit_fims()` errors for an input that did not come from `initialize_fims()`.
   expect_error(
