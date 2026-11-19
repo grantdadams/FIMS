@@ -47,7 +47,9 @@ initialize_model_data <- function(parameters, data) {
   )
   # length_bin rows with fleet = NA set the population length bins, in place
   # of the default grid. FIMSFrame() checked that they cover every fleet's
-  # bins and that none is wider than a fleet bin it overlaps.
+  # bins and that none is wider than a fleet bin it overlaps. With neither,
+  # there are no population length bins (NULL), and growth gives the weight
+  # at mean length.
   population_lengths <- population_length_bins(get_data(data))
   population_edges <- if (!growth_models_length) {
     NULL

@@ -198,7 +198,7 @@ For example, suppose a fleet has bins of 0 to 50 mm and 50 to 100 mm. Population
 
 The `length` values are the lower edges of the bins. The first bin also holds all fish shorter than the first lower edge. The last bin is open-ended and holds all fish at or above the last lower edge. FIMS gives the last bin the same width as the bin before it, which sets the length used for its weight. Set the last lower edge high enough that few fish fall in this bin.
 
-Without these rows, FIMS builds the population bins from the fleet bins. They are 1 unit wide (1 mm for `data_big`) from the smallest fleet lower edge to the largest fleet upper edge, plus 1 more bin. Growth that gives length at age needs these rows or a fleet with length bins. Weight at age is averaged over the length distribution at each age, so adding these rows can change weight at age, and so biomass, even without length compositions. Population length bins need a growth module that gives length at age, so they are not used with `EWAA` growth.
+Without these rows, FIMS builds population bins only when a fleet has length bins. They are 1 unit wide (1 mm for `data_big`) from the smallest fleet lower edge to the largest fleet upper edge, plus 1 more bin. With no population bins, weight at age is the weight at mean length. Adding these rows can change weight at age, and so biomass, even without length compositions. This is because weight at age is then averaged over the length distribution at each age. Population length bins need a growth module that gives length at age, so they are not used with `EWAA` growth.
 
 ```{r data_big-population-length-bins}
 # population length bins 10 mm wide with lower edges from 0 to 1190 mm, which

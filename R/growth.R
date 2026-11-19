@@ -33,7 +33,9 @@ ewaa_growth <- function(weight_at_age) {
 #' - delta method: SD = L(a) * sd(log L(a)), where the variance of log L(a)
 #'   comes from a covariance matrix of log L1, log L2 and log k
 #'   (delta_method_length_sd()).
-#' Weight at length is W = alpha L^beta.
+#' Weight at length is W = alpha L^beta. Weight at age is W averaged over
+#' the length distribution on the population length bins, or, with no length
+#' bins, W at the mean length.
 #'
 #' These parameters are estimated on a log, logit or log-difference scale,
 #' which keeps each in its valid range and L2 above L1, while the parameter
@@ -61,9 +63,10 @@ ewaa_growth <- function(weight_at_age) {
 #'   and 1.
 #' @param reference_ages Data: c(a1, a2). Fixed because the formula switches
 #'   form at a1, and the switch cannot depend on an estimated value.
-#' @param length_edges Data: edges of the population length bins.
-#' @return A list with weight at age, mean and SD of length at age, and the
-#'   probability of each population length bin at each age.
+#' @param length_edges Data: edges of the population length bins, or NULL
+#'   when neither the fleets nor the population have length bins.
+#' @return A list with weight at age, mean and SD of length at age, and, with
+#'   length bins, the probability of each population length bin at each age.
 #' @noRd
 von_bertalanffy_schnute_growth <- function(age,
                                            log_growth_coefficient,
@@ -133,6 +136,19 @@ von_bertalanffy_schnute_growth <- function(age,
         mean_length_old_growth_coefficient_logit_corr
       ))
     )
+  }
+
+  # With no length bins there is no length distribution, so weight at age is
+  # the weight at mean length. Whether there are bins is data, so this `if`
+  # is safe on the tape.
+  if (is.null(length_edges)) {
+    return(list(
+      weight_at_age = weight_at_length(
+        mean_length, length_weight_a, length_weight_b
+      ),
+      mean_length_at_age = mean_length,
+      sd_length_at_age = sd_length
+    ))
   }
 
   # Probability of each population length bin at each age, and mean weight

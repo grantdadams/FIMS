@@ -29,6 +29,8 @@ test_that("`default_population_edges()` returns correct outputs for edge cases",
     object = FIMS:::default_population_edges(fleet_edges),
     expected = 0:23
   )
+  #' @description Test that `default_population_edges()` gives no grid when no fleet has length bins, so growth gives the weight at mean length.
+  expect_null(FIMS:::default_population_edges(list()))
 })
 
 ## Error handling ----
@@ -39,11 +41,6 @@ test_that("`default_population_edges()` returns correct error messages", {
       list(fleet1 = seq(0, 10, by = 0.5))
     ),
     regexp = "narrower than 1 length unit"
-  )
-  #' @description Test that `default_population_edges()` errors when no fleet has length bins, because growth that models length needs them.
-  expect_error(
-    object = FIMS:::default_population_edges(list()),
-    regexp = "no\\s+fleet\\s+has\\s+any"
   )
 })
 

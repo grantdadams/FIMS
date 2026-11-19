@@ -121,21 +121,16 @@ edges_from_lower_edges <- function(lower_edges, fleet) {
 #' evenly over the fleet bins it covers, which flattens the predicted length
 #' composition. So every fleet bin must be at least 1 length unit wide.
 #'
+#' With no fleet length bins there is no grid, and growth gives weight at age
+#' as the weight at mean length (von_bertalanffy_schnute_growth()).
+#'
 #' @param fleet_edges A list of bin edges, 1 element per fleet with length
 #'   bins, named by fleet.
-#' @return The population bin edges.
+#' @return The population bin edges, or NULL when no fleet has length bins.
 #' @noRd
 default_population_edges <- function(fleet_edges) {
   if (length(fleet_edges) == 0) {
-    cli::cli_abort(c(
-      "x" = "Growth that models length needs length bins, but no fleet has
-      any and there are no population length bins.",
-      "i" = "Add {.val length_comp} or {.val length_bin} rows for at least 1
-      fleet, or {.val length_bin} rows with {.code fleet = NA} to set the
-      population length bins.",
-      "i" = "Check the data types of each fleet with
-      {.code dplyr::count(get_data(data), fleet, type)}."
-    ))
+    return(NULL)
   }
   narrowest_bin <- vapply(
     fleet_edges, function(bin_edges) min(diff(bin_edges)), numeric(1)

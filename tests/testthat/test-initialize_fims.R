@@ -529,6 +529,67 @@ test_that("`initialize_fims()` builds the length distribution at age on the popu
   )
 })
 
+test_that("`initialize_fims()` gives the weight at mean length when there are no length bins", {
+  # No fleet or population length bins, so there is no length distribution
+  # at age and no age-to-length key.
+  no_length_frame <- FIMSFrame(no_length_data)
+  vonb_parameters <- setup_vonb_parameters(no_length_frame)
+  report <- get_population_report(no_length_frame, vonb_parameters)
+  growth_rows <- dplyr::filter(vonb_parameters, module_name == "Growth")
+  growth_value <- function(label) {
+    growth_rows[["value"]][growth_rows[["label"]] == label]
+  }
+  # von Bertalanffy mean length at age through L1 and L2 at the reference
+  # ages, which are the youngest and oldest ages here.
+  ages <- get_ages(no_length_frame)
+  reference_age_young <- growth_value("reference_age_for_length_young")
+  growth_fraction <- (1 - exp(
+    -growth_value("growth_coefficient") * (ages - reference_age_young)
+  )) / (1 - exp(-growth_value("growth_coefficient") * (
+    growth_value("reference_age_for_length_old") - reference_age_young
+  )))
+  mean_length <- growth_value("mean_length_young") +
+    (growth_value("mean_length_old") - growth_value("mean_length_young")) *
+      growth_fraction
+  n_years <- get_n_years(no_length_frame)
+  #' @description Test that, with no length bins, mean length at age is von Bertalanffy growth through L1 and L2.
+  expect_equal(
+    object = report[["growth_mean_LAA"]][[1]],
+    expected = rep(mean_length, n_years)
+  )
+  #' @description Test that, with no length bins, weight at age is the weight at mean length, a L^b.
+  expect_equal(
+    object = report[["growth_mean_WAA"]][[1]],
+    expected = rep(
+      growth_value("length_weight_a") *
+        mean_length^growth_value("length_weight_b"),
+      n_years
+    )
+  )
+  #' @description Test that, with no length bins, no fleet uses an age-to-length key derived from growth.
+  expect_equal(
+    object = report[["age_to_length_conversion_derived_used"]],
+    expected = list(0, 0)
+  )
+  #' @description Test that, with no length bins, no fleet reports a mean weight at age from an age-to-length key.
+  expect_equal(
+    object = lengths(report[["growth_derived_mean_WAA"]]),
+    expected = c(0, 0)
+  )
+
+  # Growth is constant, because no length data inform it.
+  fit <- vonb_parameters |>
+    dplyr::mutate(estimation_type = dplyr::if_else(
+      module_name == "Growth", "constant", estimation_type
+    )) |>
+    initialize_fims(data = no_length_frame) |>
+    fit_fims(optimize = TRUE)
+  #' @description Test that a model with von Bertalanffy growth and no length data fits.
+  expect_equal(object = get_opt(fit)[["convergence"]], expected = 0)
+  #' @description Test that the fit with von Bertalanffy growth and no length data reaches a maximum gradient below 0.001.
+  expect_lt(object = get_max_gradient(fit), expected = 0.001)
+})
+
 ## Edge handling ----
 test_that("`initialize_fims()` works with edge cases", {
   # Number of estimated values, fixed and random, as RTMB sees them.
