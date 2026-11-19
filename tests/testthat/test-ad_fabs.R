@@ -20,10 +20,11 @@ test_that("`ad_fabs()` works with correct inputs", {
     object = FIMS:::ad_fabs(-3),
     expected = sqrt(9 + smoothing_constant)
   )
-  #' @description Test that `ad_fabs()` with a smoothing constant of 0 equals `abs()`.
+  #' @description Test that `ad_fabs()` with a smoothing constant of 1e-12 equals `abs()` to within C / (2 |x|).
   expect_equal(
-    object = FIMS:::ad_fabs(values, C = 0),
-    expected = abs(values)
+    object = FIMS:::ad_fabs(values, C = 1e-12),
+    expected = abs(values),
+    tolerance = 1e-10
   )
   #' @description Test that `ad_fabs()` gives x and -x the same value.
   expect_equal(
@@ -49,7 +50,18 @@ test_that("`ad_fabs()` returns correct outputs for edge cases", {
 })
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`ad_fabs()` returns correct error messages", {
+  #' @description Test that `ad_fabs()` errors for C = 0, which gives the exact absolute value, whose derivative at 0 is NaN.
+  expect_error(
+    object = FIMS:::ad_fabs(2, C = 0),
+    regexp = "not greater than 0"
+  )
+  #' @description Test that `ad_fabs()` errors for C < 0, which can give NaN.
+  expect_error(
+    object = FIMS:::ad_fabs(0, C = -1e-5),
+    regexp = "not greater than 0"
+  )
+})
 
 # ad_max ----
 ## Setup ----
@@ -62,10 +74,11 @@ test_that("`ad_max()` works with correct inputs", {
     object = FIMS:::ad_max(2, 5),
     expected = (7 + sqrt(9 + smoothing_constant)) / 2
   )
-  #' @description Test that `ad_max()` with a smoothing constant of 0 equals `pmax()`.
+  #' @description Test that `ad_max()` with a smoothing constant of 1e-12 equals `pmax()` to within C / (4 |a - b|).
   expect_equal(
-    object = FIMS:::ad_max(values, 0.5, C = 0),
-    expected = pmax(values, 0.5)
+    object = FIMS:::ad_max(values, 0.5, C = 1e-12),
+    expected = pmax(values, 0.5),
+    tolerance = 1e-10
   )
   #' @description Test that `ad_max()` gives the same value when its 2 arguments are swapped.
   expect_equal(
@@ -100,4 +113,15 @@ test_that("`ad_max()` returns correct outputs for edge cases", {
 })
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`ad_max()` returns correct error messages", {
+  #' @description Test that `ad_max()` errors for C = 0 through `ad_fabs()`.
+  expect_error(
+    object = FIMS:::ad_max(2, 1, C = 0),
+    regexp = "not greater than 0"
+  )
+  #' @description Test that `ad_max()` errors for C < 0 through `ad_fabs()`.
+  expect_error(
+    object = FIMS:::ad_max(2, 1, C = -1e-5),
+    regexp = "not greater than 0"
+  )
+})
