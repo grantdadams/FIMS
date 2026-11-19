@@ -383,6 +383,22 @@ test_that("`add_process()` returns correct error messages when finding the targe
     ),
     regexp = "not indexed by year"
   )
+  with_proportion_female <- small_parameters |>
+    dplyr::bind_rows(tibble::tibble(
+      module_name = "Population",
+      label = "proportion_female",
+      value = 0.5,
+      estimation_type = "constant"
+    ))
+  #' @description Test that `add_process()` errors for time blocks in year on proportion female, which the model reads by age only.
+  expect_error(
+    object = add_process(
+      with_proportion_female,
+      proportion_female ~ cut(year, c(-Inf, 3, Inf)),
+      module_name = "Population"
+    ),
+    regexp = "not indexed by year"
+  )
   #' @description Test that `add_process()` errors for a target with no rows in the module.
   expect_error(
     object = add_process(

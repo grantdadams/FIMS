@@ -52,6 +52,7 @@ initialize_fims <- function(parameters, data) {
   check_initialize_inputs(parameters, data)
   years <- get_start_year(data):get_end_year(data)
   check_fleet_parameter_sizes(parameters, length(years))
+  check_parameters_not_by_year(parameters)
   check_parameter_years(parameters, years)
   model_parameters <- initialize_parameters(parameters)
   parameter_table <- model_parameters[["parameter_table"]]
@@ -173,6 +174,44 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
         fleet, label)}."
       ))
     }
+  }
+  invisible(TRUE)
+}
+
+#' Stop when a parameter the model does not read by year has a timing
+#'
+#' The model reads initial numbers at age and proportion female by age only,
+#' and growth and the stock-recruit parameters as 1 value
+#' (can_vary_by_year()). Values by year would be recycled against ages or
+#' years, with no error.
+#'
+#' @inheritParams initialize_fims
+#' @noRd
+check_parameters_not_by_year <- function(parameters) {
+  parameters <- add_process_columns(parameters)
+  # A process's or prior's own rows (with a target_label) are checked
+  # against their target in initialize_densities().
+  by_year <- dplyr::filter(
+    parameters,
+    is.na(.data[["target_label"]]),
+    !is.na(.data[["timing"]]),
+    !can_vary_by_year(.data[["label"]], .data[["module_name"]])
+  )
+  if (nrow(by_year) > 0) {
+    labels <- unique(paste(by_year[["module_name"]], by_year[["label"]],
+      sep = "."
+    ))
+    cli::cli_abort(c(
+      "x" = "{.val {labels}} {?has/have} rows with a {.var timing}, but the
+      model does not read {?it/them} by year.",
+      "i" = "The model reads {.val log_init_naa} and
+      {.val proportion_female} by age only, and growth, {.val log_rzero} and
+      {.val logit_steep} as 1 value. Give their rows a {.var timing} of
+      {.code NA}.",
+      "i" = "Find the rows with {.code dplyr::filter(parameters,
+      module_name == \"{by_year[['module_name']][1]}\",
+      label == \"{by_year[['label']][1]}\", !is.na(timing))}."
+    ))
   }
   invisible(TRUE)
 }
