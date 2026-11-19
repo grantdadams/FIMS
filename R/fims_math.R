@@ -49,11 +49,21 @@ logistic <- function(inflection_point, slope, x) {
 #' even where no guard is needed.
 #'
 #' @param x,a,b Values.
-#' @param C The smoothing constant.
+#' @param C A constant above 0 that sets how smooth the result is. `ad_max()`
+#'   passes it to `ad_fabs()`, which stops if it is not above 0.
 #' @return The smooth absolute value of `x` (`ad_fabs()`), or the smooth
 #'   maximum of `a` and `b` (`ad_max()`).
 #' @noRd
 ad_fabs <- function(x, C = 1e-5) {
+  # C = 0 gives the exact |x|, which has a NaN derivative at x = 0. C < 0
+  # gives NaN when |x| is small. C is a fixed setting, not an estimated
+  # value, so this `if` is safe on the tape.
+  if (!isTRUE(C > 0)) {
+    cli::cli_abort(c(
+      "x" = "The smoothing constant {.arg C} is {.val {C}}, which is not
+      greater than 0."
+    ))
+  }
   sqrt(x * x + C)
 }
 
