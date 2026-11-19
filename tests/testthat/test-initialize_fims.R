@@ -894,6 +894,13 @@ test_that("`initialize_fims()` returns correct error messages", {
     initialize_fims(parameters = default_parameters, data = proportions_no_size),
     "proportions with no `size`"
   )
+  # The multinomial's probabilities are the expected proportions, not the
+  # expected counts.
+  #' @description Test that the error for compositions as proportions with no size shows a multinomial on the expected proportions.
+  expect_error(
+    initialize_fims(parameters = default_parameters, data = proportions_no_size),
+    "dmultinom\\(prob\\s+=\\s+agecomp_proportion"
+  )
 
   #' @description Test that `initialize_fims()` errors for an estimated row with no starting value.
   expect_error(

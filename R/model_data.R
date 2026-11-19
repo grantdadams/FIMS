@@ -461,7 +461,7 @@ check_composition_sizes <- function(fleet_rows, fleet) {
       rows given as proportions with no {.var size} in the uncertainty
       column.",
       "i" = "Proportions become counts with the multinomial sample size, as
-      in {.code ~ dmultinom(prob = agecomp_expected, size = 200)}. For
+      in {.code ~ dmultinom(prob = agecomp_proportion, size = 200)}. For
       another likelihood, give the compositions as counts, with
       {.var unit} {.val number}.",
       "i" = "Find the rows with {.code dplyr::filter(get_data(data),
