@@ -162,6 +162,22 @@ test_that("`initialize_fims()` reads parameter rows in any order", {
   expect_equal(age_major_report, year_major_report)
 })
 
+test_that("`initialize_fims()` gives the same model for a grouped parameter tibble", {
+  input <- initialize_fims(parameters = default_parameters, data = data)
+  grouped_input <- default_parameters |>
+    dplyr::group_by(fleet) |>
+    initialize_fims(data = data)
+  #' @description Test that `initialize_fims()` gives the same parameters for a tibble grouped by fleet as for the ungrouped tibble.
+  expect_equal(grouped_input[["parameters"]], input[["parameters"]])
+  obj <- get_obj(fit_fims(input, optimize = FALSE))
+  grouped_obj <- get_obj(fit_fims(grouped_input, optimize = FALSE))
+  #' @description Test that `initialize_fims()` gives the same objective for a tibble grouped by fleet as for the ungrouped tibble.
+  expect_equal(
+    object = grouped_obj[["fn"]](grouped_obj[["par"]]),
+    expected = obj[["fn"]](obj[["par"]])
+  )
+})
+
 test_that("`initialize_fims()` reads the recruitment log_sd rows in any order", {
   # A different log_sd for each year and deviations that differ in size, so a
   # log_sd read into the wrong year changes the likelihood. A log_sd by year

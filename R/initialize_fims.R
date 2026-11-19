@@ -43,6 +43,9 @@ initialize_fims <- function(parameters, data) {
       "i" = "Check what was given with {.code class(parameters)}."
     ))
   }
+  # dplyr steps such as slice() work within groups, so a grouped tibble is
+  # ungrouped first.
+  parameters <- dplyr::ungroup(parameters)
   if (!methods::is(data, "FIMSFrame")) {
     data <- FIMSFrame(data)
   }
