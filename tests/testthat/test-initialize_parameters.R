@@ -55,10 +55,9 @@ test_that("`initialize_parameters()` returns correct error messages", {
     ) |>
     dplyr::arrange(dplyr::desc(timing))
   withr::local_options(rlib_message_verbosity = "default")
-  #' @description Test that `initialize_parameters()` gives a message for rows out of year order.
-  expect_message(
-    object = sorted <- FIMS:::initialize_parameters(unsorted_parameters),
-    regexp = "not in year and age order"
+  #' @description Test that `initialize_parameters()` sorts rows out of year order without a message.
+  expect_no_message(
+    object = sorted <- FIMS:::initialize_parameters(unsorted_parameters)
   )
   #' @description Test that `initialize_parameters()` matches each value to its own year when the rows are out of order.
   expect_equal(

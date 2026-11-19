@@ -71,8 +71,9 @@ initialize_parameters <- function(parameters) {
         )
       )
     )
-  check_row_order(parameter_table)
   check_unique_rows(parameter_table)
+  # Each value goes with its own year and age, whatever the row order of the
+  # tibble.
   parameter_table <- parameter_table |>
     dplyr::arrange(
       factor(.data[["name"]], levels = unique(.data[["name"]])),
@@ -249,31 +250,6 @@ map_levels <- function(is_estimated, map_group) {
   as.integer(factor(key, levels = unique(stats::na.omit(key))))
 }
 
-#' Say when a parameter's rows are not in year and age order
-#'
-#' A parameter's values are matched to years and ages by the `timing` and
-#' `age` columns, so initialize_parameters() sorts the rows. This tells the
-#' user, because a tibble out of order is often a sign of an editing
-#' mistake.
-#' @noRd
-check_row_order <- function(parameter_table) {
-  unsorted <- parameter_table |>
-    dplyr::group_by(.data[["name"]]) |>
-    dplyr::filter(
-      is.unsorted(order(.data[["timing"]], .data[["age"]], na.last = TRUE))
-    ) |>
-    dplyr::pull(.data[["name"]]) |>
-    unique()
-  if (length(unsorted) > 0) {
-    cli::cli_inform(c(
-      "i" = "The rows of {.val {unsorted}} are not in year and age order.",
-      "i" = "They are sorted by {.var timing} and {.var age}, so each value
-      goes with its own year and age."
-    ))
-  }
-  invisible(parameter_table)
-}
-
 #' Refuse values that are not finite
 #'
 #' The model reads every value, estimated or constant, so 1 that is not
@@ -325,9 +301,9 @@ check_unique_rows <- function(parameter_table) {
       "x" = "{.val {repeated}} {?has/have} more than 1 row with the same
       {.var timing} and {.var age}.",
       "i" = "Each value needs its own row, with its year in {.var timing}
-      and its {.var age} when it varies by age. Rows by age with no
-      {.var timing} are read year by year: every age of the first year, then
-      the next year.",
+      and its {.var age} when it varies by age. The rows are sorted by
+      {.var timing} and {.var age} before they are used, so a value that
+      changes by year needs its year in {.var timing}.",
       "i" = "Find the rows of {.val {repeated[1]}} with
       {.code dplyr::filter(parameters, module_name ==
       \"{first[['module_name']]}\", {fleet_filter},

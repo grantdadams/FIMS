@@ -8,7 +8,10 @@ initialize_fims(parameters, data)
 }
 \arguments{
 \item{parameters}{A tibble of parameters, as from setup_default_parameters(),
-add_process() and add_priors().}
+add_process() and add_priors(). The rows of a parameter with more than 1
+value are used in order of \code{timing}, then \code{age}, not in the order they
+appear in the tibble. So each row needs its own combination of \code{timing}
+and \code{age}.}
 
 \item{data}{A FIMSFrame, or a data frame that FIMSFrame() accepts.}
 }
