@@ -3,8 +3,9 @@
 # An age-to-length key gives P(length bin | age), with 1 row per age that
 # sums to 1. A fleet's key is either data (a fixed key in the FIMSFrame) or is
 # derived from growth: the population length distribution at age is
-# calculated on a fine population length grid, then mapped onto the fleet's
-# length bins.
+# calculated on the population length bins, then mapped onto the fleet's
+# length bins. The population length bins come from length_bin rows with
+# fleet = NA, or else from default_population_edges().
 
 #' Distribution of length at age over length bins
 #'
@@ -109,10 +110,12 @@ edges_from_lower_edges <- function(lower_edges, fleet) {
 
 #' The default population length grid
 #'
-#' Bins 1 length unit wide (the units of the length data, mm in data_big)
-#' from the smallest fleet lower edge up to the largest fleet upper edge,
-#' plus 1 more bin at the top. A relative tolerance of 1e-12 means a fleet
-#' upper edge that is a whole number plus rounding error does not add a bin.
+#' Used when the data have no population length bins (length_bin rows with
+#' fleet = NA). Bins 1 length unit wide (the units of the length data, mm in
+#' data_big) from the smallest fleet lower edge up to the largest fleet upper
+#' edge, plus 1 more bin at the top. A relative tolerance of 1e-12 means a
+#' fleet upper edge that is a whole number plus rounding error does not add a
+#' bin.
 #'
 #' A population bin wider than a fleet bin would spread its probability
 #' evenly over the fleet bins it covers, which flattens the predicted length
@@ -126,9 +129,10 @@ default_population_edges <- function(fleet_edges) {
   if (length(fleet_edges) == 0) {
     cli::cli_abort(c(
       "x" = "Growth that models length needs length bins, but no fleet has
-      any.",
+      any and there are no population length bins.",
       "i" = "Add {.val length_comp} or {.val length_bin} rows for at least 1
-      fleet.",
+      fleet, or {.val length_bin} rows with {.code fleet = NA} to set the
+      population length bins.",
       "i" = "Check the data types of each fleet with
       {.code dplyr::count(get_data(data), fleet, type)}."
     ))
@@ -143,9 +147,11 @@ default_population_edges <- function(fleet_edges) {
       narrower than 1 length unit.",
       "i" = "The narrowest fleet bin is {.val {min(narrowest_bin)}} length
       units wide.",
-      "i" = "The population length grid has bins 1 length unit wide. A
-      population bin wider than a fleet bin would flatten the predicted
-      length composition. Use fleet length bins at least 1 unit wide."
+      "i" = "The default population length grid has bins 1 length unit wide.
+      A population bin wider than a fleet bin would flatten the predicted
+      length composition. Use fleet length bins at least 1 unit wide, or set
+      narrower population length bins with {.val length_bin} rows with
+      {.code fleet = NA}."
     ))
   }
   lower <- min(vapply(fleet_edges, min, numeric(1)))

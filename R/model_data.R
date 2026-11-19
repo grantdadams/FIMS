@@ -39,13 +39,31 @@ initialize_model_data <- function(parameters, data) {
     get_data(data),
     allow_global_conversion_fallback = !growth_models_length
   )
-  # Only fleets with length bins set the range of the population length grid.
+  # Only fleets with length bins set the range of the default population
+  # length grid.
   fleets_with_bins <- Filter(function(bins) length(bins) > 0, length_bins)
   fleet_edges <- Map(
     edges_from_lower_edges, fleets_with_bins, names(fleets_with_bins)
   )
-  population_edges <- if (growth_models_length) {
+  # length_bin rows with fleet = NA set the population length bins, in place
+  # of the default grid. FIMSFrame() checked that they cover every fleet's
+  # bins and that none is wider than a fleet bin it overlaps.
+  population_lengths <- population_length_bins(get_data(data))
+  population_edges <- if (!growth_models_length) {
+    NULL
+  } else if (length(population_lengths) > 0) {
+    length_bin_edges(population_lengths)
+  } else {
     default_population_edges(fleet_edges)
+  }
+  if (!growth_models_length && length(population_lengths) > 0) {
+    cli::cli_warn(c(
+      "!" = "The population length bins ({.var length_bin} rows with
+      {.code fleet = NA}) are not used because growth is {.val {growth_type}}.",
+      "i" = "Population length bins need a growth module that gives length at
+      age, such as {.code setup_default_Growth(module_type =
+      \"VonBertalanffySchnute\")}."
+    ))
   }
   recruitment_labels <- parameters |>
     dplyr::filter(.data[["module_name"]] == "Recruitment") |>
