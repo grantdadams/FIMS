@@ -341,12 +341,13 @@ check_shared_values <- function(name, value, map_level) {
 #' Growth parameters on the scale they are estimated on
 #'
 #' The tibble gives natural-scale values, but some growth parameters are
-#' estimated on a log or bounded logit scale, which keeps them in their valid
-#' range (each growth type's `working_scale` in growth_modules). This
-#' transforms them and renames them log_* or logit_*, so the transform is
-#' visible. The original label and value are kept for get_estimates(), which
-#' reports them on the natural scale. von Bertalanffy reference ages are data
-#' (see von_bertalanffy_schnute_growth_inputs()), so they are dropped here.
+#' estimated on a log, bounded logit or log-difference scale, which keeps them
+#' in their valid range (each growth type's `working_scale` in
+#' growth_modules). This transforms them and renames them log_*, logit_* or
+#' log_difference_*, so the transform is visible. The original label and
+#' value are kept for get_estimates(), which reports them on the natural
+#' scale. von Bertalanffy reference ages are data (see
+#' von_bertalanffy_schnute_growth_inputs()), so they are dropped here.
 #' @noRd
 growth_to_working_scale <- function(parameters) {
   parameters[["original_label"]] <- parameters[["label"]]
@@ -368,6 +369,15 @@ growth_to_working_scale <- function(parameters) {
     mean_length_old <- growth_rows[["value"]][growth_rows[["label"]] == "mean_length_old"]
     parameters[["value"]][is_logit] <- logit(
       0, mean_length_old, parameters[["value"]][is_logit]
+    )
+  }
+  is_log_difference <- parameters[["working_scale"]] %in% "log_difference"
+  if (any(is_log_difference)) {
+    # An estimated L2 is L1 plus a positive difference, log(L2 - L1), so L2
+    # stays above L1. initialize_fims() has checked that L2 > L1.
+    mean_length_young <- growth_rows[["value"]][growth_rows[["label"]] == "mean_length_young"]
+    parameters[["value"]][is_log_difference] <- log(
+      parameters[["value"]][is_log_difference] - mean_length_young
     )
   }
   is_transformed <- !is.na(parameters[["working_scale"]])

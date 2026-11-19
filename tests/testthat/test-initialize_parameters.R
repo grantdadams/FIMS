@@ -103,3 +103,64 @@ test_that("`map_levels()` works with correct inputs", {
 
 ## Error handling ----
 # No built-in errors to test.
+
+# growth_to_working_scale ----
+## Setup ----
+# von Bertalanffy reference lengths L1 = 275 and L2 = 725, with each
+# combination of estimated and constant.
+reference_lengths <- function(young, old) {
+  tibble::tibble(
+    module_name = "Growth",
+    module_type = "VonBertalanffySchnute",
+    label = c("mean_length_young", "mean_length_old"),
+    value = c(275, 725),
+    estimation_type = c(young, old)
+  )
+}
+
+## IO correctness ----
+test_that("`growth_to_working_scale()` works with correct inputs", {
+  for (young in c("constant", "fixed_effects", "random_effects")) {
+    for (old in c("fixed_effects", "random_effects")) {
+      working <- FIMS:::growth_to_working_scale(reference_lengths(young, old))
+      #' @description Test that `growth_to_working_scale()` gives an estimated L2 as log(L2 - L1), labeled log_difference_mean_length_old, and L1 as log(L1), whether L1 is estimated or constant.
+      expect_equal(
+        object = working[["value"]],
+        expected = c(log(275), log(725 - 275))
+      )
+      expect_equal(
+        object = working[["label"]],
+        expected = c("log_mean_length_young", "log_difference_mean_length_old")
+      )
+    }
+  }
+  for (young in c("fixed_effects", "random_effects")) {
+    working <- FIMS:::growth_to_working_scale(
+      reference_lengths(young, "constant")
+    )
+    #' @description Test that `growth_to_working_scale()` gives an estimated L1 with a constant L2 on a logit scale bounded by 0 and L2, and keeps L2 on the log scale.
+    expect_equal(
+      object = working[["value"]],
+      expected = c(stats::qlogis(275 / 725), log(725))
+    )
+    expect_equal(
+      object = working[["label"]],
+      expected = c("logit_mean_length_young", "log_mean_length_old")
+    )
+  }
+  working <- FIMS:::growth_to_working_scale(
+    reference_lengths("constant", "constant")
+  )
+  #' @description Test that `growth_to_working_scale()` keeps constant reference lengths on the log scale.
+  expect_equal(
+    object = working[["value"]],
+    expected = log(c(275, 725))
+  )
+})
+
+## Edge handling ----
+# No edge cases to test.
+
+## Error handling ----
+# No built-in errors to test. initialize_fims() checks that L2 > L1 before
+# this transform.

@@ -19,13 +19,19 @@ test_that("`von_bertalanffy_length_at_age()` works with correct inputs", {
   schnute_length_at_age <- FIMS:::von_bertalanffy_length_at_age(
     ages, classic_length_at_age(1), classic_length_at_age(12), 0.18, 1, 12
   )
-  # FIMS's smooth guard on the denominator shifts lengths by about 1e-5
-  # relative, so the match is close but not exact.
   #' @description Test that the Schnute form of `von_bertalanffy_length_at_age()` equals the classic von Bertalanffy curve when given its lengths at the 2 reference ages.
   expect_equal(
     object = schnute_length_at_age,
     expected = classic_length_at_age(ages),
-    tolerance = 1e-4
+    tolerance = 1e-12
+  )
+  #' @description Test that `von_bertalanffy_length_at_age()` gives L1 at the young reference age and L2 at the old reference age.
+  expect_equal(
+    object = FIMS:::von_bertalanffy_length_at_age(
+      c(4, 18), 275, 725, 0.18, 4, 18
+    ),
+    expected = c(275, 725),
+    tolerance = 1e-12
   )
 })
 
@@ -51,6 +57,39 @@ test_that("`von_bertalanffy_length_at_age()` returns correct outputs for edge ca
     object = FIMS:::von_bertalanffy_length_at_age(-1, 100, 500, 0.2, 2, 10),
     expected = 0
   )
+
+  # As k approaches 0, growth becomes linear through L1 and L2:
+  # L(a) = L1 + (L2 - L1) (a - a1) / (a2 - a1), also above a2.
+  small_k_ages <- c(1, 5, 12, 18)
+  #' @description Test that `von_bertalanffy_length_at_age()` approaches linear growth through L1 and L2 when k is 1e-20.
+  expect_equal(
+    object = FIMS:::von_bertalanffy_length_at_age(
+      small_k_ages, 275, 725, 1e-20, 1, 12
+    ),
+    expected = 275 + (725 - 275) * (small_k_ages - 1) / (12 - 1),
+    tolerance = 1e-10
+  )
+
+  # The derivative with respect to log k from the RTMB tape, at the default k
+  # and at k (a2 - a1) near 1e-3, where 1 - exp(-k (a2 - a1)) has lost about
+  # 3 digits to rounding.
+  step <- 1e-4
+  for (growth_coefficient in c(0.18, 0.99e-3 / 11, 1.01e-3 / 11)) {
+    log_length <- function(log_growth_coefficient) {
+      log(FIMS:::von_bertalanffy_length_at_age(
+        c(5, 18), 275, 725, exp(log_growth_coefficient), 1, 12
+      ))
+    }
+    tape <- RTMB::MakeTape(log_length, log(growth_coefficient))
+    numerical <- (log_length(log(growth_coefficient) + step) -
+      log_length(log(growth_coefficient) - step)) / (2 * step)
+    #' @description Test that the AD derivative of log length at age with respect to log k matches central differences at the default k and near k = 0.
+    expect_equal(
+      object = as.vector(tape$jacobian(log(growth_coefficient))),
+      expected = numerical,
+      tolerance = 1e-6
+    )
+  }
 })
 
 ## Error handling ----

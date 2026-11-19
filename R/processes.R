@@ -305,7 +305,9 @@ write_process <- function(parameters, process, estimation_type, sd, rho) {
 #'   `log_q`.
 #' - A growth parameter estimated on a log or logit scale by that label, such
 #'   as `log_mean_length_young ~ normal(mean = log(280), sd = 0.1)`, so the
-#'   prior's scale is the one the label says.
+#'   prior's scale is the one the label says. An estimated `mean_length_old`
+#'   is `log_difference_mean_length_old`, the log of `mean_length_old -
+#'   mean_length_young`.
 #' - A process's own parameter by its flat name, such as `log_q_log_sd` for
 #'   the sd of a process on `log_q`, and the recruitment `log_sd` as `log_sd`.
 #' - An estimated likelihood parameter by its Data label, such as
@@ -413,9 +415,9 @@ prior_target_rows <- function(parameters, target, module_name, fleet) {
 
 #' The Growth rows a prior's target names, on the scale they are estimated on
 #'
-#' A growth parameter estimated on a log or logit scale is named with that
-#' prefix (log_mean_length_young). The tibble label alone is an error, so the
-#' scale of the prior's mean and sd is never guessed.
+#' A growth parameter estimated on a log, logit or log-difference scale is
+#' named with that prefix (log_mean_length_young). The tibble label alone is
+#' an error, so the scale of the prior's mean and sd is never guessed.
 #' @noRd
 growth_prior_target <- function(parameters, target, in_module) {
   growth <- dplyr::filter(parameters, in_module, is.na(.data[["target_label"]]))

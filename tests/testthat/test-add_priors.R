@@ -157,6 +157,20 @@ test_that("`add_priors()` works on any parameter, named as the model names it", 
     object = purrr::map_chr(densities, "distribution_type"),
     expected = c(rep("prior", 4), "process", "process")
   )
+  # An estimated L2 is estimated as log(L2 - L1).
+  difference_densities <- parameters_with_priors |>
+    add_priors(
+      log_difference_mean_length_old ~ normal(mean = log(440), sd = 0.1),
+      module_name = "Growth"
+    ) |>
+    FIMS:::initialize_parameters() |>
+    purrr::pluck("parameter_table") |>
+    FIMS:::initialize_densities()
+  #' @description Test that a prior on an estimated L2 targets log_difference_mean_length_old, the log of L2 - L1, in the model.
+  expect_contains(
+    object = purrr::map_chr(difference_densities, "target"),
+    expected = "Growth.log_difference_mean_length_old"
+  )
 })
 
 test_that("`add_priors()` adds the prior's negative log density to the objective", {
@@ -291,6 +305,15 @@ test_that("`add_priors()` returns correct error messages", {
       module_name = "Growth"
     ),
     regexp = "log scale"
+  )
+  #' @description Test that `add_priors()` errors for an estimated L2 named on the log scale, since it is estimated as log(L2 - L1).
+  expect_error(
+    object = add_priors(
+      parameters_with_priors,
+      log_mean_length_old ~ normal(mean = log(720), sd = 0.1),
+      module_name = "Growth"
+    ),
+    regexp = "There are no"
   )
   #' @description Test that `add_priors()` errors for a parameter with its own process.
   expect_error(
