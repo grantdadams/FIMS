@@ -25,7 +25,19 @@ test_that("`iid_process_lpdf()` works with correct inputs", {
 # No edge cases to test.
 
 ## Error handling ----
-# No built-in errors to test.
+test_that("`iid_process_lpdf()` returns correct error messages", {
+  process_values <- c(0.1, -0.3, 0.2)
+  #' @description Test that `iid_process_lpdf()` errors for 2 sds for 3 values, rather than recycling them.
+  expect_error(
+    object = FIMS:::iid_process_lpdf(process_values, 0, log(c(0.4, 0.5))),
+    regexp = "1 per process value"
+  )
+  #' @description Test that `iid_process_lpdf()` errors for 2 means for 3 values, rather than recycling them.
+  expect_error(
+    object = FIMS:::iid_process_lpdf(process_values, c(0, 0.1), log(0.4)),
+    regexp = "1 per process value"
+  )
+})
 
 # ar1_process_lpdf ----
 ## Setup ----
@@ -75,6 +87,17 @@ test_that("`ar1_process_lpdf()` returns correct error messages", {
     object = FIMS:::ar1_process_lpdf(by_age_and_year, 0, log(0.3), 0),
     regexp = "by\\s+year\\s+only"
   )
+  process_values <- c(0.1, -0.3, 0.2, 0.4)
+  #' @description Test that `ar1_process_lpdf()` errors for 1 sd per year, because its first year needs the same sd in every year.
+  expect_error(
+    object = FIMS:::ar1_process_lpdf(process_values, 0, log(rep(0.3, 4)), 0),
+    regexp = "1 sd and 1 rho"
+  )
+  #' @description Test that `ar1_process_lpdf()` errors for 2 means for 4 values, rather than recycling them.
+  expect_error(
+    object = FIMS:::ar1_process_lpdf(process_values, c(0, 0.1), log(0.3), 0),
+    regexp = "1 per process value"
+  )
 })
 
 # random_walk_process_lpdf ----
@@ -109,5 +132,12 @@ test_that("`random_walk_process_lpdf()` returns correct error messages", {
   expect_error(
     object = FIMS:::random_walk_process_lpdf(by_age_and_year, 0, log(0.2)),
     regexp = "by\\s+year\\s+only"
+  )
+  #' @description Test that `random_walk_process_lpdf()` errors for 1 sd per year, rather than recycling 4 sds over 3 steps.
+  expect_error(
+    object = FIMS:::random_walk_process_lpdf(
+      c(1, 1.2, 0.9, 1.1), 0, log(rep(0.2, 4))
+    ),
+    regexp = "1 sd for every\\s+step"
   )
 })

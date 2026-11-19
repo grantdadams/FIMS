@@ -66,24 +66,7 @@ prior_densities <- function(parameter_table) {
       .data[["target_label"]] == .env[["target_label"]]
     )
     name_of <- function(label) rows[["name"]][rows[["label"]] == label][1]
-    # A prior mean with 1 value per target value must carry the target's
-    # timing and age, so the means are sorted and shaped like the values
-    # and each mean stays with its own value.
-    mean_rows <- dplyr::filter(rows, .data[["label"]] == "expected_mean")
-    if (nrow(mean_rows) > 1 &&
-      (nrow(mean_rows) != nrow(target_rows) ||
-        !identical(mean_rows[["timing"]], target_rows[["timing"]]) ||
-        !identical(mean_rows[["age"]], target_rows[["age"]]))) {
-      cli::cli_abort(c(
-        "x" = "The prior on {.val {target}} has {.val {nrow(mean_rows)}}
-        means that do not match its {.val {nrow(target_rows)}} values by
-        year and age.",
-        "i" = "A prior mean is 1 value, or 1 per value with the same
-        {.var timing} and {.var age} as the target's rows.",
-        "i" = "Compare the rows with {.code dplyr::filter(parameters,
-        label == \"expected_mean\", target_label == \"{target_label}\")}."
-      ))
-    }
+    check_density_parameter_rows(rows, target_rows, target)
     list(
       distribution_type = "prior",
       target = target,
@@ -144,6 +127,11 @@ process_densities <- function(parameter_table) {
         (is.na(parameter_table[["target_label"]]) &
           parameter_table[["module_name"]] == "Recruitment" &
           label %in% names(recruitment_process_means)))
+    check_density_parameter_rows(
+      dplyr::filter(parameter_table, is_hyperparameter),
+      dplyr::filter(parameter_table, .data[["name"]] == target),
+      target
+    )
     hyperparameters <- parameter_table |>
       dplyr::filter(is_hyperparameter) |>
       dplyr::distinct(.data[["label"]], .data[["name"]])
@@ -209,6 +197,58 @@ check_estimated_process <- function(rows, target) {
       estimation_type)}."
     ))
   }
+}
+
+#' Stop unless a prior's or process's own parameter has 1 value or 1 per
+#' target value
+#'
+#' A mean or sd with more than 1 value is read value by value with the
+#' target's values, so it needs the target's rows: the same timing and, for a
+#' target by age and year, the same age. Rows of any other length would be
+#' recycled and read with the value of another year or age.
+#'
+#' @param rows The density's own rows (expected_mean, log_sd, logit_rho), in
+#'   the parameter table's order (by timing, then age).
+#' @param target_rows Every row of the target, in the same order.
+#' @param target The target's flat name.
+#' @noRd
+check_density_parameter_rows <- function(rows, target_rows, target) {
+  for (name in unique(rows[["name"]])) {
+    parameter_rows <- dplyr::filter(rows, .data[["name"]] == .env[["name"]])
+    is_matched <- nrow(parameter_rows) == 1 ||
+      (identical(
+        as.numeric(parameter_rows[["timing"]]),
+        as.numeric(target_rows[["timing"]])
+      ) &&
+        identical(
+          as.numeric(parameter_rows[["age"]]),
+          as.numeric(target_rows[["age"]])
+        ))
+    if (is_matched) {
+      next
+    }
+    target_years <- unique(stats::na.omit(target_rows[["timing"]]))
+    target_timing <- if (length(target_years) == 0) {
+      "It has no values by year."
+    } else {
+      cli::format_inline(
+        "Its values are for the years {.val {min(target_years)}} to
+        {.val {max(target_years)}}."
+      )
+    }
+    cli::cli_abort(c(
+      "x" = "{.val {name}} has {.val {nrow(parameter_rows)}} rows that do not
+      match the {.val {nrow(target_rows)}} value{?s} of {.val {target}} by
+      year and age.",
+      "i" = "A process or prior mean, sd or rho needs 1 row, or 1 row for
+      each value of its target with the same {.var timing} and {.var age}.
+      {target_timing}",
+      "i" = "Compare the rows by year with {.code dplyr::filter(parameters,
+      module_name == \"{parameter_rows[['module_name']][1]}\") |>
+      dplyr::count(fleet, label, timing)}."
+    ))
+  }
+  invisible(TRUE)
 }
 
 #' Use an estimated family parameter when the tibble has a row for it

@@ -187,6 +187,28 @@ multinomial_draw <- function(observed, prob) {
 # rho is estimated as logit_rho, with rho = 2 / (1 + exp(-logit_rho)) - 1. So
 # rho is between -1 and 1, and logit_rho = log(3) gives rho = 0.5.
 
+#' Stop unless a process mean and sd have 1 value or 1 per process value
+#'
+#' Recycling a vector of another length would score a value with the mean or
+#' sd of another year, with no error.
+#' @noRd
+check_process_lengths <- function(n_values, ...) {
+  lengths <- vapply(list(...), length, integer(1))
+  is_wrong <- !lengths %in% c(1L, n_values)
+  if (any(is_wrong)) {
+    cli::cli_abort(c(
+      "x" = "{.val {names(lengths)[is_wrong]}} {?has/have}
+      {.val {lengths[is_wrong]}} value{?s} for {.val {n_values}} process
+      value{?s}.",
+      "i" = "A process mean or sd needs 1 value, or 1 per process value.",
+      "i" = "Count the rows of each process and prior with
+      {.code dplyr::count(parameters, module_name, fleet, label,
+      target_label)}."
+    ))
+  }
+  invisible(n_values)
+}
+
 #' Independent normal deviations around the mean (iid)
 #'
 #' x_t ~ Normal(m_t, sd), independently for every value (each year, or each
@@ -194,9 +216,13 @@ multinomial_draw <- function(observed, prob) {
 #'
 #' @param values The process values.
 #' @param expected_mean Their mean, the same shape or 1 value.
-#' @param log_sd Log of the SD.
+#' @param log_sd Log of the SD, the same shape or 1 value.
 #' @noRd
 iid_process_lpdf <- function(values, expected_mean, log_sd) {
+  check_process_lengths(
+    length(values),
+    expected_mean = expected_mean, log_sd = log_sd
+  )
   expected_mean <- rep_len(as.vector(expected_mean), length(values))
   standard_deviation <- rep_len(exp(log_sd), length(values))
   sum(RTMB::dnorm(values, expected_mean, standard_deviation, log = TRUE))
@@ -223,6 +249,21 @@ ar1_process_lpdf <- function(values, expected_mean, log_sd, logit_rho) {
       re_structure == \"ar1\")}."
     ))
   }
+  # The first year comes from the stationary distribution, which needs the
+  # same sd and rho in every year.
+  if (length(log_sd) != 1 || length(logit_rho) != 1) {
+    cli::cli_abort(c(
+      "x" = "An AR1 process has {.val {length(log_sd)}} sd value{?s} and
+      {.val {length(logit_rho)}} rho value{?s}.",
+      "i" = "An AR1 process has 1 sd and 1 rho for every year. Give 1
+      {.val log_sd} row and 1 {.val logit_rho} row with no {.var timing},
+      as {.fn add_process} does.",
+      "i" = "Count the rows with {.code dplyr::filter(parameters,
+      label %in% c(\"log_sd\", \"logit_rho\")) |> dplyr::count(module_name,
+      fleet, label, target_label)}."
+    ))
+  }
+  check_process_lengths(length(values), expected_mean = expected_mean)
   deviation <- values - rep_len(as.vector(expected_mean), length(values))
   standard_deviation <- exp(log_sd)
   rho <- inv_logit(-1, 1, logit_rho)
@@ -255,6 +296,18 @@ random_walk_process_lpdf <- function(values, expected_mean, log_sd) {
       varies by age and year.",
       "i" = "Check the target rows with {.code dplyr::filter(parameters,
       re_structure == \"rw\")}."
+    ))
+  }
+  # n years have n - 1 steps, so an sd by year would need a rule for which
+  # year each step belongs to.
+  if (length(log_sd) != 1) {
+    cli::cli_abort(c(
+      "x" = "A random walk has {.val {length(log_sd)}} sd values.",
+      "i" = "A random walk has 1 sd for every step. Give 1 {.val log_sd} row
+      with no {.var timing}, as {.fn add_process} does.",
+      "i" = "Count the rows with {.code dplyr::filter(parameters,
+      label == \"log_sd\") |> dplyr::count(module_name, fleet,
+      target_label)}."
     ))
   }
   n_years <- length(values)

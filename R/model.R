@@ -68,24 +68,24 @@ density_inputs <- function(density_entry, parameters, population) {
     parameter = parameters[[density_entry[["mean"]][["name"]]]],
     derived = population[[density_entry[["mean"]][["name"]]]]
   )
+  hyperparameters <- lapply(density_entry[["hyperparameters"]], function(name) {
+    parameters[[name]]
+  })
   # A prior scores the values in `positions` (prior_densities()): values
-  # that share 1 estimate once, and each constant value. A mean with 1 value
-  # per target value is subset the same way, so each mean stays with its
+  # that share 1 estimate once, and each constant value. A mean or sd with 1
+  # value per target value is subset the same way, so each stays with its
   # value.
   positions <- density_entry[["positions"]]
   if (!is.null(positions)) {
     if (length(density_mean) == length(x)) {
       density_mean <- density_mean[positions]
     }
+    hyperparameters <- lapply(hyperparameters, function(value) {
+      if (length(value) == length(x)) value[positions] else value
+    })
     x <- x[positions]
   }
-  list(
-    x = x,
-    mean = density_mean,
-    hyperparameters = lapply(density_entry[["hyperparameters"]], function(name) {
-      parameters[[name]]
-    })
-  )
+  list(x = x, mean = density_mean, hyperparameters = hyperparameters)
 }
 
 #' Negative log-likelihood: priors, then processes (random effects), then

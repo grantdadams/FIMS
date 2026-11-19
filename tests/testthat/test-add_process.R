@@ -175,6 +175,54 @@ test_that("`add_process()` returns correct outputs for edge cases", {
   )
 })
 
+test_that("a hand-written process log_sd for each year is matched by year", {
+  # An iid process on fleet1's log_Fmort (years 1 to 6) with a hand-written
+  # log_sd for each year, given in reverse order of timing.
+  log_Fmort_values <- c(-1.2, -0.9, -1.1, -0.6, -1.4, -0.8)
+  sd_by_year <- c(0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
+  process_parameters <- small_parameters |>
+    dplyr::mutate(value = dplyr::if_else(
+      label == "log_Fmort", log_Fmort_values[timing], value
+    )) |>
+    add_process(
+      log_Fmort ~ 1 + (1 | year),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    )
+  log_sd_rows <- process_parameters |>
+    dplyr::filter(label == "log_sd") |>
+    dplyr::slice(rep(1, 6)) |>
+    dplyr::mutate(timing = 6:1, value = log(rev(sd_by_year)))
+  with_log_sd_rows <- function(log_sd_rows) {
+    process_parameters |>
+      dplyr::filter(label != "log_sd") |>
+      dplyr::bind_rows(log_sd_rows)
+  }
+  initialized <- FIMS:::initialize_parameters(with_log_sd_rows(log_sd_rows))
+  process <- FIMS:::process_densities(initialized[["parameter_table"]])[[1]]
+  inputs <- FIMS:::density_inputs(
+    process, initialized[["parameters"]],
+    population = NULL
+  )
+  #' @description Test that a process with 1 log_sd per year scores each value with the sd of its own year.
+  expect_equal(
+    object = FIMS:::iid_process_lpdf(
+      inputs[["x"]], inputs[["mean"]], inputs[["hyperparameters"]][["log_sd"]]
+    ),
+    expected = sum(stats::dnorm(
+      log_Fmort_values, mean(log_Fmort_values), sd_by_year,
+      log = TRUE
+    ))
+  )
+  #' @description Test that a process with a log_sd for only 5 of its 6 years errors, because the sds do not match the values.
+  expect_error(
+    object = FIMS:::process_densities(FIMS:::initialize_parameters(
+      with_log_sd_rows(dplyr::filter(log_sd_rows, timing >= 2))
+    )[["parameter_table"]]),
+    regexp = "do not\\s+match"
+  )
+})
+
 ## Error handling ----
 test_that("`add_process()` returns correct error messages", {
   #' @description Test that `add_process()` errors for a random walk around time blocks.

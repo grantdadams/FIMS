@@ -98,6 +98,15 @@ test_that("`density_inputs()` returns correct outputs for edge cases", {
     object = inputs[["mean"]],
     expected = c(-1.1, -2.3)
   )
+  parameters[["Fleet.fleet1.log_Fmort_prior_log_sd"]] <- log(c(0.5, 0.6, 0.7))
+  #' @description Test that `density_inputs()` subsets a prior log_sd with 1 value per target value at the same positions, so each sd stays with its value.
+  expect_equal(
+    object = FIMS:::density_inputs(
+      prior_entry, parameters,
+      population = NULL
+    )[["hyperparameters"]][["log_sd"]],
+    expected = log(c(0.5, 0.7))
+  )
 })
 
 ## Error handling ----

@@ -281,7 +281,27 @@ test_that("a hand-written prior mean for each value is matched by year", {
     object = FIMS:::prior_densities(FIMS:::initialize_parameters(
       dplyr::bind_rows(per_year_prior, dplyr::filter(mean_rows, timing <= 3))
     )[["parameter_table"]]),
-    regexp = "do not match"
+    regexp = "do not\\s+match"
+  )
+  # The prior with 1 mean, and 1 sd per year for only 3 of the 6 years.
+  per_year_sd_prior <- small_parameters |>
+    add_priors(
+      log_Fmort ~ normal(mean = -1, sd = 0.5),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    dplyr::filter(!(target_label %in% "log_Fmort" & label == "log_sd")) |>
+    dplyr::bind_rows(
+      mean_rows |>
+        dplyr::filter(timing <= 3) |>
+        dplyr::mutate(label = "log_sd", value = log(0.5))
+    )
+  #' @description Test that a prior with sds for only 3 of the 6 years errors, because the sds do not match the values.
+  expect_error(
+    object = FIMS:::prior_densities(
+      FIMS:::initialize_parameters(per_year_sd_prior)[["parameter_table"]]
+    ),
+    regexp = "do not\\s+match"
   )
 })
 
