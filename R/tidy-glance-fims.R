@@ -178,8 +178,7 @@ tidy.FIMSFit <- function(
 #'   \item{`AIC`}{Akaike information criterion (marginal, fixed effects only).}
 #'   \item{`BIC`}{Bayesian information criterion (marginal, fixed effects only).}
 #'   \item{`nobs`}{Total number of data observations (rows with both an
-#'     observed and an expected value in [get_estimates()]). Missing
-#'     observations (-999) are not counted.}
+#'     observed and an expected value in [get_estimates()]).}
 #'   \item{`npar_fixed`}{Number of fixed-effect parameters.}
 #'   \item{`npar_random`}{Number of random-effect parameters.}
 #'   \item{`marginal_nll`}{Marginal negative log-likelihood
@@ -234,12 +233,10 @@ glance.FIMSFit <- function(x, ...) {
   total_nll <- if (!is.null(report[["jnll"]])) report[["jnll"]] else NA_real_
 
   # Observations: rows that have both observed and expected values, as in
-  # augment(). Missing observations (-999) are not data, and an expected value
-  # that is not finite is stored as -999, so neither is counted.
+  # augment(). Missing observations are NA in get_estimates().
   estimates <- get_estimates(x)
   nobs <- sum(
-    !is.na(estimates[["observed"]]) & estimates[["observed"]] != -999 &
-      !is.na(estimates[["expected"]]) & estimates[["expected"]] != -999
+    !is.na(estimates[["observed"]]) & !is.na(estimates[["expected"]])
   )
 
   # information criteria

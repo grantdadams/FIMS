@@ -227,7 +227,12 @@ test_that("`get_estimates()` handles non-finite derived quantities", {
 test_that("`get_estimates()` reports missing observations and undefined composition counts as NA", {
   # fleet1 has no age composition in year 3, -999 for age 3 in year 4 (the
   # other ages rescaled to sum to 1) and no length composition, and survey1
-  # has no index in year 5
+  # has no index in year 5. fleet1 keeps its length bins as length_bin rows,
+  # so it still has expected length compositions.
+  fleet1_length_bins <- data_big |>
+    dplyr::filter(type == "length_comp", fleet == "fleet1") |>
+    dplyr::distinct(fleet, length) |>
+    dplyr::mutate(type = "length_bin")
   missing_data <- data_big |>
     dplyr::mutate(
       year_4 = .data$type == "age_comp" & .data$fleet == "fleet1" &
@@ -243,7 +248,8 @@ test_that("`get_estimates()` reports missing observations and undefined composit
       !(.data$type == "age_comp" & .data$fleet == "fleet1" & .data$timing == 3),
       !(.data$type == "length_comp" & .data$fleet == "fleet1"),
       !(.data$type == "index" & .data$fleet == "survey1" & .data$timing == 5)
-    )
+    ) |>
+    dplyr::bind_rows(fleet1_length_bins)
   data_4_model <- FIMSFrame(missing_data)
   fit <- setup_default_parameters(data = data_4_model) |>
     initialize_fims(data = data_4_model) |>
@@ -508,7 +514,7 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
     dplyr::filter(
       .data[["label"]] == "agecomp_expected",
       .data[["fleet"]] == "survey1",
-      .data[["observed"]] != -999
+      !is.na(.data[["observed"]])
     )
   standard_deviation <- 0.5 + 0.2 * survey_comps[["age"]] +
     0.1 * survey_comps[["year"]]
@@ -518,6 +524,50 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
     expected = stats::dnorm(
       survey_comps[["observed"]], survey_comps[["expected"]],
       standard_deviation,
+      log = TRUE
+    )
+  )
+})
+
+test_that("`get_estimates()` keeps the other bins of a normal composition year with a missing bin", {
+  # Unlike the multinomial, a normal likelihood scores each bin, so 1 missing
+  # bin leaves the other bins of its year as data.
+  normal_comps <- data_big |>
+    dplyr::mutate(
+      is_survey_comp = type == "age_comp" & fleet == "survey1",
+      observed = dplyr::case_when(
+        is_survey_comp & timing == 4 & age == 3 ~ -999,
+        is_survey_comp ~ observed * 200,
+        .default = observed
+      ),
+      unit = dplyr::if_else(is_survey_comp, "number", unit),
+      uncertainty = dplyr::if_else(
+        is_survey_comp, "~ dnorm(mean = agecomp_expected, sd = 1)", uncertainty
+      )
+    ) |>
+    dplyr::select(-"is_survey_comp")
+  data_4_model <- FIMSFrame(normal_comps)
+  year_4 <- setup_default_parameters(data_4_model) |>
+    initialize_fims(data = data_4_model) |>
+    fit_fims(optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(
+      .data[["label"]] == "agecomp_expected",
+      .data[["fleet"]] == "survey1",
+      .data[["year"]] == 4
+    )
+  is_missing <- year_4[["age"]] == 3
+  #' @description Test that a missing bin of a normal composition is NA in `observed` and `estimated`.
+  expect_true(all(is.na(c(
+    year_4[["observed"]][is_missing], year_4[["estimated"]][is_missing]
+  ))))
+  #' @description Test that the other bins of that year keep their observations.
+  expect_false(anyNA(year_4[["observed"]][!is_missing]))
+  #' @description Test that the other bins of that year are scored by the normal log density.
+  expect_equal(
+    object = year_4[["likelihood"]][!is_missing],
+    expected = stats::dnorm(
+      year_4[["observed"]][!is_missing], year_4[["expected"]][!is_missing], 1,
       log = TRUE
     )
   )

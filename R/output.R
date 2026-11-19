@@ -366,7 +366,8 @@ estimate_row_for_link <- c(
 #' `expected` holds the value the likelihood uses (log scale for lognormal
 #' data, proportions for compositions). `likelihood` is the log-likelihood of
 #' each observation and `lpdf` the total for the data set. Missing
-#' observations are shown as -999.
+#' observations are NA in `observed`, and so are the expected composition
+#' counts in `estimated` where there is no observation.
 #' @noRd
 fill_data_columns <- function(estimates, input, report, values) {
   estimates <- dplyr::mutate(
@@ -379,6 +380,12 @@ fill_data_columns <- function(estimates, input, report, values) {
   n_earlier_observations <- 0
   for (component in input[["model_data"]][["likelihoods"]]) {
     observed <- flatten_by_year(component[["observed"]])
+    # The multinomial skips a row (a year, or a year and length bin) with any
+    # missing bin (multinomial_lpmf()), so no bin of that row is data.
+    if (component[["family"]] == "dmultinom") {
+      is_skipped_row <- rowSums(is.na(component[["observed"]])) > 0
+      observed[rep(is_skipped_row, each = ncol(component[["observed"]]))] <- NA
+    }
     n_observations <- length(observed)
     log_density <- observation_lpdf[
       n_earlier_observations + seq_len(n_observations)
@@ -405,7 +412,7 @@ fill_data_columns <- function(estimates, input, report, values) {
       ))
     }
     estimates[["expected"]][target] <- estimates[["estimated"]][link_rows]
-    estimates[["observed"]][target] <- dplyr::coalesce(observed, -999)
+    estimates[["observed"]][target] <- observed
     estimates[["likelihood"]][target] <- log_density
     estimates[["lpdf"]][target] <- sum(log_density)
     log_sd <- family_parameters(component, values)[["log_sd"]]
@@ -416,5 +423,12 @@ fill_data_columns <- function(estimates, input, report, values) {
       likelihood_families[[component[["family"]]]][["distribution"]]
     estimates[["input_type"]][target] <- "data"
   }
+  # Expected composition counts are the expected proportions scaled to the
+  # number observed, so they are NA where there is no observation, including
+  # every year of a fleet without that data type. The proportions are kept
+  # because they are predictions.
+  is_count_without_data <- is.na(estimates[["observed"]]) &
+    estimates[["label"]] %in% c("agecomp_expected", "lengthcomp_expected")
+  estimates[["estimated"]][is_count_without_data] <- NA
   estimates
 }
