@@ -680,9 +680,7 @@ fit_fims <- function(input,
   # The map can be edited by name after initialize_fims(), so each row's map
   # level is read from the map used here. This comes after RTMB has checked
   # the map, so a map RTMB refuses gets RTMB's message.
-  input[["parameter_table"]] <- levels_from_map(
-    input[["parameter_table"]], input[["parameters"]], input[["map"]]
-  )
+  input[["parameter_table"]] <- levels_from_map(input)
   # The Hessian of the random effects is taped the first time it is used.
   # Taping it now, while atomic matrix products are on, means that a model
   # from optimize = FALSE keeps the small tape when it is evaluated later.

@@ -509,6 +509,22 @@ test_that("`fit_fims()` reads shared and constant values from a map edited by na
   )
   #' @description Test that `fit_fims()` with 1 value set to NA in a map edited by name gives every estimate a starting value.
   expect_false(anyNA(get_obj(fixed_year_fit)[["par"]]))
+
+  # logit_steep is constant in the default parameters, and it is not a
+  # random effect, so a level in the map makes it a fixed effect.
+  estimated_steepness_input <- initialize_fims(
+    default_parameters,
+    data = data_10_years
+  )
+  estimated_steepness_input[["map"]][["Recruitment.logit_steep"]] <- factor(1)
+  logit_steep <- fit_fims(estimated_steepness_input, optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(label == "logit_steep")
+  #' @description Test that `fit_fims()` lists a constant value given a level in a map edited by name as a fixed effect.
+  expect_equal(
+    object = logit_steep[["estimation_type"]],
+    expected = "fixed_effects"
+  )
 })
 
 test_that("`fit_fims()` gives the same values as with TMB's default tape settings", {
