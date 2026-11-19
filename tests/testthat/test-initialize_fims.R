@@ -22,6 +22,37 @@ get_fleet_report <- function(data) {
     get_report()
 }
 
+# Default parameters with von Bertalanffy growth, which gives length at age
+# and so uses the population length bins.
+setup_vonb_parameters <- function(frame) {
+  setup_default_parameters(frame) |>
+    dplyr::filter(module_name != "Growth") |>
+    dplyr::bind_rows(
+      setup_default_Growth(data = frame, module_type = "VonBertalanffySchnute")
+    )
+}
+
+# The report of a model at its starting values.
+get_population_report <- function(frame, parameters) {
+  parameters |>
+    initialize_fims(data = frame) |>
+    fit_fims(optimize = FALSE) |>
+    get_report()
+}
+
+# The population length bin edges the model uses.
+get_population_edges <- function(frame, parameters) {
+  input <- initialize_fims(parameters = parameters, data = frame)
+  population <- input[["model_data"]][["populations"]][["population"]]
+  population[["growth_inputs"]][["length_edges"]]
+}
+
+# data_big without length data, so no fleet has length bins.
+no_length_data <- dplyr::filter(
+  data_big,
+  !type %in% c("length_comp", "age_to_length_conversion")
+)
+
 ## IO correctness ----
 test_that("`initialize_fims()` works with correct inputs", {
   #' @description Test that `initialize_fims()` does not warn when all recruitment process values are estimated.
@@ -382,6 +413,95 @@ test_that("`initialize_fims()` assigns named von Bertalanffy SDs independently o
   population <- result[["model_data"]][["populations"]][["population"]]
   #' @description Test that each reference age is assigned to its named input.
   expect_equal(population[["growth_inputs"]][["reference_ages"]], c(4, 18))
+})
+
+test_that("`initialize_fims()` sets the population length bins from `length_bin` rows with `fleet = NA`", {
+  bins_frame <- FIMSFrame(dplyr::bind_rows(
+    data_big,
+    population_length_bin_rows(seq(0, 1150, by = 50))
+  ))
+  bins_input <- initialize_fims(
+    parameters = setup_vonb_parameters(bins_frame),
+    data = bins_frame
+  )
+  population <- bins_input[["model_data"]][["populations"]][["population"]]
+  #' @description Test that `initialize_fims()` uses the lower edges from `length_bin` rows with `fleet = NA` as the population length bins, with the last bin as wide as the bin before it.
+  expect_equal(
+    population[["growth_inputs"]][["length_edges"]],
+    seq(0, 1200, by = 50)
+  )
+  # The fleet1 bins are the population bins up to 1100 mm, and its last bin
+  # holds all fish of 1100 mm or more.
+  #' @description Test that the fleet1 age-to-length key maps each population length bin to the fleet bin that holds it.
+  expect_equal(
+    bins_input[["model_data"]][["fleets"]][["fleet1"]][["rebin_weights"]],
+    rbind(diag(23), c(rep(0, 22), 1))
+  )
+
+  #' @description Test that `initialize_fims()` builds 1-unit population length bins from the fleet length bins when there are no `length_bin` rows with `fleet = NA`.
+  expect_equal(get_population_edges(data, setup_vonb_parameters(data)), 0:1151)
+
+  no_length_frame <- FIMSFrame(dplyr::bind_rows(
+    no_length_data,
+    population_length_bin_rows(c(0, 10, 20, 30))
+  ))
+  #' @description Test that `initialize_fims()` uses population length bins when no fleet has length bins.
+  expect_equal(
+    get_population_edges(no_length_frame, setup_vonb_parameters(no_length_frame)),
+    c(0, 10, 20, 30, 40)
+  )
+})
+
+test_that("`initialize_fims()` builds the length distribution at age on the population length bins", {
+  # The data_big fleet length bins are 0-1100 by 50, so they span 0-1150. The
+  # bins FIMS builds by default are 1 unit wide from 0 to 1150, plus 1 more.
+  default_population_lengths <- seq(0, 1150, by = 1)
+  vonb_parameters <- setup_vonb_parameters(data)
+  base_report <- get_population_report(data, vonb_parameters)
+  default_bins_frame <- FIMSFrame(dplyr::bind_rows(
+    data_big,
+    population_length_bin_rows(default_population_lengths)
+  ))
+  default_bins_report <- get_population_report(
+    default_bins_frame,
+    vonb_parameters
+  )
+  no_length_bins_frame <- FIMSFrame(dplyr::bind_rows(
+    no_length_data,
+    population_length_bin_rows(default_population_lengths)
+  ))
+  no_length_bins_report <- get_population_report(
+    no_length_bins_frame,
+    setup_vonb_parameters(no_length_bins_frame)
+  )
+  #' @description Test that population length bins equal to the bins FIMS builds by default give the same model as no population length bins.
+  expect_equal(default_bins_report[["jnll"]], base_report[["jnll"]])
+  expect_equal(default_bins_report[["biomass"]], base_report[["biomass"]])
+  #' @description Test that, with the same population length bins, biomass is the same with and without length compositions.
+  expect_equal(
+    no_length_bins_report[["biomass"]],
+    default_bins_report[["biomass"]]
+  )
+
+  # 1 population bin from 0 to 2000 mm holds every fish, because mean length
+  # at age is at most 725 mm with an SD of at most 73 mm.
+  one_bin_frame <- FIMSFrame(dplyr::bind_rows(
+    no_length_data,
+    population_length_bin_rows(c(0, 2000))
+  ))
+  one_bin_parameters <- setup_vonb_parameters(one_bin_frame)
+  one_bin_report <- get_population_report(one_bin_frame, one_bin_parameters)
+  growth_rows <- dplyr::filter(one_bin_parameters, module_name == "Growth")
+  length_weight_a <- growth_rows[["value"]][growth_rows[["label"]] == "length_weight_a"]
+  length_weight_b <- growth_rows[["value"]][growth_rows[["label"]] == "length_weight_b"]
+  #' @description Test that, when 1 population length bin holds every fish, weight at age is the weight at the bin midpoint, 1000 mm.
+  expect_equal(
+    one_bin_report[["growth_mean_WAA"]][[1]],
+    rep(
+      length_weight_a * 1000^length_weight_b,
+      get_n_years(one_bin_frame) * get_n_ages(one_bin_frame)
+    )
+  )
 })
 
 ## Edge handling ----
@@ -906,6 +1026,32 @@ test_that("`initialize_fims()` errors for a catch unit it cannot map", {
     object = setup_default_parameters(frame) |>
       initialize_fims(data = frame),
     regexp = "which the model cannot use"
+  )
+})
+
+test_that("`initialize_fims()` returns correct errors and warnings for population length bins", {
+  bins_frame <- FIMSFrame(dplyr::bind_rows(
+    data_big,
+    population_length_bin_rows(seq(0, 1150, by = 50))
+  ))
+  #' @description Test that `initialize_fims()` warns that population length bins are not used with EWAA growth.
+  expect_warning(
+    initialize_fims(
+      parameters = setup_default_parameters(bins_frame),
+      data = bins_frame
+    ),
+    "not\\s+used\\s+because\\s+growth\\s+is"
+  )
+  #' @description Test that `initialize_fims()` errors when a population length bin is wider than a fleet length bin it overlaps.
+  expect_error(
+    initialize_fims(
+      parameters = setup_vonb_parameters(data),
+      data = dplyr::bind_rows(
+        data_big,
+        population_length_bin_rows(seq(0, 1200, by = 100))
+      )
+    ),
+    "wider\\s+than\\s+a\\s+length\\s+bin"
   )
 })
 
