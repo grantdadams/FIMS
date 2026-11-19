@@ -184,7 +184,9 @@ check_fleet_parameter_sizes <- function(parameters, n_years) {
 #' has the same value in every year. Recruitment deviations
 #' (log_devs or log_r) start in the 2nd model year, because recruitment in
 #' the first year comes from the initial numbers at age. They need their years
-#' even when no other parameter is given by year.
+#' even when no other parameter is given by year. The rows of their process
+#' or prior, such as a log_sd by year, start in the 2nd model year too, so
+#' each is read with the deviation of its own year.
 #'
 #' @inheritParams initialize_fims
 #' @param years The model years.
@@ -202,11 +204,15 @@ check_parameter_years <- function(parameters, years) {
   for (name in unique(parameters[["name"]])) {
     rows <- parameters[parameters[["name"]] == name, ]
     # The deviations and the rows of their process or prior, such as a
-    # process mean by year.
+    # process mean by year. The recruitment process rows from
+    # setup_default_parameters() have no target_label, so their own label,
+    # such as log_sd, is the target here. They belong to log_devs or log_r
+    # (process_densities()).
     target <- dplyr::coalesce(rows[["target_label"]][1], rows[["label"]][1])
     is_deviation <- rows[["module_name"]][1] == "Recruitment" &&
+      target %in% c("log_devs", "log_r", "expected_mean", "log_sd", "logit_rho")
+    is_deviation_value <- is_deviation && is.na(rows[["target_label"]][1]) &&
       target %in% c("log_devs", "log_r")
-    is_deviation_value <- is_deviation && is.na(rows[["target_label"]][1])
     # 1 value, with or without a timing, is the same in every year.
     if (!is_deviation_value &&
       (all(is.na(rows[["timing"]])) || nrow(rows) == 1)) {

@@ -181,7 +181,7 @@ test_that("`initialize_fims()` gives the same model for a grouped parameter tibb
 test_that("`initialize_fims()` reads the recruitment log_sd rows in any order", {
   # A different log_sd for each year and deviations that differ in size, so a
   # log_sd read into the wrong year changes the likelihood. A log_sd by year
-  # needs a row for every model year.
+  # has the years of the deviations, from the 2nd model year.
   parameters <- default_parameters |>
     dplyr::mutate(
       value = dplyr::if_else(
@@ -191,13 +191,14 @@ test_that("`initialize_fims()` reads the recruitment log_sd rows in any order", 
       ),
       .by = label
     )
-  years <- get_start_year(data):get_end_year(data)
+  log_devs <- dplyr::filter(parameters, label == "log_devs")
+  log_sd_by_year <- seq(0.3, 0.9, length.out = nrow(log_devs))
   log_sd_rows <- parameters |>
     dplyr::filter(module_name == "Recruitment", label == "log_sd") |>
-    dplyr::slice(rep(1, length(years))) |>
+    dplyr::slice(rep(1, nrow(log_devs))) |>
     dplyr::mutate(
-      timing = years,
-      value = log(seq(0.3, 0.9, length.out = length(years)))
+      timing = log_devs[["timing"]],
+      value = log(log_sd_by_year)
     )
   get_log_sd_report <- function(log_sd_rows) {
     parameters |>
@@ -209,6 +210,14 @@ test_that("`initialize_fims()` reads the recruitment log_sd rows in any order", 
   }
   sorted_report <- get_log_sd_report(log_sd_rows)
   reversed_report <- get_log_sd_report(log_sd_rows[nrow(log_sd_rows):1, ])
+  #' @description Test that `initialize_fims()` scores each recruitment deviation with the log_sd of its own year.
+  expect_equal(
+    object = sorted_report[["nll_components"]][1],
+    expected = -sum(stats::dnorm(
+      log_devs[["value"]], 0, log_sd_by_year,
+      log = TRUE
+    ))
+  )
   #' @description Test that `initialize_fims()` gives the same report for log_sd rows in reverse timing order as in timing order.
   expect_equal(reversed_report, sorted_report)
 })
@@ -1037,6 +1046,23 @@ test_that("`initialize_fims()` returns correct error messages for the recruitmen
       data = data
     ),
     "with no timing"
+  )
+
+  # A recruitment log_sd for every model year, 30 rows for the 29 deviations,
+  # so each deviation would be scored with the log_sd of the year before.
+  years <- get_start_year(data):get_end_year(data)
+  log_sd_every_year <- default_parameters |>
+    dplyr::filter(!(module_name == "Recruitment" & label == "log_sd")) |>
+    dplyr::bind_rows(
+      default_parameters |>
+        dplyr::filter(module_name == "Recruitment", label == "log_sd") |>
+        dplyr::slice(rep(1, length(years))) |>
+        dplyr::mutate(timing = years)
+    )
+  #' @description Test that `initialize_fims()` errors for a recruitment log_sd by year that starts in the 1st model year, rather than reading each log_sd with the next year's deviation.
+  expect_error(
+    initialize_fims(parameters = log_sd_every_year, data = data),
+    "needs rows for each year from the 2nd model\\s+year"
   )
 })
 
