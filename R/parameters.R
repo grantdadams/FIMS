@@ -343,15 +343,19 @@ check_shared_values <- function(name, value, map_level) {
 #' initialize_fims() stores each row's map level, but `input[["map"]]` can be
 #' edited by name before fit_fims(). Standard errors, gradients and the
 #' sdreport's names are matched to rows by map level, so the levels are read
-#' again from the map that RTMB uses. A row with no level is held constant. A
-#' parameter with no map entry has 1 level per value.
+#' again from the map that RTMB uses. A parameter with no map entry has 1
+#' level per value. Each row's estimation type follows RTMB too, so a
+#' constant row given a level in the map is estimated.
 #'
-#' @param parameter_table The `parameter_table` from initialize_fims().
-#' @param parameters,map The parameters and map given to RTMB::MakeADFun().
-#' @return `parameter_table` with `rtmb_level` and `estimation_type` from
-#'   `map`.
+#' @param input The input to fit_fims(), with the `parameters`, `map` and
+#'   `random` given to RTMB::MakeADFun().
+#' @return The `parameter_table` with `rtmb_level` and `estimation_type` from
+#'   the map.
 #' @noRd
-levels_from_map <- function(parameter_table, parameters, map) {
+levels_from_map <- function(input) {
+  parameter_table <- input[["parameter_table"]]
+  parameters <- input[["parameters"]]
+  map <- input[["map"]]
   for (name in names(parameters)) {
     rows <- which(parameter_table[["rtmb_name"]] == name)
     # RTMB reads a parameter and its map in the order of as.vector(value).
@@ -364,8 +368,13 @@ levels_from_map <- function(parameter_table, parameters, map) {
     check_shared_values(name, as.vector(parameters[[name]]), map_level)
     parameter_table[["rtmb_level"]][rows] <- map_level[position]
   }
-  is_held <- is.na(parameter_table[["rtmb_level"]])
-  parameter_table[["estimation_type"]][is_held] <- "constant"
+  # RTMB holds a value with no level at its starting value and integrates
+  # out the parameters named in `random`.
+  parameter_table[["estimation_type"]] <- dplyr::case_when(
+    is.na(parameter_table[["rtmb_level"]]) ~ "constant",
+    parameter_table[["rtmb_name"]] %in% input[["random"]] ~ "random_effects",
+    .default = "fixed_effects"
+  )
   parameter_table
 }
 
