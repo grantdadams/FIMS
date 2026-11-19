@@ -171,7 +171,12 @@ methods::setGeneric("get_report", function(x) standardGeneric("get_report"))
 methods::setMethod("get_report", "FIMSFit", function(x) x@report)
 
 #' @return
-#' [get_obj()] returns the output from [RTMB::MakeADFun()].
+#' [get_obj()] returns the output from [RTMB::MakeADFun()]. The object holds
+#' its own data, so its methods use the model that made the fit, also after
+#' another model is set up or after the fit is read with [readRDS()]. After
+#' [readRDS()], RTMB records the model again the first time a method is called.
+#' [get_report()], [get_gradient()], and [get_estimates()] return values stored
+#' during fitting, so they do not evaluate the model again.
 #' @export
 #' @rdname get_FIMSFit
 #' @keywords fit_fims
@@ -552,14 +557,19 @@ FIMSFit <- function(
 #' model is evaluated without an outer optimizer. If every value is held
 #' constant, use `optimize = FALSE`.
 #'
-#' While it runs, `fit_fims()` records each matrix product as 1 atomic
+#' A fit with random effects can need several GB of memory for a long time
+#' series. While it runs, `fit_fims()` records each matrix product as 1 atomic
 #' operation, with `RTMB::TapeConfig(atomic = "enable")`. This gives the same
 #' values, to rounding, with less memory and faster gradients when there are
 #' random effects. The setting is global to the R session, so it restores the
 #' previous setting when it returns. To use less memory again, at the cost of
 #' a slower gradient, compress the Hessian of the random effects before
 #' calling `fit_fims()`, with
-#' `TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")`.
+#' `TMB::config(tmbad.sparse_hessian_compress = 1, DLL = "RTMB")`. At the same
+#' parameter values the objective, gradient, and standard errors are the same
+#' to rounding, but the optimizer can stop at a slightly different point, so
+#' the convergence checks can change. This setting lasts for the R session
+#' and does not reach parallel workers.
 #' @keywords fit_fims
 #' @export
 fit_fims <- function(input,
