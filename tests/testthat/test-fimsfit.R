@@ -492,6 +492,23 @@ test_that("`fit_fims()` reads shared and constant values from a map edited by na
     object = log_rzero[["estimation_type"]],
     expected = "constant"
   )
+
+  # Setting 1 element to NA keeps its level in the factor's levels.
+  n_fixed_effects <- fit_fims(
+    initialize_fims(default_parameters, data = data_10_years),
+    optimize = FALSE
+  ) |>
+    get_number_of_parameters()
+  fixed_year_input <- initialize_fims(default_parameters, data = data_10_years)
+  fixed_year_input[["map"]][["Fleet.fleet1.log_Fmort"]][2] <- NA
+  fixed_year_fit <- fit_fims(fixed_year_input, optimize = FALSE)
+  #' @description Test that `fit_fims()` with 1 value set to NA in a map edited by name estimates 1 fewer fixed effect.
+  expect_equal(
+    object = get_number_of_parameters(fixed_year_fit)[["fixed_effects"]],
+    expected = n_fixed_effects[["fixed_effects"]] - 1
+  )
+  #' @description Test that `fit_fims()` with 1 value set to NA in a map edited by name gives every estimate a starting value.
+  expect_false(anyNA(get_obj(fixed_year_fit)[["par"]]))
 })
 
 test_that("`fit_fims()` gives the same values as with TMB's default tape settings", {

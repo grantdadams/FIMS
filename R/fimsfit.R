@@ -640,6 +640,13 @@ fit_fims <- function(input,
       {.code names(input[[\"parameters\"]])} to see which names do not match."
     ))
   }
+  # Each level of a map factor is 1 estimate. A level with no values, as left
+  # by `map[i] <- NA`, would be an estimate with no starting value, so unused
+  # levels are dropped. A map entry that is not a factor is left for RTMB to
+  # refuse.
+  input[["map"]] <- lapply(input[["map"]], function(map) {
+    if (is.factor(map)) droplevels(map) else map
+  })
   # If the estimation_type of all parameters is constant, FIMS will abort if
   # optimize is set to TRUE
   n_estimated <- sum(!is.na(unlist(input[["map"]])))
