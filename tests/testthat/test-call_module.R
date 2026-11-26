@@ -62,3 +62,293 @@ test_that("`call_module()` returns correct error messages", {
     regexp = "inflection_point_asc"
   )
 })
+
+# Module tables ----
+## Setup ----
+# These tests check every module type in the lookup tables before any model
+# runs it. They catch arguments that do not match the labels in the
+# parameter tibble, which stop a model only when it calls that type. They
+# also catch a derivative lost on the RTMB tape, which gives a wrong
+# gradient with no error.
+data_4_model <- FIMSFrame(data_big)
+ages <- get_ages(data_4_model)
+
+# A module's default values as the model passes them. initialize_parameters()
+# names and shapes the values, and puts growth parameters on their working
+# scale. Flat names are "module.fleet.label" or "module.label".
+parameters_by_label <- function(rows) {
+  flat <- FIMS:::initialize_parameters(rows)[["parameters"]]
+  stats::setNames(flat, sub(".*\\.", "", names(flat)))
+}
+
+# Tapes `evaluate`, a function of a named list, at the values in `taped`, and
+# checks the tape against plain R. Each column of the Jacobian, 1 per taped
+# value, is compared with central differences relative to its own largest
+# value. So a small column, such as the derivative of recruitment with
+# respect to spawning biomass, is not hidden by larger ones. `label` names
+# the module.
+expect_tape_matches_r <- function(evaluate, taped, label) {
+  tape <- RTMB::MakeTape(evaluate, taped)
+  flat <- unlist(taped)
+  #' @description Test that the RTMB tape of each module gives the same values as plain R.
+  expect_equal(
+    object = as.vector(tape(flat)),
+    expected = as.vector(evaluate(taped)),
+    label = paste(label, "taped value")
+  )
+  taped_jacobian <- tape$jacobian(flat)
+  for (index in seq_along(flat)) {
+    # The step scales with the value, so it suits spawning biomass (5e4) and
+    # values near 1 alike.
+    step_size <- 1e-5 * max(abs(flat[[index]]), 1)
+    plus <- replace(flat, index, flat[[index]] + step_size)
+    minus <- replace(flat, index, flat[[index]] - step_size)
+    central_difference <- (as.vector(evaluate(utils::relist(plus, taped))) -
+      as.vector(evaluate(utils::relist(minus, taped)))) / (2 * step_size)
+    # The floor of 1e-8 means a column that is 0 in plain R must be within
+    # 1e-14 of 0 on the tape.
+    relative_error <- max(abs(taped_jacobian[, index] - central_difference)) /
+      max(abs(central_difference), 1e-8)
+    #' @description Test that each column of the AD Jacobian of each module matches central differences of plain R, so no parameter or taped input loses its derivative.
+    expect_lte(
+      object = relative_error,
+      expected = 1e-6,
+      label = paste(label, "Jacobian error for", names(flat)[index])
+    )
+  }
+}
+
+# 1 entry per table that call_module() reads. `default_rows` gives the rows
+# setup_default_*() writes for a module type. `data_inputs` are inputs that
+# are data in the model. `taped_inputs` depend on parameters in the model, so
+# they are taped with the parameters. `n_values` is the length of the output.
+module_tables <- list(
+  Selectivity = list(
+    functions = FIMS:::selectivity_functions,
+    default_rows = function(module_type) {
+      setup_default_Selectivity(
+        data_4_model, get_fleets(data_4_model)[1], module_type
+      )
+    },
+    data_inputs = list(age = ages),
+    taped_inputs = list(),
+    n_values = length(ages)
+  ),
+  Maturity = list(
+    functions = FIMS:::maturity_functions,
+    default_rows = function(module_type) {
+      setup_default_Maturity(data_4_model, module_type)
+    },
+    data_inputs = list(age = ages),
+    taped_inputs = list(),
+    n_values = length(ages)
+  ),
+  # population_dynamics() passes the stock-recruit function every
+  # Recruitment parameter except the process values and their log_sd.
+  Recruitment = list(
+    functions = FIMS:::recruitment_functions,
+    default_rows = function(module_type) {
+      setup_default_Recruitment(data_4_model, module_type) |>
+        dplyr::filter(!label %in% c(
+          names(FIMS:::recruitment_process_functions), "log_sd"
+        ))
+    },
+    data_inputs = list(),
+    taped_inputs = list(spawning_biomass = 5e4, phi_0 = 0.1),
+    n_values = 1
+  ),
+  # A process gets 1 year's value as `process_value`, not by its label. So a
+  # process function has no parameters by label.
+  RecruitmentProcess = list(
+    functions = FIMS:::recruitment_process_functions,
+    default_rows = function(process) {
+      FIMS:::setup_default_parameters_template(n_parameters = 0)
+    },
+    data_inputs = list(),
+    taped_inputs = list(log_expected_recruitment = 13, process_value = 0.5),
+    n_values = 1
+  )
+)
+
+## IO correctness ----
+test_that("every module type in the `call_module()` tables runs, and its tape matches plain R", {
+  for (module_family in names(module_tables)) {
+    module_table <- module_tables[[module_family]]
+    inputs <- c(module_table[["data_inputs"]], module_table[["taped_inputs"]])
+    for (module_type in names(module_table[["functions"]])) {
+      module <- paste(module_family, module_type)
+      module_function <- module_table[["functions"]][[module_type]]
+      parameters <- module_table[["default_rows"]](module_type) |>
+        parameters_by_label()
+      #' @description Test that the arguments of each module function, other than its inputs, are the labels setup_default_*() writes for its module type.
+      expect_equal(
+        object = sort(setdiff(names(formals(module_function)), names(inputs))),
+        expected = sort(names(parameters)),
+        label = paste(module, "arguments"),
+        expected.label = "its default labels"
+      )
+      output <- do.call(
+        FIMS:::call_module,
+        c(
+          list(module_table[["functions"]], module_type), inputs,
+          list(parameters = parameters)
+        )
+      )
+      #' @description Test that each module type returns finite values with its default parameters, 1 per age for selectivity and maturity, and 1 for recruitment.
+      expect_equal(
+        object = is.finite(output),
+        expected = rep(TRUE, module_table[["n_values"]]),
+        label = paste(module, "is.finite(output)")
+      )
+
+      evaluate <- function(taped) {
+        do.call(module_function, c(module_table[["data_inputs"]], taped))
+      }
+      expect_tape_matches_r(
+        evaluate, c(module_table[["taped_inputs"]], parameters), module
+      )
+    }
+  }
+})
+
+test_that("every growth type in `growth_modules` runs, and its tape matches plain R", {
+  # Each growth type with its default rows, plus the 2 other von
+  # Bertalanffy-Schnute forms from with_constant_mean_length_old() and
+  # with_delta_method_sd().
+  growth_types <- names(FIMS:::growth_modules)
+  growth_cases <- lapply(
+    stats::setNames(growth_types, growth_types),
+    function(growth_type) setup_default_Growth(data_4_model, growth_type)
+  )
+  von_bertalanffy <- growth_cases[["VonBertalanffySchnute"]]
+  growth_cases[["VonBertalanffySchnute with L2 constant"]] <-
+    with_constant_mean_length_old(von_bertalanffy)
+  growth_cases[["VonBertalanffySchnute with the delta-method sd"]] <-
+    with_delta_method_sd(von_bertalanffy)
+  #' @description Test that the 2 other von Bertalanffy forms give L1 on the logit scale and the delta-method sds.
+  expect_contains(
+    object = c(
+      names(parameters_by_label(
+        growth_cases[["VonBertalanffySchnute with L2 constant"]]
+      )),
+      names(parameters_by_label(
+        growth_cases[["VonBertalanffySchnute with the delta-method sd"]]
+      ))
+    ),
+    expected = c("logit_mean_length_young", "log_sd_growth_coefficient")
+  )
+
+  population_edges <- FIMS:::length_bin_edges(get_lengths(data_4_model))
+  for (growth_case in names(growth_cases)) {
+    rows <- growth_cases[[growth_case]]
+    growth_module <- FIMS:::growth_modules[[unique(rows[["module_type"]])]]
+    parameters <- parameters_by_label(rows)
+    inputs <- growth_module[["inputs"]](data_4_model, rows, population_edges)
+    # population_biology() calls growth with do.call(), not call_module().
+    # von Bertalanffy growth has arguments for 2 forms each of L1, L2 and the
+    # sd of length at age, and is given 1 of each. So every label must be an
+    # argument, but not every argument has a label.
+    #' @description Test that every default label of each growth type, on its working scale, is an argument of its growth function.
+    expect_equal(
+      object = setdiff(
+        names(parameters), names(formals(growth_module[["evaluate"]]))
+      ),
+      expected = character(0),
+      label = paste(growth_case, "labels that are not arguments")
+    )
+    output <- do.call(growth_module[["evaluate"]], c(inputs, parameters))
+    # Weight at age is 1 value per age, or a matrix by year when it is data,
+    # with a row for the year after the last model year.
+    weight_at_age <- output[["weight_at_age"]]
+    n_values <- if (is.matrix(weight_at_age)) {
+      (get_n_years(data_4_model) + 1) * length(ages)
+    } else {
+      length(ages)
+    }
+    #' @description Test that each growth type returns finite weight at age with its default parameters, 1 value per age or 1 per age and year.
+    expect_equal(
+      object = as.vector(is.finite(weight_at_age)),
+      expected = rep(TRUE, n_values),
+      label = paste(growth_case, "is.finite(weight_at_age)")
+    )
+    #' @description Test that every output of each growth type, such as the length distribution at age, is finite with its default parameters.
+    expect_true(
+      object = all(is.finite(unlist(output))),
+      label = paste(growth_case, "all(is.finite(unlist(output)))")
+    )
+
+    # EWAA has no parameters to tape, because its weight at age is data.
+    if (length(parameters) == 0) {
+      next
+    }
+    evaluate <- function(taped) {
+      output <- do.call(growth_module[["evaluate"]], c(inputs, taped))
+      do.call(c, unname(output))
+    }
+    expect_tape_matches_r(evaluate, parameters, growth_case)
+  }
+})
+
+test_that("every likelihood family and process structure has a tape that matches plain R", {
+  # Observed counts, and predicted proportions that sum to 1 in each year.
+  # Proportions are also valid expected values for dnorm and log expected
+  # values for dlnorm.
+  observed <- matrix(c(30, 50, 20, 40, 10, 50), nrow = 2, byrow = TRUE)
+  predicted <- matrix(c(0.2, 0.3, 0.5, 0.1, 0.6, 0.3), nrow = 2, byrow = TRUE)
+  family_parameter_values <- list(log_sd = log(0.2))
+  for (likelihood_family in names(FIMS:::likelihood_families)) {
+    lpdf <- FIMS:::likelihood_families[[likelihood_family]][["lpdf"]]
+    # model_likelihood() passes the observations and predictions by
+    # position, then the family's own parameters by name.
+    parameter_names <- names(formals(lpdf))[-(1:2)]
+    #' @description Test that every parameter of each likelihood family has a test value here.
+    expect_equal(
+      object = setdiff(parameter_names, names(family_parameter_values)),
+      expected = character(0),
+      label = paste(likelihood_family, "parameters with no test value")
+    )
+    evaluate <- function(taped) {
+      do.call(lpdf, c(list(observed, taped[["predicted"]]), taped[-1]))
+    }
+    expect_tape_matches_r(
+      evaluate,
+      c(list(predicted = predicted), family_parameter_values[parameter_names]),
+      likelihood_family
+    )
+  }
+
+  # 5 years of process values and their mean, with sd = 0.5 and rho = 0.5.
+  process_inputs <- list(
+    values = c(-0.3, 0.1, 0.4, -0.2, 0.25),
+    expected_mean = c(0.1, 0, -0.1, 0.05, 0),
+    log_sd = log(0.5),
+    logit_rho = log(3)
+  )
+  for (process_structure in names(FIMS:::process_structures)) {
+    lpdf <- FIMS:::process_structures[[process_structure]][["lpdf"]]
+    # model_likelihood() passes the values and mean by position, then the
+    # hyperparameters by name. process_densities() passes only log_sd and
+    # logit_rho.
+    hyperparameter_names <- names(formals(lpdf))[-(1:2)]
+    #' @description Test that each process structure takes only the hyperparameters that process_densities() passes, log_sd and logit_rho.
+    expect_equal(
+      object = setdiff(hyperparameter_names, c("log_sd", "logit_rho")),
+      expected = character(0),
+      label = paste(process_structure, "hyperparameters the model never passes")
+    )
+    evaluate <- function(taped) {
+      do.call(lpdf, c(unname(taped[1:2]), taped[-(1:2)]))
+    }
+    expect_tape_matches_r(
+      evaluate,
+      process_inputs[c("values", "expected_mean", hyperparameter_names)],
+      process_structure
+    )
+  }
+})
+
+## Edge handling ----
+# No edge cases to test.
+
+## Error handling ----
+# No built-in errors to test.
