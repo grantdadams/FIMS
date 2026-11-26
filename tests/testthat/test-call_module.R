@@ -373,26 +373,43 @@ test_that("every likelihood family and process structure has a tape that matches
     log_sd = log(0.5),
     logit_rho = log(3)
   )
+  # Steps are NULL when the values are 1 step apart (process_steps()). When
+  # a constant year is left out, the step across it is 2. An AR1 process
+  # then uses rho and the sd across 2 steps, and a random walk uses the sd
+  # across 2 steps. process_densities() gives steps only to these 2
+  # structures, so iid is taped with steps of 1 only. Steps are data, so
+  # they are not taped.
+  step_cases <- list("steps of 1" = NULL, "a step of 2" = c(1, 2, 1, 1))
   for (process_structure in names(FIMS:::process_structures)) {
     lpdf <- FIMS:::process_structures[[process_structure]][["lpdf"]]
     # model_likelihood() passes the values and mean by position, then the
-    # hyperparameters by name. process_densities() passes only log_sd and
-    # logit_rho.
-    hyperparameter_names <- names(formals(lpdf))[-(1:2)]
+    # hyperparameters and steps by name. process_densities() passes only
+    # log_sd and logit_rho as hyperparameters.
+    hyperparameter_names <- setdiff(names(formals(lpdf))[-(1:2)], "steps")
     #' @description Test that each process structure takes only the hyperparameters that process_densities() passes, log_sd and logit_rho.
     expect_equal(
       object = setdiff(hyperparameter_names, c("log_sd", "logit_rho")),
       expected = character(0),
       label = paste(process_structure, "hyperparameters the model never passes")
     )
-    evaluate <- function(taped) {
-      do.call(lpdf, c(unname(taped[1:2]), taped[-(1:2)]))
+    structure_step_cases <- if (process_structure %in% c("ar1", "rw")) {
+      step_cases
+    } else {
+      step_cases["steps of 1"]
     }
-    expect_tape_matches_r(
-      evaluate,
-      process_inputs[c("values", "expected_mean", hyperparameter_names)],
-      process_structure
-    )
+    for (step_case in names(structure_step_cases)) {
+      evaluate <- function(taped) {
+        do.call(lpdf, c(
+          unname(taped[1:2]), taped[-(1:2)],
+          list(steps = step_cases[[step_case]])
+        ))
+      }
+      expect_tape_matches_r(
+        evaluate,
+        process_inputs[c("values", "expected_mean", hyperparameter_names)],
+        paste(process_structure, "with", step_case)
+      )
+    }
   }
 })
 
