@@ -50,11 +50,24 @@ von_bertalanffy_names <- c(
 ages <- get_ages(data_4_model)
 n_ages <- length(ages)
 
+# The 3-year, 4-length-bin catch-at-length model of cal_data, which is in
+# helper-catch-at-length.R. Its length compositions have the robust normal
+# approximation to the multinomial. The default logistic slopes are 0.1, so
+# a move of 0.1 can set a slope to 0, where its inflection point has no
+# gradient. Here they start at 0.5.
+cal_frame <- FIMSFrame(cal_data)
+cal_parameters <- setup_default_parameters(
+  cal_frame,
+  model_type = "CatchAtLength"
+) |>
+  dplyr::mutate(value = dplyr::if_else(label == "slope", 0.5, value))
+
 #' Largest relative difference between a tape and a new tape at a perturbed
 #' point
 #'
 #' @param parameters A parameter tibble.
 #' @param data A FIMSFrame.
+#' @param seed The seed for the direction of each move.
 #' @return A list with:
 #'   * `point`: the largest relative difference between the points the 2
 #'     tapes are evaluated at, which should be 0.
@@ -63,7 +76,9 @@ n_ages <- length(ages)
 #'   * `nonzero_gradient`: the names of the parameters, fixed or random
 #'     effects, with at least 1 value whose gradient at the perturbed point is
 #'     not 0, so they are on the tape and change the objective.
-retape_difference <- function(parameters, data) {
+#'   * `move`: the move of each value, +0.1 or -0.1, named by its RTMB
+#'     parameter.
+retape_difference <- function(parameters, data, seed = 1) {
   rtmb <- rtmb_objective(parameters, data)
   obj <- rtmb[["obj"]]
   # A frozen path is found only if the perturbed point crosses the threshold
@@ -73,7 +88,7 @@ retape_difference <- function(parameters, data) {
   # because L2 is L1 plus a positive difference, or L1 is a logit fraction
   # of L2.
   perturbed <- obj[["par"]] + 0.1 * withr::with_seed(
-    1, sample(c(-1, 1), length(obj[["par"]]), replace = TRUE)
+    seed, sample(c(-1, 1), length(obj[["par"]]), replace = TRUE)
   )
   taped_at_start <- c(obj[["fn"]](perturbed), obj[["gr"]](perturbed))
   input <- rtmb[["input"]]
@@ -92,7 +107,8 @@ retape_difference <- function(parameters, data) {
     difference = max_relative_difference(taped_at_start, taped_at_perturbed),
     nonzero_gradient = unique(
       parameter_table[["name"]][parameter_table[["rtmb_name"]] %in% rtmb_names]
-    )
+    ),
+    move = perturbed - obj[["par"]]
   )
 }
 
@@ -143,16 +159,22 @@ test_that("the default model's tape is valid away from the starting values", {
 
 test_that("each selectivity type's tape is valid away from the start", {
   # Every fleet takes the type, so it is checked for a fishery and a survey.
+  # A catch-at-age model gives selectivity ages, so a type by length, which
+  # has a `length` argument, is checked in the catch-at-length model.
   for (selectivity_type in names(FIMS:::selectivity_functions)) {
+    is_by_length <- "length" %in%
+      names(formals(FIMS:::selectivity_functions[[selectivity_type]]))
+    fims_frame <- if (is_by_length) cal_frame else data_4_model
+    model_parameters <- if (is_by_length) cal_parameters else default_parameters
     selectivity <- purrr::map(
-      get_fleets(data_4_model),
-      \(fleet) setup_default_Selectivity(data_4_model, fleet, selectivity_type)
+      get_fleets(fims_frame),
+      \(fleet) setup_default_Selectivity(fims_frame, fleet, selectivity_type)
     ) |>
       dplyr::bind_rows()
-    retape <- default_parameters |>
+    retape <- model_parameters |>
       dplyr::filter(module_name != "Selectivity") |>
       dplyr::bind_rows(selectivity) |>
-      retape_difference(data_4_model)
+      retape_difference(fims_frame)
 
     #' @description Test that the tape with each selectivity type equals a new tape at a perturbed point, with its parameters estimated for each fleet.
     expect_retape_matches(
@@ -358,6 +380,20 @@ test_that("each growth option's tape is valid away from the start", {
       parameters = von_bertalanffy_parameters,
       data = data_no_length,
       nonzero_gradient = setdiff(von_bertalanffy_names, sd_names)
+    ),
+    # LinearGammaIncrement is growth by molting in the catch-at-length
+    # model. Its gamma scale is constant by default, and estimated here.
+    linear_gamma_increment = list(
+      parameters = cal_parameters |>
+        dplyr::mutate(
+          estimation_type = dplyr::if_else(
+            label == "growth_scale", "fixed_effects", estimation_type
+          )
+        ),
+      data = cal_frame,
+      nonzero_gradient = c(
+        "Growth.growth_intercept", "Growth.growth_slope", "Growth.growth_scale"
+      )
     )
   )
   for (case in names(growth_cases)) {
@@ -591,6 +627,18 @@ test_that("each likelihood family's tape is valid away from the start", {
       nonzero_gradient = c(
         "Data.survey1.index_log_sd", "Data.survey1.age_comp_log_sd"
       )
+    ),
+    # The length compositions of cal_data have the robust normal
+    # approximation to the multinomial. It has no parameters of its own, so
+    # this case checks the pot fleet's selectivity and retention, which pass
+    # through the expected proportions of its retained and discarded catch.
+    robust_normal_multinomial = list(
+      parameters = cal_parameters,
+      data = cal_frame,
+      nonzero_gradient = c(
+        "Selectivity.pot_fleet.inflection_point", "Selectivity.pot_fleet.slope",
+        "Retention.pot_fleet.inflection_point", "Retention.pot_fleet.slope"
+      )
     )
   )
   for (case in names(family_cases)) {
@@ -645,6 +693,46 @@ test_that("each depletion type's surplus production tape is valid away from the 
       label = depletion_type
     )
   }
+})
+
+test_that("the catch-at-length tape is valid away from the start", {
+  # The size distribution of recruits and the offset of immature M are
+  # constant by default. Here they are estimated with the other parameters
+  # of the catch-at-length model. Its retained catch, discarded catch,
+  # survey index and length compositions all depend on them. Recruits enter
+  # with a gamma size distribution whose shape is alpha / beta. With seed 4,
+  # log_recruit_alpha and log_recruit_beta move in opposite directions, so
+  # the shape changes at the perturbed point. With seed 1 they move
+  # together, and a shape frozen on the tape would not be found.
+  retape <- cal_parameters |>
+    dplyr::mutate(
+      estimation_type = dplyr::if_else(
+        label %in% c(
+          "log_recruit_alpha", "log_recruit_beta", "log_M_immature_offset"
+        ),
+        "fixed_effects", estimation_type
+      )
+    ) |>
+    retape_difference(cal_frame, seed = 4)
+
+  #' @description Test that log_recruit_alpha and log_recruit_beta move in opposite directions in the catch-at-length case, so the gamma shape of recruit sizes changes.
+  expect_lt(
+    object = retape[["move"]][["Recruitment.log_recruit_alpha"]] *
+      retape[["move"]][["Recruitment.log_recruit_beta"]],
+    expected = 0
+  )
+  #' @description Test that the catch-at-length tape equals a new tape at a perturbed point, with recruitment, its size distribution, M, initial numbers at length, retention, fishing mortality and catchability estimated.
+  expect_retape_matches(
+    retape,
+    nonzero_gradient = c(
+      "Recruitment.log_r", "Recruitment.log_recruit_alpha",
+      "Recruitment.log_recruit_beta", "Population.log_M",
+      "Population.log_M_immature_offset", "Population.log_init_nal_immature",
+      "Population.log_init_nal_mature", "Retention.pot_fleet.slope",
+      "Fleet.pot_fleet.log_Fmort", "Fleet.survey_fleet.log_q"
+    ),
+    label = "catch at length"
+  )
 })
 
 ## Edge handling ----
