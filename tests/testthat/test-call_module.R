@@ -21,7 +21,12 @@ lookup_tables <- list(
   growth_modules = FIMS:::growth_modules,
   likelihood_families = FIMS:::likelihood_families,
   process_structures = FIMS:::process_structures,
-  recruitment_process_means = FIMS:::recruitment_process_means
+  # The model joins the 2 process mean tables with c(), so a name must be
+  # unique across both.
+  process_means = c(
+    FIMS:::recruitment_process_means, FIMS:::depletion_process_means
+  ),
+  depletion_functions = FIMS:::depletion_functions
 )
 
 ## IO correctness ----
@@ -99,6 +104,8 @@ test_that("`call_module()` returns correct error messages", {
 # gradient with no error.
 data_4_model <- FIMSFrame(data_big)
 ages <- get_ages(data_4_model)
+# Depletion types are set up from the surplus production data.
+data_4_depletion <- FIMSFrame(data_limited_tuna)
 
 # A module's default values as the model passes them. initialize_parameters()
 # names and shapes the values, and puts growth parameters on their working
@@ -194,6 +201,21 @@ module_tables <- list(
     data_inputs = list(),
     taped_inputs = list(log_expected_recruitment = 13, process_value = 0.5),
     n_values = 1
+  ),
+  # depletion_dynamics() passes the depletion function every Depletion
+  # parameter except the initial depletion, the process values and their
+  # log_sd. Depletion depends on parameters in the model, and catch is data.
+  Depletion = list(
+    functions = FIMS:::depletion_functions,
+    default_rows = function(module_type) {
+      setup_default_Depletion(data_4_depletion, module_type) |>
+        dplyr::filter(!label %in% c(
+          "log_init_depletion", names(FIMS:::depletion_process_means), "log_sd"
+        ))
+    },
+    data_inputs = list(catch = 2e4),
+    taped_inputs = list(depletion = 0.6),
+    n_values = 1
   )
 )
 
@@ -221,7 +243,7 @@ test_that("every module type in the `call_module()` tables runs, and its tape ma
           list(parameters = parameters)
         )
       )
-      #' @description Test that each module type returns finite values with its default parameters, 1 per age for selectivity and maturity, and 1 for recruitment.
+      #' @description Test that each module type returns finite values with its default parameters, 1 per age for selectivity and maturity, and 1 for recruitment and depletion.
       expect_equal(
         object = is.finite(output),
         expected = rep(TRUE, module_table[["n_values"]]),
