@@ -20,27 +20,8 @@ ages <- get_ages(data_4_model)
 years <- get_start_year(data_4_model):get_end_year(data_4_model)
 n_ages <- length(ages)
 
-# Each age is read correctly with probability 0.7 and 1 year too old with
-# probability 0.3, and the plus group is always read correctly. The matrix is
-# not symmetric, so using it transposed would give different compositions.
-reads_older <- diag(0.7, n_ages)
-reads_older[cbind(1:(n_ages - 1), 2:n_ages)] <- 0.3
-reads_older[n_ages, n_ages] <- 1
-
-# Rows are true ages and columns are observed ages.
-ageing_error_rows <- function(matrix = reads_older, fleet = NA_character_,
-                              timing = NA_real_) {
-  tibble::tibble(
-    type = "ageing_error",
-    fleet = fleet,
-    age = rep(ages, times = n_ages),
-    length = NA_real_,
-    timing = timing,
-    observed = as.vector(t(matrix)),
-    unit = "proportion",
-    uncertainty = as.character(rep(ages, each = n_ages))
-  )
-}
+# The ageing error matrix reads_older and ageing_error_rows() are in
+# helper-ageing-error.R.
 
 # A year x age matrix of a fleet's reported quantity. Fleet 1 is fleet1, which
 # has catch, and fleet 2 is survey1, which has an index.
