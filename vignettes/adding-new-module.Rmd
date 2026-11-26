@@ -107,7 +107,7 @@ The parameter tibble holds each module's parameters, starting values and estimat
 
 Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, which writes `tests/testthat/test-logistic_selectivity.R`, and test known values, such as 0.5 at the inflection point.
 
-`tests/testthat/test-call_module.R` and `tests/testthat/test-integration-retape.R` loop over the lookup tables, so a new entry is checked without editing either one. The first checks that the function's arguments match its default labels, and that its values and gradient from the RTMB tape match plain R and numerical derivatives. The second builds a model with each selectivity, maturity and recruitment type through `initialize_fims()` and `fit_fims()`. It moves every value by 0.1 and checks that, at that point, the tape made at the starting values gives the same objective and gradient as a new tape made there.
+`tests/testthat/test-call_module.R` and `tests/testthat/test-integration-retape.R` loop over the lookup tables, so a new entry is checked without editing either one. The first checks that the function's arguments match its default labels, and that its values and gradient from the RTMB tape match plain R and numerical derivatives. The second builds a model with each selectivity, maturity, recruitment and depletion type through `initialize_fims()` and `fit_fims()`. It moves every value by 0.1 and checks that, at that point, the tape made at the starting values gives the same objective and gradient as a new tape made there.
 
 # Adding a likelihood family
 
@@ -145,5 +145,6 @@ The surplus production model is the example.
 4. Add it to `model_type` in `setup_default_parameters()`, returning its default rows as `setup_default_Depletion()` does.
 5. In `R/initialize_fims.R`, skip the input checks that do not apply to it, as the surplus production model skips the fleet checks, and list any parameter that starts in the 2nd model year in `check_parameter_years()`, as `log_depletion` is.
 6. If a process varies around a model prediction, as `log_depletion` varies around `log_expected_depletion`, return the prediction in `population` and list it in a process means table, as `depletion_process_means` in `R/depletion.R` does. Add that table to `process_means` in `process_densities()` (`R/densities.R`) and in `report_model()` (`R/report.R`), which reports the mean. A process with no entry and no `expected_mean` parameter has a mean of 0.
+7. Test the predictions in a file from `FIMS:::use_testthat_template()`, as `test-surplus_production.R` does, and add a case to `tests/testthat/test-integration-retape.R`. No test fails when a model type has no case.
 
 `fims_model()` adds the likelihood for any model type.

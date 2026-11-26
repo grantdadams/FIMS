@@ -619,6 +619,34 @@ test_that("each likelihood family's tape is valid away from the start", {
   )
 })
 
+test_that("each depletion type's surplus production tape is valid away from the start", {
+  # The surplus production model of the tuna data. The shape, initial
+  # depletion and process sd are constant by default. Here every Depletion
+  # parameter is estimated. Each year's depletion passes through the
+  # depletion function to the next year and to the expected index.
+  tuna_frame <- FIMSFrame(data_limited_tuna)
+  for (depletion_type in names(FIMS:::depletion_functions)) {
+    depletion <- setup_default_Depletion(tuna_frame, depletion_type) |>
+      dplyr::mutate(
+        estimation_type = dplyr::if_else(
+          label == "log_depletion", estimation_type, "fixed_effects"
+        )
+      )
+    retape <- retape_difference(depletion, tuna_frame)
+
+    #' @description Test that the surplus production tape with each depletion type equals a new tape at a perturbed point, with every Depletion parameter estimated.
+    expect_retape_matches(
+      retape,
+      # The process sd is named for its target, log_depletion.
+      nonzero_gradient = c(
+        paste("Depletion", setdiff(depletion[["label"]], "log_sd"), sep = "."),
+        "Depletion.log_depletion_log_sd"
+      ),
+      label = depletion_type
+    )
+  }
+})
+
 ## Edge handling ----
 # No edge cases to test.
 
