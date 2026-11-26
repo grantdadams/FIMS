@@ -58,12 +58,13 @@ logistic_selectivity <- function(age, inflection_point, slope) {
 
 - Inputs that are not parameters come first (`age`). Then come the parameters, named exactly as the `label` values in the parameter tibble.
 - Name each parameter for its scale. Plain names are on the natural scale. `log_*` and `logit_*` are transformed.
-- Use ordinary R arithmetic. Do not branch (`if`, `ifelse`, `max()`) on a parameter's value. RTMB records the branch taken at the starting values and never revisits it. Branching on data, such as `age`, is fine.
+- Use ordinary R arithmetic. Do not branch on a parameter's value with `if`, `ifelse()`, `pmax()` or `pmin()`. RTMB stops on these with "Comparison is generally unsafe for AD types". `max()` and `abs()` work on AD values, but their derivatives jump, so use the smooth `ad_max()` and `ad_fabs()` from `R/fims_math.R`, as the rest of the model does. Branching on data, such as `age`, is fine.
 - Write the function for 1 year: scalar parameters and a vector over ages. `evaluate_by_year()` calls it with each year's values when a parameter varies by year.
-- Values that depend on parameters are RTMB "AD" values, and a few base R functions drop them. Inside a package function:
+- Values that depend on parameters are RTMB "AD" values. Some base R functions stop with an error on them, and a few give wrong results. Inside a package function:
   - add `"c" <- RTMB::ADoverload("c")` at the top of a function that combines numbers and AD values, e.g. `c(1, exp(-cumsum(M)))`
   - add `"[<-" <- RTMB::ADoverload("[<-")` when AD values are assigned into a vector or matrix that starts as numbers, e.g. `x <- numeric(n)` then `x[i] <- ...`
-  - use `RTMB::matrix()` and `RTMB::rowSums()` on AD values.
+  - use `RTMB::matrix()` and `RTMB::rowSums()` on AD values
+  - do not use `which.max()` or `which.min()` on AD values. They return the wrong index with only a warning.
 
 The function works on ordinary numbers, so it can be checked at the console:
 
@@ -85,19 +86,20 @@ selectivity_functions <- list(
 
 ## Step 3: give it default parameter rows
 
-The parameter tibble holds each module's parameters, starting values and estimation types. Add a `setup_default_<ModuleType>()` function in `R/setup_default_parameters.R`, as for `setup_default_Logistic()`, so that `setup_default_parameters()` can write its rows.
+The parameter tibble holds each module's parameters, starting values and estimation types. Add a `setup_default_<ModuleType>()` function in `R/setup_default_parameters.R`, as for `setup_default_Logistic()`. Then add the type to the `module_type` choices and the `switch()` in the family's function, `setup_default_Selectivity()` for selectivity, so that `setup_default_parameters()` can write its rows. `initialize_fims()` then reads the new rows from the tibble, and `catch_at_age()` calls the function through the lookup table.
 
 ## Step 4: test it
 
-Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, which writes `tests/testthat/test-logistic_selectivity.R`, and test known values, e.g. 0.5 at the inflection point. The module also needs a test that runs it through `initialize_fims()` and `fit_fims()`, which checks its lookup table entry and default rows.
+Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, which writes `tests/testthat/test-logistic_selectivity.R`, and test known values, such as 0.5 at the inflection point.
 
-`initialize_fims()` then reads the new rows from the tibble, and `catch_at_age()` calls the function through the lookup table.
+`tests/testthat/test-call_module.R` and `tests/testthat/test-integration-retape.R` loop over the lookup tables, so a new entry is checked without editing either one. The first checks that the function's arguments match its default labels, and that its values and gradient from the RTMB tape match plain R and numerical derivatives. The second builds a model with each selectivity, maturity and recruitment type through `initialize_fims()` and `fit_fims()`. It moves every value by 0.1 and checks that, at that point, the tape made at the starting values gives the same objective and gradient as a new tape made there.
 
 # Adding a likelihood family
 
 1. Write `<family>_lpdf(observed, expected, ...)` (or `_lpmf`) in `R/distributions.R`. The first 2 arguments are the observations and the expected values named in the data's `uncertainty` formula, on the scale the family uses (e.g. `log_expected` for the lognormal). The family's own parameters follow by name (e.g. `log_sd`). Return 1 log density per observation, and 0 where the observation is missing. Write a matching `<family>_draw()` for `simulate_fims()`.
 2. Add 1 entry to `likelihood_families` at the bottom of `R/distributions.R`, keyed by the family in the uncertainty formula. The entry holds its `lpdf`, `draw`, `distribution` (its name in `get_estimates()`) and `parameters` (its parameters from the parsed uncertainty column).
 3. Test known values of `<family>_lpdf()` in a file from `FIMS:::use_testthat_template()`, and fit a model whose `uncertainty` formula uses the family through `initialize_fims()` and `fit_fims()`.
+4. Add a case to `tests/testthat/test-integration-retape.R`, which fails when a family has no case. `tests/testthat/test-call_module.R` checks the new `lpdf` on the tape. Add a test value there for any parameter other than `log_sd`.
 
 # Adding a process structure
 
@@ -105,6 +107,7 @@ Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, 
 2. Add 1 entry to `process_structures` at the bottom of `R/distributions.R`, keyed by its `re_structure` name.
 3. Add the term to `is_random_term()` and `parse_random_term()` in `R/processes.R`, so `add_process()` can write it.
 4. Test known values of `<structure>_process_lpdf()` in a file from `FIMS:::use_testthat_template()`, and fit a model with the structure added by `add_process()` through `initialize_fims()` and `fit_fims()`.
+5. Add a case to `tests/testthat/test-integration-retape.R`, which fails when a structure has no case. `tests/testthat/test-call_module.R` checks the new `lpdf` on the tape. It fails if the `lpdf` takes a hyperparameter other than `log_sd` and `logit_rho`, because `process_densities()` passes only those 2.
 
 # Adding a growth type
 
@@ -113,8 +116,10 @@ Growth needs inputs that are not parameters (weight data, ages, a length grid), 
 - `evaluate`: the module function.
 - `inputs`: a function of the FIMSFrame, the parameter tibble and the population length grid that returns the module's other arguments.
 - `models_length`: `TRUE` if it gives length at age, so fleets' age-to-length keys come from growth.
-- `working_scale`: a function giving the scale each tibble row is estimated on (`"log"`, `"logit"` or `NA`).
+- `working_scale`: a function giving the scale each tibble row is estimated on (`"log"`, `"logit"`, `"log_difference"` or `NA`).
+
+Add the type to the `module_type` choices in `setup_default_Growth()`, with its default rows. `tests/testthat/test-call_module.R` runs every entry in `growth_modules` and checks the tape of each one that has parameters. `tests/testthat/test-integration-retape.R` fails when a growth type has no case, so add one for a new type.
 
 # Adding a model type
 
-Write the model's predictions function (e.g. a surplus production model) and add it to `model_functions` at the bottom of `R/catch_at_age.R`. `fims_model()` adds the likelihood and the report for any model type.
+Write the model's predictions function (such as a surplus production model) and add it to `model_functions` in `R/model.R`. `fims_model()` adds the likelihood and the report for any model type.
