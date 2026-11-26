@@ -1,5 +1,6 @@
 # Helper data for tests of catch-at-length models ----
-# Used by test-catch_at_length.R and test-integration-retape.R.
+# Used by test-catch_at_length.R, test-call_module.R and
+# test-integration-retape.R.
 
 # A 3-year, 4-length-bin (25, 30, 35, 40 mm) catch-at-length model with 1
 # directed pot fishery (retained + discarded catch and length comps), 1 survey
