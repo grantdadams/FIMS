@@ -152,21 +152,39 @@ expect_tape_matches_r <- function(evaluate, taped, label) {
   }
 }
 
+# catch_at_length() evaluates a selectivity type with a `length` argument at
+# the length bin midpoints. The other types take `age`, the ages in
+# catch_at_age(). So the selectivity types are split into 2 entries below.
+# retention_functions is the same table as selectivity_functions, so these
+# entries check retention too.
+is_by_length <- function(module_function) {
+  "length" %in% names(formals(module_function))
+}
+length_bins <- get_lengths(data_4_model)
+selectivity_rows <- function(module_type) {
+  setup_default_Selectivity(
+    data_4_model, get_fleets(data_4_model)[1], module_type
+  )
+}
+
 # 1 entry per table that call_module() reads. `default_rows` gives the rows
 # setup_default_*() writes for a module type. `data_inputs` are inputs that
 # are data in the model. `taped_inputs` depend on parameters in the model, so
 # they are taped with the parameters. `n_values` is the length of the output.
 module_tables <- list(
   Selectivity = list(
-    functions = FIMS:::selectivity_functions,
-    default_rows = function(module_type) {
-      setup_default_Selectivity(
-        data_4_model, get_fleets(data_4_model)[1], module_type
-      )
-    },
+    functions = Filter(Negate(is_by_length), FIMS:::selectivity_functions),
+    default_rows = selectivity_rows,
     data_inputs = list(age = ages),
     taped_inputs = list(),
     n_values = length(ages)
+  ),
+  SelectivityByLength = list(
+    functions = Filter(is_by_length, FIMS:::selectivity_functions),
+    default_rows = selectivity_rows,
+    data_inputs = list(length = length_bins),
+    taped_inputs = list(),
+    n_values = length(length_bins)
   ),
   Maturity = list(
     functions = FIMS:::maturity_functions,
@@ -243,7 +261,7 @@ test_that("every module type in the `call_module()` tables runs, and its tape ma
           list(parameters = parameters)
         )
       )
-      #' @description Test that each module type returns finite values with its default parameters, 1 per age for selectivity and maturity, and 1 for recruitment and depletion.
+      #' @description Test that each module type returns finite values with its default parameters, 1 per age or length bin for selectivity, 1 per age for maturity, and 1 for recruitment and depletion.
       expect_equal(
         object = is.finite(output),
         expected = rep(TRUE, module_table[["n_values"]]),
@@ -287,12 +305,23 @@ test_that("every growth type in `growth_modules` runs, and its tape matches plai
     expected = c("logit_mean_length_young", "log_sd_growth_coefficient")
   )
 
+  # LinearGammaIncrement is growth by molting in a catch-at-length model. It
+  # gives the growth transition between length bins, not weight at age, so
+  # it gets the length bins and growth increments of cal_data, which is in
+  # helper-catch-at-length.R. Length bins that start at 0 give NaN gradients
+  # in this function and in GammaLength recruitment, from RTMB::pgamma() at
+  # 0. So the case uses the bins of cal_data, which start at 25, until that
+  # is fixed.
+  cal_frame <- FIMSFrame(cal_data)
   population_edges <- FIMS:::length_bin_edges(get_lengths(data_4_model))
   for (growth_case in names(growth_cases)) {
     rows <- growth_cases[[growth_case]]
-    growth_module <- FIMS:::growth_modules[[unique(rows[["module_type"]])]]
+    growth_type <- unique(rows[["module_type"]])
+    growth_module <- FIMS:::growth_modules[[growth_type]]
+    is_catch_at_length <- growth_type == "LinearGammaIncrement"
+    fims_frame <- if (is_catch_at_length) cal_frame else data_4_model
     parameters <- parameters_by_label(rows)
-    inputs <- growth_module[["inputs"]](data_4_model, rows, population_edges)
+    inputs <- growth_module[["inputs"]](fims_frame, rows, population_edges)
     # population_biology() calls growth with do.call(), not call_module().
     # von Bertalanffy growth has arguments for 2 forms each of L1, L2 and the
     # sd of length at age, and is given 1 of each. So every label must be an
@@ -306,20 +335,22 @@ test_that("every growth type in `growth_modules` runs, and its tape matches plai
       label = paste(growth_case, "labels that are not arguments")
     )
     output <- do.call(growth_module[["evaluate"]], c(inputs, parameters))
-    # Weight at age is 1 value per age, or a matrix by year when it is data,
-    # with a row for the year after the last model year.
-    weight_at_age <- output[["weight_at_age"]]
-    n_values <- if (is.matrix(weight_at_age)) {
-      (get_n_years(data_4_model) + 1) * length(ages)
-    } else {
-      length(ages)
+    if (!is_catch_at_length) {
+      # Weight at age is 1 value per age, or a matrix by year when it is
+      # data, with a row for the year after the last model year.
+      weight_at_age <- output[["weight_at_age"]]
+      n_values <- if (is.matrix(weight_at_age)) {
+        (get_n_years(data_4_model) + 1) * length(ages)
+      } else {
+        length(ages)
+      }
+      #' @description Test that each catch-at-age growth type returns finite weight at age with its default parameters, 1 value per age or 1 per age and year.
+      expect_equal(
+        object = as.vector(is.finite(weight_at_age)),
+        expected = rep(TRUE, n_values),
+        label = paste(growth_case, "is.finite(weight_at_age)")
+      )
     }
-    #' @description Test that each growth type returns finite weight at age with its default parameters, 1 value per age or 1 per age and year.
-    expect_equal(
-      object = as.vector(is.finite(weight_at_age)),
-      expected = rep(TRUE, n_values),
-      label = paste(growth_case, "is.finite(weight_at_age)")
-    )
     #' @description Test that every output of each growth type, such as the length distribution at age, is finite with its default parameters.
     expect_true(
       object = all(is.finite(unlist(output))),
