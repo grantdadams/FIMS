@@ -1,7 +1,7 @@
 # Helper file for FIMS R tests----
-# This file contains multiple functions that are used to set up and run
-# FIMS models with wrapper functions. The functions are sourced by
-# devtools::load_all().
+# This file contains functions that set up and run FIMS models, and that make
+# the data rows and growth parameter rows tests add to them. The functions are
+# sourced by devtools::load_all().
 
 # FIMS dmultinorm function ----
 #' FIMS dmultinom()
@@ -143,4 +143,57 @@ population_length_bin_rows <- function(lengths, timing = NA_real_) {
     unit = NA_character_,
     uncertainty = NA_character_
   )
+}
+
+# von Bertalanffy-Schnute growth forms ----
+#' Hold L2 constant in von Bertalanffy-Schnute growth rows
+#'
+#' With L2 constant and L1 estimated, L1 is estimated on a logit scale bounded
+#' by L2.
+#'
+#' @param rows Parameter rows with von Bertalanffy-Schnute growth rows, such
+#'   as from setup_default_Growth() or setup_default_parameters().
+#'
+#' @return `rows` with `mean_length_old` constant.
+with_constant_mean_length_old <- function(rows) {
+  dplyr::mutate(
+    rows,
+    estimation_type = dplyr::if_else(
+      label == "mean_length_old", "constant", estimation_type
+    )
+  )
+}
+
+#' Use the delta-method sd of length at age in von Bertalanffy-Schnute growth
+#' rows
+#'
+#' The delta-method sd replaces the 2 interpolation sds with 3 sds on the log
+#' scale and 3 correlations on a logit scale bounded by -1 and 1. Each new row
+#' copies the first interpolation sd row, so it keeps that row's estimation
+#' type.
+#'
+#' @inheritParams with_constant_mean_length_old
+#' @param correlations The correlations of L1 with L2, L1 with k, and L2 with
+#'   k.
+#'
+#' @return `rows` without the 2 interpolation sd rows, and with the 6
+#'   delta-method rows at the end.
+with_delta_method_sd <- function(rows, correlations = c(0.5, 0.2, 0.1)) {
+  is_interpolation_sd <- rows[["label"]] %in%
+    c("length_at_age_sd_young", "length_at_age_sd_old")
+  delta_method_rows <- rows |>
+    dplyr::slice(rep(which(is_interpolation_sd)[1], 6)) |>
+    dplyr::mutate(
+      label = c(
+        "log_sd_mean_length_young", "log_sd_mean_length_old",
+        "log_sd_growth_coefficient",
+        "mean_length_young_mean_length_old_logit_corr",
+        "mean_length_young_growth_coefficient_logit_corr",
+        "mean_length_old_growth_coefficient_logit_corr"
+      ),
+      value = c(log(c(0.05, 0.05, 0.05)), logit(-1, 1, correlations))
+    )
+  rows |>
+    dplyr::filter(!is_interpolation_sd) |>
+    dplyr::bind_rows(delta_method_rows)
 }

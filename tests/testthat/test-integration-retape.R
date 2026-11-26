@@ -14,78 +14,608 @@
 # while recording, e.g., in a comparison that RTMB does not stop on, the tape
 # keeps that path everywhere. Then the objective and gradient away from the
 # starting values differ from those of a tape recorded at that point.
+#
+# Each case estimates the parameters of the module it checks and tests that
+# their gradient is not 0. For a data feature, such as ageing error, it
+# estimates the parameters its predictions depend on. A constant value is
+# data on the tape, so a path chosen from it is correct. A case whose module
+# values are constant, or estimated but not used by the objective, would
+# check nothing.
 data("data_big")
 data_4_model <- FIMSFrame(data_big)
 data_von_bertalanffy <- data_big |>
   dplyr::filter(type != "weight_at_age") |>
   FIMSFrame()
+default_parameters <- setup_default_parameters(data = data_4_model)
+# Reference ages are data, because length at age switches form at the young
+# reference age. Every other growth parameter is estimated.
+von_bertalanffy_parameters <- setup_default_parameters(
+  data = data_von_bertalanffy
+) |>
+  dplyr::mutate(
+    estimation_type = dplyr::if_else(
+      module_name == "Growth" & !startsWith(label, "reference_age"),
+      "fixed_effects", estimation_type
+    )
+  )
+von_bertalanffy_names <- c(
+  "Growth.log_mean_length_young", "Growth.log_difference_mean_length_old",
+  "Growth.log_growth_coefficient", "Growth.log_length_weight_a",
+  "Growth.log_length_weight_b", "Growth.log_length_at_age_sd_young",
+  "Growth.log_length_at_age_sd_old"
+)
+
+# The ageing error matrix reads_older and ageing_error_rows() are in
+# helper-ageing-error.R.
+ages <- get_ages(data_4_model)
+n_ages <- length(ages)
 
 #' Largest relative difference between a tape and a new tape at a perturbed
 #' point
 #'
 #' @param parameters A parameter tibble.
 #' @param data A FIMSFrame.
-#' @return A list with the largest relative difference between the points the
-#'   2 tapes are evaluated at (`point`, which should be 0) and in their
-#'   objective and gradient (`difference`).
+#' @return A list with:
+#'   * `point`: the largest relative difference between the points the 2
+#'     tapes are evaluated at, which should be 0.
+#'   * `difference`: the largest relative difference between the 2 tapes'
+#'     objective and gradient at the perturbed point.
+#'   * `nonzero_gradient`: the names of the parameters, fixed or random
+#'     effects, with at least 1 value whose gradient at the perturbed point is
+#'     not 0, so they are on the tape and change the objective.
 retape_difference <- function(parameters, data) {
   rtmb <- rtmb_objective(parameters, data)
   obj <- rtmb[["obj"]]
   # A frozen path is found only if the perturbed point crosses the threshold
-  # it was chosen by. An sd of 0.1 moves log-scale values about 10%, and keeps
-  # von Bertalanffy L1 well below L2.
-  set.seed(1)
-  perturbed <- obj[["par"]] + stats::rnorm(length(obj[["par"]]), sd = 0.1)
+  # it was chosen by. Every value moves by 0.1, up or down at random, so a
+  # threshold at the starting value is crossed for about half of the values.
+  # A move of 0.1 is about 10% for log-scale values. L1 stays below L2,
+  # because L2 is L1 plus a positive difference, or L1 is a logit fraction
+  # of L2.
+  perturbed <- obj[["par"]] + 0.1 * withr::with_seed(
+    1, sample(c(-1, 1), length(obj[["par"]]), replace = TRUE)
+  )
   taped_at_start <- c(obj[["fn"]](perturbed), obj[["gr"]](perturbed))
   input <- rtmb[["input"]]
   input[["parameters"]] <- obj[["env"]][["parList"]](perturbed)
   retaped_obj <- get_obj(fit_fims(input, optimize = FALSE, get_sd = FALSE))
-  taped_at_perturbed <- c(
-    retaped_obj[["fn"]](retaped_obj[["par"]]),
-    retaped_obj[["gr"]](retaped_obj[["par"]])
-  )
+  gradient <- as.vector(retaped_obj[["gr"]](retaped_obj[["par"]]))
+  taped_at_perturbed <- c(retaped_obj[["fn"]](retaped_obj[["par"]]), gradient)
+  # RTMB names each value after its RTMB parameter. A random walk splits 1
+  # parameter into 2 RTMB parameters, 1 for its random values and 1 for its
+  # fixed first year, so the parameter table maps each RTMB name back to the
+  # parameter's name.
+  parameter_table <- input[["parameter_table"]]
+  rtmb_names <- unique(names(retaped_obj[["par"]])[gradient != 0])
   list(
     point = max_relative_difference(retaped_obj[["par"]], perturbed),
-    difference = max_relative_difference(taped_at_start, taped_at_perturbed)
+    difference = max_relative_difference(taped_at_start, taped_at_perturbed),
+    nonzero_gradient = unique(
+      parameter_table[["name"]][parameter_table[["rtmb_name"]] %in% rtmb_names]
+    )
+  )
+}
+
+#' Expect a tape to equal a new tape at the perturbed point
+#'
+#' @param retape The output of retape_difference().
+#' @param nonzero_gradient The names of the parameters the case checks, which
+#'   must be estimated and change the objective.
+#' @param label The case, which names it in failure messages.
+expect_retape_matches <- function(retape, nonzero_gradient, label) {
+  #' @description Test that the parameters each case checks are estimated and change the objective.
+  expect_contains(
+    object = retape[["nonzero_gradient"]],
+    expected = nonzero_gradient
+  )
+  #' @description Test that the new tape of each case is recorded at the perturbed point.
+  expect_equal(
+    object = retape[["point"]],
+    expected = 0,
+    label = paste(label, "point")
+  )
+  #' @description Test that the objective and gradient of each case at the perturbed point equal those of a tape recorded there.
+  expect_lt(
+    object = retape[["difference"]],
+    expected = 1e-10,
+    label = paste(label, "difference")
   )
 }
 
 ## IO correctness ----
 test_that("the default model's tape is valid away from the starting values", {
-  retape <- retape_difference(
-    setup_default_parameters(data = data_4_model), data_4_model
-  )
+  # The default model has EWAA growth and the age-to-length key from the
+  # data. Both are data, so this checks the estimated values that are
+  # multiplied by weight at age and the key.
+  retape <- retape_difference(default_parameters, data_4_model)
 
-  #' @description Test that the new tape is recorded at the perturbed point.
-  expect_equal(
-    object = retape[["point"]],
-    expected = 0
-  )
-  #' @description Test that the objective and gradient at a perturbed point equal those of a tape recorded there.
-  expect_lt(
-    object = retape[["difference"]],
-    expected = 1e-10
+  #' @description Test that the default model's tape equals a new tape at a perturbed point, with initial numbers, recruitment, fishing mortality, catchability and selectivity estimated.
+  expect_retape_matches(
+    retape,
+    nonzero_gradient = c(
+      "Population.log_init_naa", "Recruitment.log_rzero",
+      "Fleet.fleet1.log_Fmort", "Fleet.survey1.log_q",
+      "Selectivity.fleet1.inflection_point", "Selectivity.survey1.slope"
+    ),
+    label = "default model"
   )
 })
 
-test_that("the von Bertalanffy-Schnute tape is valid away from the start", {
-  # Growth switches from a linear to a von Bertalanffy curve at the young
-  # reference age. Ages and reference ages are data, so the switch should not
-  # depend on the starting values. This test checks that.
-  retape <- retape_difference(
-    setup_default_parameters(data = data_von_bertalanffy),
-    data_von_bertalanffy
-  )
+test_that("each selectivity type's tape is valid away from the start", {
+  # Every fleet takes the type, so it is checked for a fishery and a survey.
+  for (selectivity_type in names(FIMS:::selectivity_functions)) {
+    selectivity <- purrr::map(
+      get_fleets(data_4_model),
+      \(fleet) setup_default_Selectivity(data_4_model, fleet, selectivity_type)
+    ) |>
+      dplyr::bind_rows()
+    retape <- default_parameters |>
+      dplyr::filter(module_name != "Selectivity") |>
+      dplyr::bind_rows(selectivity) |>
+      retape_difference(data_4_model)
 
-  #' @description Test that the new tape with von Bertalanffy-Schnute growth is recorded at the perturbed point.
-  expect_equal(
-    object = retape[["point"]],
-    expected = 0
+    #' @description Test that the tape with each selectivity type equals a new tape at a perturbed point, with its parameters estimated for each fleet.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = unique(paste(
+        "Selectivity", selectivity[["fleet"]], selectivity[["label"]],
+        sep = "."
+      )),
+      label = selectivity_type
+    )
+  }
+})
+
+test_that("each maturity type's tape is valid away from the start", {
+  # Maturity is constant by default, because there are no maturity data.
+  # Here it is estimated so its parameters are on the tape.
+  for (maturity_type in names(FIMS:::maturity_functions)) {
+    maturity <- setup_default_Maturity(data_4_model, maturity_type) |>
+      dplyr::mutate(estimation_type = "fixed_effects")
+    retape <- default_parameters |>
+      dplyr::filter(module_name != "Maturity") |>
+      dplyr::bind_rows(maturity) |>
+      retape_difference(data_4_model)
+
+    #' @description Test that the tape with each maturity type equals a new tape at a perturbed point, with its parameters estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = paste("Maturity", maturity[["label"]], sep = "."),
+      label = maturity_type
+    )
+  }
+})
+
+test_that("each stock-recruit type's tape is valid away from the start", {
+  # Steepness is constant by default. Here every stock-recruit parameter is
+  # estimated.
+  process_labels <- c(names(FIMS:::recruitment_process_functions), "log_sd")
+  for (recruitment_type in names(FIMS:::recruitment_functions)) {
+    recruitment <- setup_default_Recruitment(data_4_model, recruitment_type) |>
+      dplyr::mutate(
+        estimation_type = dplyr::if_else(
+          label %in% process_labels, estimation_type, "fixed_effects"
+        )
+      )
+    retape <- default_parameters |>
+      dplyr::filter(module_name != "Recruitment") |>
+      dplyr::bind_rows(recruitment) |>
+      retape_difference(data_4_model)
+
+    #' @description Test that the tape with each stock-recruit type equals a new tape at a perturbed point, with its parameters estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = paste(
+        "Recruitment",
+        setdiff(recruitment[["label"]], process_labels),
+        sep = "."
+      ),
+      label = recruitment_type
+    )
+  }
+})
+
+test_that("each recruitment process's tape is valid away from the start", {
+  # Deviations start at 0. A process that varies around the stock-recruit
+  # curve, such as log_r, starts at log R0, near the curve.
+  log_rzero <- default_parameters |>
+    dplyr::filter(label == "log_rzero") |>
+    dplyr::pull(value)
+  is_process <- default_parameters[["label"]] == "log_devs"
+  for (process in names(FIMS:::recruitment_process_functions)) {
+    is_deviation <- FIMS:::recruitment_process_means[[process]] == "zero"
+    starting_value <- if (is_deviation) 0 else log_rzero
+    retape <- default_parameters |>
+      dplyr::mutate(
+        value = dplyr::if_else(is_process, starting_value, value),
+        label = dplyr::if_else(is_process, process, label)
+      ) |>
+      retape_difference(data_4_model)
+
+    #' @description Test that the tape with each recruitment process equals a new tape at a perturbed point, with its values and sd estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = paste("Recruitment", c(process, "log_sd"), sep = "."),
+      label = process
+    )
+  }
+})
+
+test_that("each add_process() structure's tape is valid away from the start", {
+  # At least 1 case per structure, each on a different parameter that then
+  # varies by year. The AR1 varies around a mean with 2 time blocks, and the
+  # years in each block share 1 estimate through the map. The iid process by
+  # age and year is on natural mortality, which is constant by default.
+  # add_process() estimates the sd, mean and rho.
+  process_cases <- list(
+    iid = list(
+      formula = inflection_point ~ 1 + (1 | year),
+      module_name = "Selectivity", fleet = "fleet1"
+    ),
+    ar1 = list(
+      formula = log_q ~ cut(year, c(-Inf, 15, Inf)) + ar1(1 | year),
+      module_name = "Fleet", fleet = "survey1"
+    ),
+    rw = list(
+      formula = slope ~ rw(1 | year),
+      module_name = "Selectivity", fleet = "survey1"
+    ),
+    iid_by_age_and_year = list(
+      formula = log_M ~ 1 + (1 | age:year),
+      module_name = "Population", fleet = NA_character_
+    )
   )
-  #' @description Test that the objective and gradient with von Bertalanffy-Schnute growth at a perturbed point equal those of a tape recorded there.
-  expect_lt(
-    object = retape[["difference"]],
-    expected = 1e-10
+  structures <- character(0)
+  for (case in names(process_cases)) {
+    process_case <- process_cases[[case]]
+    parameters <- default_parameters |>
+      add_process(
+        process_case[["formula"]],
+        module_name = process_case[["module_name"]],
+        fleet = process_case[["fleet"]]
+      )
+    structures <- c(structures, stats::na.omit(parameters[["re_structure"]]))
+    retape <- retape_difference(parameters, data_4_model)
+    # The target's name in the model, such as Selectivity.fleet1.slope.
+    target <- paste(
+      stats::na.omit(c(
+        process_case[["module_name"]], process_case[["fleet"]],
+        as.character(process_case[["formula"]][[2]])
+      )),
+      collapse = "."
+    )
+
+    #' @description Test that the tape with each process equals a new tape at a perturbed point, with its values and sd estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = paste0(target, c("", "_log_sd")),
+      label = case
+    )
+  }
+  #' @description Test that the process cases that run use every process structure.
+  expect_contains(
+    object = structures,
+    expected = names(FIMS:::process_structures)
+  )
+})
+
+test_that("each growth option's tape is valid away from the start", {
+  # EWAA has no parameters. Weight at age multiplies numbers and catch at
+  # age, so the EWAA case checks initial numbers and fishing mortality. von
+  # Bertalanffy-Schnute growth switches from a linear to a von Bertalanffy
+  # curve at the young reference age. Ages and reference ages are data, so
+  # the switch should not depend on the starting values. The fleets'
+  # age-to-length keys come from growth, so the check covers them too.
+  # with_constant_mean_length_old() and with_delta_method_sd() are in
+  # helper-integration-tests-setup-function.R.
+  delta_method <- with_delta_method_sd(von_bertalanffy_parameters)
+  delta_method_labels <- setdiff(
+    delta_method[["label"]], von_bertalanffy_parameters[["label"]]
+  )
+  # With no length data and no age-to-length conversion data, there are no
+  # length bins, so weight at age is the weight at mean length. The sd of
+  # length at age is not used, so its 2 parameters do not change the
+  # objective.
+  data_no_length <- data_big |>
+    dplyr::filter(
+      !type %in% c("weight_at_age", "length_comp", "age_to_length_conversion")
+    ) |>
+    FIMSFrame()
+  sd_names <- c(
+    "Growth.log_length_at_age_sd_young", "Growth.log_length_at_age_sd_old"
+  )
+  growth_cases <- list(
+    ewaa = list(
+      parameters = default_parameters,
+      data = data_4_model,
+      nonzero_gradient = c("Population.log_init_naa", "Fleet.fleet1.log_Fmort")
+    ),
+    von_bertalanffy_schnute = list(
+      parameters = von_bertalanffy_parameters,
+      data = data_von_bertalanffy,
+      nonzero_gradient = von_bertalanffy_names
+    ),
+    constant_old_length = list(
+      parameters = with_constant_mean_length_old(von_bertalanffy_parameters),
+      data = data_von_bertalanffy,
+      nonzero_gradient = c(
+        "Growth.logit_mean_length_young",
+        setdiff(von_bertalanffy_names, c(
+          "Growth.log_mean_length_young",
+          "Growth.log_difference_mean_length_old"
+        ))
+      )
+    ),
+    delta_method = list(
+      parameters = delta_method,
+      data = data_von_bertalanffy,
+      nonzero_gradient = c(
+        setdiff(von_bertalanffy_names, sd_names),
+        paste("Growth", delta_method_labels, sep = ".")
+      )
+    ),
+    no_length_bins = list(
+      parameters = von_bertalanffy_parameters,
+      data = data_no_length,
+      nonzero_gradient = setdiff(von_bertalanffy_names, sd_names)
+    )
+  )
+  for (case in names(growth_cases)) {
+    growth_case <- growth_cases[[case]]
+    retape <- retape_difference(
+      growth_case[["parameters"]], growth_case[["data"]]
+    )
+
+    #' @description Test that the tape with each growth option equals a new tape at a perturbed point, with the growth parameters it uses estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = growth_case[["nonzero_gradient"]],
+      label = case
+    )
+  }
+  growth_types <- growth_cases |>
+    purrr::map(\(growth_case) {
+      growth_case[["parameters"]] |>
+        dplyr::filter(module_name == "Growth") |>
+        dplyr::pull(module_type)
+    }) |>
+    unlist()
+  #' @description Test that the growth cases that run use every growth type.
+  expect_contains(
+    object = growth_types,
+    expected = names(FIMS:::growth_modules)
+  )
+})
+
+test_that("the tape with ageing error is valid away from the start", {
+  # Ageing error has no parameters. It moves the expected age compositions,
+  # which depend on the estimated selectivity. Year 10 has its own matrix,
+  # so the matrices are applied 1 year at a time.
+  data_ageing_error <- data_big |>
+    dplyr::bind_rows(
+      ageing_error_rows(),
+      ageing_error_rows(diag(n_ages), timing = 10)
+    ) |>
+    FIMSFrame()
+  retape <- retape_difference(default_parameters, data_ageing_error)
+
+  #' @description Test that the tape with ageing error equals a new tape at a perturbed point, with the selectivity of the fleets with ageing error estimated.
+  expect_retape_matches(
+    retape,
+    nonzero_gradient = c(
+      "Selectivity.fleet1.inflection_point", "Selectivity.fleet1.slope",
+      "Selectivity.survey1.inflection_point", "Selectivity.survey1.slope"
+    ),
+    label = "ageing error"
+  )
+})
+
+test_that("the conditional age-at-length tape is valid away from the start", {
+  # fleet1 conditional age-at-length in every year in 3 length bins, as in
+  # test-get_estimates.R.
+  caal_rows <- tidyr::expand_grid(
+    timing = get_start_year(data_4_model):get_end_year(data_4_model),
+    length = c(300, 400, 500),
+    age = ages
+  ) |>
+    dplyr::mutate(
+      type = "conditional_age_at_length",
+      fleet = "fleet1",
+      observed = 1 / n_ages,
+      unit = "proportion",
+      uncertainty = paste(
+        "~ dmultinom(prob = conditional_age_at_length_proportion,",
+        "size = 50)"
+      )
+    )
+  # FIMSFrame() warns that conditional_age_at_length is not among its listed
+  # data types, but the model reads it. With von Bertalanffy-Schnute growth,
+  # the key comes from growth, so the growth parameters pass through the
+  # expected proportions.
+  data_caal_growth <- suppressWarnings(FIMSFrame(
+    data_big |>
+      dplyr::filter(type != "weight_at_age") |>
+      dplyr::bind_rows(caal_rows)
+  ))
+  # With the key from the data, the selectivity passes through the expected
+  # proportions. The counts have a normal likelihood, and ageing error moves
+  # the proportions to read ages.
+  data_caal_key_from_data <- suppressWarnings(FIMSFrame(
+    data_big |>
+      dplyr::bind_rows(
+        dplyr::mutate(
+          caal_rows,
+          observed = observed * 50,
+          unit = "number",
+          uncertainty =
+            "~ dnorm(mean = conditional_age_at_length_proportion, sd = 1)"
+        ),
+        ageing_error_rows()
+      )
+  ))
+  caal_cases <- list(
+    key_from_growth = list(
+      parameters = von_bertalanffy_parameters,
+      data = data_caal_growth,
+      nonzero_gradient = von_bertalanffy_names
+    ),
+    key_from_data_with_ageing_error = list(
+      parameters = default_parameters,
+      data = data_caal_key_from_data,
+      nonzero_gradient = c(
+        "Selectivity.fleet1.inflection_point", "Selectivity.fleet1.slope"
+      )
+    )
+  )
+  for (case in names(caal_cases)) {
+    caal_case <- caal_cases[[case]]
+    retape <- retape_difference(
+      caal_case[["parameters"]], caal_case[["data"]]
+    )
+
+    #' @description Test that the tape with conditional age-at-length equals a new tape at a perturbed point, with the parameters that pass through its expected proportions estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = caal_case[["nonzero_gradient"]],
+      label = case
+    )
+  }
+})
+
+test_that("the tape with priors is valid away from the start", {
+  # Priors on a selectivity parameter, a parameter by year in 2 time blocks
+  # (scored once per block), a process sd, the recruitment sd and 2 growth
+  # parameters on the scales they are estimated on.
+  retape <- von_bertalanffy_parameters |>
+    add_process(
+      log_q ~ 1 + ar1(1 | year),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    add_process(
+      log_Fmort ~ cut(year, c(-Inf, 15, Inf)),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    add_priors(
+      slope ~ normal(mean = 1, sd = 0.5),
+      module_name = "Selectivity",
+      fleet = "fleet1"
+    ) |>
+    add_priors(
+      log_Fmort ~ normal(mean = -3, sd = 1),
+      module_name = "Fleet",
+      fleet = "fleet1"
+    ) |>
+    add_priors(
+      log_q_log_sd ~ normal(mean = log(0.2), sd = 0.5),
+      module_name = "Fleet",
+      fleet = "survey1"
+    ) |>
+    add_priors(
+      log_sd ~ normal(mean = log(0.4), sd = 0.2),
+      module_name = "Recruitment"
+    ) |>
+    add_priors(
+      log_mean_length_young ~ normal(mean = log(280), sd = 0.1),
+      module_name = "Growth"
+    ) |>
+    add_priors(
+      log_difference_mean_length_old ~ normal(mean = log(440), sd = 0.1),
+      module_name = "Growth"
+    ) |>
+    retape_difference(data_von_bertalanffy)
+
+  #' @description Test that the tape with priors equals a new tape at a perturbed point, with the target of each prior estimated.
+  expect_retape_matches(
+    retape,
+    nonzero_gradient = c(
+      "Selectivity.fleet1.slope", "Fleet.fleet1.log_Fmort",
+      "Fleet.survey1.log_q_log_sd", "Recruitment.log_sd",
+      "Growth.log_mean_length_young", "Growth.log_difference_mean_length_old"
+    ),
+    label = "priors"
+  )
+})
+
+test_that("each likelihood family's tape is valid away from the start", {
+  # data_big has lognormal catch and index data, and multinomial
+  # compositions. In data_normal, the index and survey1 age compositions are
+  # normal. The compositions are counts, because a normal likelihood has no
+  # sample size to turn proportions into counts.
+  data_normal <- data_big |>
+    dplyr::mutate(
+      is_index = type == "index",
+      is_survey_comp = type == "age_comp" & fleet %in% "survey1",
+      observed = dplyr::if_else(is_survey_comp, observed * 200, observed),
+      unit = dplyr::if_else(is_survey_comp, "number", unit),
+      uncertainty = dplyr::case_when(
+        is_index ~ "~ dnorm(mean = index_expected, sd = 0.1)",
+        is_survey_comp ~ "~ dnorm(mean = agecomp_expected, sd = 1)",
+        .default = uncertainty
+      )
+    ) |>
+    dplyr::select(-"is_index", -"is_survey_comp") |>
+    FIMSFrame()
+  # A Data row for a fleet labeled `<data type>_log_sd`, such as
+  # `index_log_sd`, replaces the sd in the uncertainty column, so the sd is
+  # estimated.
+  estimated_sd <- function(fleet, label) {
+    tibble::tibble(
+      module_name = "Data",
+      fleet = fleet,
+      label = label,
+      value = log(0.2),
+      estimation_type = "fixed_effects"
+    )
+  }
+  family_cases <- list(
+    lognormal_and_multinomial = list(
+      parameters = dplyr::bind_rows(
+        default_parameters,
+        estimated_sd("fleet1", "catch_log_sd"),
+        estimated_sd("survey1", "index_log_sd")
+      ),
+      data = data_4_model,
+      nonzero_gradient = c(
+        "Data.fleet1.catch_log_sd", "Data.survey1.index_log_sd"
+      )
+    ),
+    normal = list(
+      parameters = dplyr::bind_rows(
+        default_parameters,
+        estimated_sd("survey1", "index_log_sd"),
+        estimated_sd("survey1", "age_comp_log_sd")
+      ),
+      data = data_normal,
+      nonzero_gradient = c(
+        "Data.survey1.index_log_sd", "Data.survey1.age_comp_log_sd"
+      )
+    )
+  )
+  for (case in names(family_cases)) {
+    family_case <- family_cases[[case]]
+    retape <- retape_difference(
+      family_case[["parameters"]], family_case[["data"]]
+    )
+
+    #' @description Test that the tape with each likelihood family equals a new tape at a perturbed point, with the sd of each family that has one estimated.
+    expect_retape_matches(
+      retape,
+      nonzero_gradient = family_case[["nonzero_gradient"]],
+      label = case
+    )
+  }
+  families <- family_cases |>
+    purrr::map(\(family_case) get_data(family_case[["data"]])) |>
+    purrr::map(\(data) data[["uncertainty"]]) |>
+    unlist() |>
+    FIMS:::parse_data_distribution() |>
+    purrr::pluck("family")
+  #' @description Test that the likelihood family cases that run use every likelihood family.
+  expect_contains(
+    object = families,
+    expected = names(FIMS:::likelihood_families)
   )
 })
 
