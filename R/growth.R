@@ -340,10 +340,18 @@ linear_gamma_increment_growth <- function(length_edges,
   mean_increment <- growth_intercept + growth_slope * length_midpoints
   shape <- (length_midpoints + mean_increment) / growth_scale
   scaled_edges <- length_edges / growth_scale
+  # The gamma CDF is 0 at an edge of 0. RTMB::pgamma() gives that value, but
+  # its derivative with respect to the shape is NaN there, which makes every
+  # gradient NaN. So it is called only at positive edges. The edges are data,
+  # so the tape is the same for any parameter values.
+  is_positive_edge <- length_edges > 0
   growth_transition <- matrix(0, n_lengths, n_lengths)
   for (bin in seq_len(n_lengths)) {
-    cumulative <- RTMB::pgamma(
-      scaled_edges[bin:(n_lengths + 1)],
+    row_edges <- bin:(n_lengths + 1)
+    row_is_positive <- is_positive_edge[row_edges]
+    cumulative <- numeric(length(row_edges))
+    cumulative[row_is_positive] <- RTMB::pgamma(
+      scaled_edges[row_edges][row_is_positive],
       shape = shape[bin]
     )
     row_probability <- diff(cumulative)
