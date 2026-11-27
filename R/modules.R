@@ -43,19 +43,23 @@ call_module <- function(functions, module_type, ..., parameters = list()) {
       module_type == \"{module_type}\")}."
     ))
   }
-  output <- do.call(module_function, c(list(...), parameters))
-  # A module returns 1 value per element of its first input: 1 per age or
-  # length bin for selectivity and maturity, and 1 for recruitment, whose
-  # first input is a single number. R would recycle a wrong number of values
+  inputs <- list(...)
+  output <- do.call(module_function, c(inputs, parameters))
+  # A module returns 1 value per element of its first input: 1 per age for
+  # an at-age module, and 1 for a module whose first input is a single
+  # number, such as recruitment. R would recycle a wrong number of values
   # into the model without an error.
-  if (...length() > 0 && length(output) != length(..1)) {
+  if (length(inputs) > 0 && length(output) != length(inputs[[1]])) {
     n_output <- length(output)
-    n_needed <- length(..1)
-    first_input <- ...names()[1]
+    n_needed <- length(inputs[[1]])
+    first_input <- names(inputs)[1]
     cli::cli_abort(c(
-      "x" = "Module type {.val {module_type}} returned {n_output}
+      "x" = "Module type {.val {module_type}} returned {.val {n_output}}
       value{?s}.",
-      "i" = "It needs {n_needed}, 1 for each value of {.arg {first_input}}."
+      "i" = "It needs 1 value per element of {.arg {first_input}}
+      ({.val {n_needed}}).",
+      "i" = "Check what its function in the family's lookup table returns,
+      such as {.code selectivity_functions} in {.file R/selectivity.R}."
     ))
   }
   output

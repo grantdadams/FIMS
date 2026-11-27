@@ -373,6 +373,7 @@ test_that("every lookup table names each type once, and each likelihood family h
     growth_modules = FIMS:::growth_modules,
     likelihood_families = FIMS:::likelihood_families,
     process_structures = FIMS:::process_structures,
+    recruitment_process_means = FIMS:::recruitment_process_means,
     model_functions = FIMS:::model_functions
   )
   for (table_name in names(lookup_tables)) {
