@@ -93,11 +93,11 @@ redraw_random_effects <- function(parameters, input) {
       process_structures[[density_entry[["structure"]]]][["draw"]],
       c(list(inputs[["x"]], inputs[["mean"]]), inputs[["hyperparameters"]])
     )
-    if (is.null(splits[[target]])) {
-      parameters[[target]] <- drawn
-    } else {
+    if (utils::hasName(splits, target)) {
       parameters[[paste0(target, "|random")]] <-
         as.vector(drawn)[splits[[target]][["random"]]]
+    } else {
+      parameters[[target]] <- drawn
     }
   }
   parameters

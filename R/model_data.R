@@ -105,7 +105,9 @@ initialize_model_data <- function(parameters, data) {
     populations = populations,
     fleets = fleets,
     likelihoods = likelihoods,
-    adreport = FALSE
+    # Report settings, which fit_fims() sets from its arguments.
+    adreport = FALSE,
+    report_age_to_length_conversion_derived_tensor = FALSE
   )
 }
 
@@ -327,7 +329,10 @@ initialize_likelihoods <- function(data, fleet, fleet_data) {
       parameters = shape_like_observed(
         likelihood_families[[likelihood_family]][["parameters"]](uncertainty),
         observed
-      )
+      ),
+      # The flat names of the parameters that replace these family
+      # parameters, filled by link_estimated_family_parameters().
+      estimated_parameters = list()
     )
   })
 }

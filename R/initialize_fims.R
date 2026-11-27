@@ -17,7 +17,9 @@
 #'   and `age`.
 #' @param data A FIMSFrame, or a data frame that FIMSFrame() accepts.
 #' @return A list with `parameters`, `map` and `random` for
-#'   RTMB::MakeADFun(), the model data (`model_data`), the parameter table
+#'   RTMB::MakeADFun(), the model data (`model_data`, a list of class
+#'   `strict_list` that stops with an error when code reads a name it does
+#'   not have), the parameter table
 #'   with the RTMB name of each row (`parameter_table`), the tibble as given
 #'   (`tibble`), and the FIMSFrame (`frame`).
 #' @keywords fit_fims
@@ -67,19 +69,21 @@ initialize_fims <- function(parameters, data) {
     parameter_names = unique(parameter_table[["name"]])
   )
   # Density and likelihood parameters are read by flat name, not by module.
-  model_data[["density_parameter_names"]] <- unique(c(
+  # as.character() gives character(0) for a model with no density
+  # parameters. Assigning NULL would drop the name from the model data.
+  model_data[["density_parameter_names"]] <- as.character(unique(c(
     unlist(lapply(model_data[["densities"]], function(density) {
       c(density[["hyperparameters"]], density[["mean"]][["name"]])
     })),
     unlist(lapply(model_data[["likelihoods"]], `[[`, "estimated_parameters"))
-  ))
+  )))
   # A parameter is used if a density reads it, or if a prior scores it.
-  model_data[["used_parameter_names"]] <- unique(c(
+  model_data[["used_parameter_names"]] <- as.character(unique(c(
     model_data[["density_parameter_names"]],
     unlist(lapply(model_data[["densities"]], function(density) {
       if (density[["distribution_type"]] == "prior") density[["target"]]
     }))
-  ))
+  )))
   # Rows with a target_label belong to a prior or process, not a module. This
   # includes a process removed from its target, whose rows
   # hold_unused_process_parameters() holds constant.
@@ -97,7 +101,7 @@ initialize_fims <- function(parameters, data) {
     parameters = model_parameters[["parameters"]],
     map = model_parameters[["map"]],
     random = model_parameters[["random"]],
-    model_data = model_data,
+    model_data = strict_list(model_data),
     parameter_table = parameter_table,
     tibble = parameters,
     frame = data

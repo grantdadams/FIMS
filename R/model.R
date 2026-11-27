@@ -74,9 +74,9 @@ density_inputs <- function(density_entry, parameters, population) {
   # A prior scores the values in `positions` (prior_densities()): values
   # that share 1 estimate once, and each constant value. A mean or sd with 1
   # value per target value is subset the same way, so each stays with its
-  # value.
-  positions <- density_entry[["positions"]]
-  if (!is.null(positions)) {
+  # value. A process has no positions and scores every value.
+  if (utils::hasName(density_entry, "positions")) {
+    positions <- density_entry[["positions"]]
     if (length(density_mean) == length(x)) {
       density_mean <- density_mean[positions]
     }

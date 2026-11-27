@@ -76,10 +76,14 @@ population_biology <- function(module_parameters, model_data, population_data) {
 
   # Growth gives weight at age and, for length-based growth, the
   # distribution of length at age. Its non-parameter inputs (weight data, or
-  # ages and a length grid) come from initialize_fims().
+  # ages and a length grid) come from initialize_fims(). EWAA growth has no
+  # parameters, so there is no Growth group.
+  growth_parameters <- if (utils::hasName(module_parameters, "Growth")) {
+    module_parameters[["Growth"]]
+  }
   growth <- do.call(
     growth_modules[[module_types[["growth"]]]][["evaluate"]],
-    c(population_data[["growth_inputs"]], module_parameters[["Growth"]])
+    c(population_data[["growth_inputs"]], growth_parameters)
   )
   weight_at_age <- growth[["weight_at_age"]]
   if (!is.matrix(weight_at_age)) {
@@ -287,10 +291,10 @@ catch_and_index_predictions <- function(fleet, fleet_data, module_parameters,
                                         biology, numbers_at_age, n_years) {
   mortality_Z <- biology[["mortality_Z"]]
   # The fleet's own weight at age if it has one, otherwise the population's.
-  fleet_weight <- if (is.null(fleet_data[["weight_at_age"]])) {
-    biology[["weight_at_age"]][seq_len(n_years), ]
-  } else {
+  fleet_weight <- if (utils::hasName(fleet_data, "weight_at_age")) {
     fleet_data[["weight_at_age"]]
+  } else {
+    biology[["weight_at_age"]][seq_len(n_years), ]
   }
 
   # Baranov catch equation.
@@ -350,9 +354,11 @@ catch_and_index_predictions <- function(fleet, fleet_data, module_parameters,
 #' @noRd
 age_to_length_predictions <- function(fleet_data, biology,
                                       numbers_for_composition, n_years) {
-  key <- fleet_data[["age_to_length_conversion"]]
+  key <- if (utils::hasName(fleet_data, "age_to_length_conversion")) {
+    fleet_data[["age_to_length_conversion"]]
+  }
   derived <- list()
-  if (!is.null(fleet_data[["rebin_weights"]])) {
+  if (utils::hasName(fleet_data, "rebin_weights")) {
     growth <- biology[["growth"]]
     key <- age_to_length_conversion_derived(
       growth[["length_probability"]], fleet_data[["rebin_weights"]]
@@ -373,13 +379,15 @@ age_to_length_predictions <- function(fleet_data, biology,
   }
 
   conditional_age_at_length <- list()
-  observed <- fleet_data[["conditional_age_at_length"]]
-  if (!is.null(observed)) {
+  if (utils::hasName(fleet_data, "conditional_age_at_length")) {
+    observed <- fleet_data[["conditional_age_at_length"]]
     conditional_age_at_length[["conditional_age_at_length_proportion"]] <-
       expected_conditional_age_at_length(
         numbers_for_composition, key,
         observed[["year"]], observed[["length_bin"]],
-        ageing_error = fleet_data[["ageing_error"]]
+        ageing_error = if (utils::hasName(fleet_data, "ageing_error")) {
+          fleet_data[["ageing_error"]]
+        }
       )
   }
   list(
@@ -398,8 +406,9 @@ age_to_length_predictions <- function(fleet_data, biology,
 #' @noRd
 composition_predictions <- function(fleet_data, numbers_for_composition,
                                     age_to_length, catch_and_index) {
+  has_age_comp <- utils::hasName(fleet_data, "age_comp")
   age_composition <- evaluate_age_comp(
-    numbers_for_composition, fleet_data[["age_comp"]]
+    numbers_for_composition, if (has_age_comp) fleet_data[["age_comp"]]
   )
   age_quantities <- list(
     agecomp_expected = age_composition[["expected"]],
@@ -407,8 +416,8 @@ composition_predictions <- function(fleet_data, numbers_for_composition,
   )
   # Ageing error moves the expected age composition from true to read ages.
   # The length composition below uses true ages.
-  ageing_error <- fleet_data[["ageing_error"]]
-  if (!is.null(ageing_error) && !is.null(fleet_data[["age_comp"]])) {
+  if (has_age_comp && utils::hasName(fleet_data, "ageing_error")) {
+    ageing_error <- fleet_data[["ageing_error"]]
     age_quantities[["agecomp_expected"]] <- apply_ageing_error(
       age_quantities[["agecomp_expected"]], ageing_error
     )
@@ -421,7 +430,7 @@ composition_predictions <- function(fleet_data, numbers_for_composition,
   if (!is.null(age_to_length)) {
     length_composition <- evaluate_length_comp(
       age_composition[["proportion"]], age_to_length,
-      fleet_data[["length_comp"]]
+      if (utils::hasName(fleet_data, "length_comp")) fleet_data[["length_comp"]]
     )
     length_quantities <- list(
       lengthcomp_expected = length_composition[["expected"]],

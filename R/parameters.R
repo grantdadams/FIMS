@@ -458,7 +458,8 @@ growth_to_working_scale <- function(parameters) {
 #' Regroup flat parameter names into a nested list
 #'
 #' Turns "Selectivity.fleet1.slope" into module_parameters$Selectivity$
-#' fleet1$slope.
+#' fleet1$slope. The result is a strict list, so a misspelled module, fleet
+#' or label stops with an error.
 #'
 #' @param parameters The flat parameter list.
 #' @param skip Flat names to leave out.
@@ -481,7 +482,7 @@ group_parameters <- function(parameters, skip = character(0)) {
       grouped[[module]][[fleet]][[path[3]]] <- parameters[[name]]
     }
   }
-  grouped
+  strict_list(grouped)
 }
 
 #' Put back together parameters that mix random and fixed effects

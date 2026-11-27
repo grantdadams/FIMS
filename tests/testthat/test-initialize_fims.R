@@ -227,10 +227,10 @@ test_that("`initialize_fims()` sets up a fleet's weight at age, ageing error, an
     parameters = default_parameters,
     data = data
   )[["model_data"]][["fleets"]][["fleet1"]]
-  #' @description Test that `initialize_fims()` leaves weight at age empty for a fleet without its own rows, so the population weight is used.
-  expect_null(fleet1[["weight_at_age"]])
-  #' @description Test that `initialize_fims()` leaves ageing error empty for a fleet without ageing error rows.
-  expect_null(fleet1[["ageing_error"]])
+  #' @description Test that `initialize_fims()` leaves weight at age out for a fleet without its own rows, so the population weight is used.
+  expect_false(utils::hasName(fleet1, "weight_at_age"))
+  #' @description Test that `initialize_fims()` leaves ageing error out for a fleet without ageing error rows.
+  expect_false(utils::hasName(fleet1, "ageing_error"))
   #' @description Test that `initialize_fims()` sets catch in mt to be fit as weight.
   expect_equal(fleet1[["observed_catch_units"]], "weight")
 })
@@ -247,14 +247,14 @@ test_that("`initialize_fims()` passes catch and index data only for fleets that 
     model_catch(data, "fleet1")
   )
   #' @description Test that `initialize_fims()` passes no catch for a fleet without catch.
-  expect_null(likelihoods[["survey1_catch"]])
+  expect_false(utils::hasName(likelihoods, "survey1_catch"))
   #' @description Test that `initialize_fims()` passes the index of a fleet with an index to the model.
   expect_equal(
     likelihoods[["survey1_index"]][["observed"]],
     model_index(data, "survey1")
   )
   #' @description Test that `initialize_fims()` passes no index for a fleet without an index.
-  expect_null(likelihoods[["fleet1_index"]])
+  expect_false(utils::hasName(likelihoods, "fleet1_index"))
 })
 
 test_that("`initialize_fims()` passes composition data with the expected dimensions and values", {
@@ -682,6 +682,12 @@ test_that("`initialize_fims()` works with edge cases", {
   expect_equal(
     grep(pattern = "log_devs", init_parm_missing_distribution[["random"]]),
     integer(0)
+  )
+
+  #' @description Test that `initialize_fims()` sets `used_parameter_names` to `character(0)` for a model with no process or prior.
+  expect_identical(
+    init_parm_missing_distribution[["model_data"]][["used_parameter_names"]],
+    character(0)
   )
 
   #' @description Test that there is no returned recruitment nll when there is no distribution specified for recruitment.
