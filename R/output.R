@@ -448,9 +448,12 @@ fill_data_columns <- function(estimates, input, report, values) {
     estimates[["observed"]][target] <- observed
     estimates[["likelihood"]][target] <- log_density
     estimates[["lpdf"]][target] <- sum(log_density)
-    log_sd <- family_parameters(component, values)[["log_sd"]]
-    if (!is.null(log_sd)) {
-      estimates[["log_sd"]][target] <- rep_len(log_sd, n_observations)
+    # Only some families, such as the lognormal, have a log_sd.
+    family_values <- family_parameters(component, values)
+    if (utils::hasName(family_values, "log_sd")) {
+      estimates[["log_sd"]][target] <- rep_len(
+        family_values[["log_sd"]], n_observations
+      )
     }
     estimates[["distribution"]][target] <-
       likelihood_families[[component[["family"]]]][["distribution"]]

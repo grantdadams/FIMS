@@ -33,6 +33,20 @@ This guide is for anyone adding a selectivity, maturity, recruitment or growth t
 | `R/modules.R` | `call_module()` and `evaluate_by_year()`, which call a module by its `module_type`. |
 | `R/setup_default_parameters.R` | `setup_default_<ModuleType>()`: the default parameter rows for each module type. |
 
+# Reading parameters and data
+
+Model code reads parameters by module, fleet and label, as in `module_parameters[["Selectivity"]][["fleet1"]][["slope"]]`, and data by name, as in `model_data[["fleets"]][["fleet1"]][["has_catch"]]`. A plain R list returns `NULL` for a misspelled name, and the model would carry the empty value forward. These lists are strict lists, from `strict_list()` in `R/utils.R`. `[[` and `$` on a strict list stop with an error that names the missing name instead. Use `[[`.
+
+A name every model has is always set when the model data are built, in `initialize_model_data()` or `initialize_fims()`, even when empty. Otherwise check it with `utils::hasName()` before reading it, as for a fleet's own weight at age:
+
+```{r, eval = FALSE}
+fleet_weight <- if (utils::hasName(fleet_data, "weight_at_age")) {
+  fleet_data[["weight_at_age"]]
+} else {
+  biology[["weight_at_age"]][seq_len(n_years), ]
+}
+```
+
 # Adding a module type
 
 Logistic selectivity is the example.

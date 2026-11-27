@@ -17,7 +17,9 @@ and \code{age}.}
 }
 \value{
 A list with \code{parameters}, \code{map} and \code{random} for
-RTMB::MakeADFun(), the model data (\code{model_data}), the parameter table
+RTMB::MakeADFun(), the model data (\code{model_data}, a list of class
+\code{strict_list} that stops with an error when code reads a name it does
+not have), the parameter table
 with the RTMB name of each row (\code{parameter_table}), the tibble as given
 (\code{tibble}), and the FIMSFrame (\code{frame}).
 }

@@ -111,20 +111,23 @@ report_model <- function(model_data, model, likelihood) {
     derived_key <- lapply(fleet_data, function(x) numeric(0))
   }
   key_quantities <- list(
+    # A fleet with no fixed key reports NULL.
     age_to_length_conversion = lapply(fleet_data, function(fleet) {
-      key <- fleet[["age_to_length_conversion"]]
+      key <- if (utils::hasName(fleet, "age_to_length_conversion")) {
+        fleet[["age_to_length_conversion"]]
+      }
       if (is.matrix(key)) key <- list(key)
       unlist(lapply(key, flatten_by_year))
     }),
     age_to_length_conversion_derived = lapply(derived_key, function(key) {
-      if (isTRUE(model_data[["report_age_to_length_conversion_derived_tensor"]])) {
+      if (model_data[["report_age_to_length_conversion_derived_tensor"]]) {
         rep(key, n_years)
       } else {
         numeric(0)
       }
     }),
     age_to_length_conversion_derived_used = lapply(fleet_data, function(fleet) {
-      as.numeric(!is.null(fleet[["rebin_weights"]]))
+      as.numeric(utils::hasName(fleet, "rebin_weights"))
     })
   )
   if (is.null(fleet_quantities[["growth_derived_mean_WAA"]])) {
@@ -139,7 +142,7 @@ report_model <- function(model_data, model, likelihood) {
     log_expected_recruitment =
       model[["population"]][["log_expected_recruitment"]]
   ))
-  if (isTRUE(model_data[["adreport"]])) {
+  if (model_data[["adreport"]]) {
     # Standard errors for the population and fleet quantities. The growth
     # quantities, the age-to-length keys and growth_derived_mean_WAA are
     # reported without them.
