@@ -439,6 +439,9 @@ check_initialize_inputs <- function(parameters, data) {
       {.code unique(parameters[[\"fleet\"]])}."
     ))
   }
+  if (is_fleet_model) {
+    check_selectivity_model_type(parameters)
+  }
 
   check_recruitment_process(parameters)
 
@@ -589,6 +592,54 @@ validate_von_bertalanffy_schnute_growth_inputs <- function(growth) {
     ))
   }
   invisible(TRUE)
+}
+
+#' Stop when a selectivity or retention type does not fit the model type
+#'
+#' A catch-at-age model evaluates selectivity at the ages. A catch-at-length
+#' model evaluates selectivity and retention at the length bin midpoints. A
+#' type whose function takes `length`, such as LengthSpecific, gives 1 value
+#' per length bin, and AgeSpecific gives 1 value per age. In the other model
+#' type, their values would be applied to the wrong bins, with no error when
+#' the counts match. Logistic and DoubleLogistic also take `age`, but they
+#' are curves that a catch-at-length model evaluates at the length bin
+#' midpoints. So AgeSpecific is named here, not found from its arguments.
+#'
+#' @inheritParams initialize_fims
+#' @noRd
+check_selectivity_model_type <- function(parameters) {
+  model_type <- parameters_model_type(parameters)
+  if (model_type == "CatchAtAge") {
+    takes_length <- vapply(selectivity_functions, function(module_function) {
+      "length" %in% names(formals(module_function))
+    }, logical(1))
+    wrong_types <- names(selectivity_functions)[takes_length]
+    value_per <- "length bin"
+    evaluated_at <- "selectivity at the ages"
+  } else {
+    wrong_types <- "AgeSpecific"
+    value_per <- "age"
+    evaluated_at <- "selectivity and retention at the length bin midpoints"
+  }
+  mismatched <- dplyr::filter(
+    parameters,
+    .data[["module_name"]] %in% c("Selectivity", "Retention"),
+    .data[["module_type"]] %in% wrong_types
+  )
+  if (nrow(mismatched) == 0) {
+    return(invisible(TRUE))
+  }
+  allowed_types <- setdiff(names(selectivity_functions), wrong_types)
+  cli::cli_abort(c(
+    "x" = "Fleet {.val {mismatched[['fleet']][1]}} has
+    {mismatched[['module_name']][1]} type
+    {.val {mismatched[['module_type']][1]}}, which gives 1 value per
+    {value_per}, but the model is {.val {model_type}}.",
+    "i" = "A {.val {model_type}} model evaluates {evaluated_at}, so it can use
+    {.or {.val {allowed_types}}}.",
+    "i" = "Check the types with {.code dplyr::distinct(parameters,
+    module_name, fleet, module_type)}."
+  ))
 }
 
 #' Check that the recruitment process and its parameters agree

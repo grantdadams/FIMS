@@ -59,5 +59,10 @@ test_that("`setup_default_AgeSpecific()` returns correct outputs for edge cases"
 })
 
 ## Error handling ----
-# Please remove/comment out the test template below if there are no built-in errors/warnings.
-# No built-in errors to test.
+test_that("`setup_default_AgeSpecific()` returns correct error messages", {
+  #' @description Test that `setup_default_AgeSpecific()` errors for catch-at-length data, which have length bins and no ages.
+  expect_error(
+    object = FIMS:::setup_default_AgeSpecific(data = FIMSFrame(cal_data)),
+    regexp = "needs ages, but `data` has\\s+none"
+  )
+})
