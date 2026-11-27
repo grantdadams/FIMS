@@ -362,6 +362,41 @@ test_that("every likelihood family and process structure has a tape that matches
   }
 })
 
+test_that("every lookup table names each type once, and each likelihood family has its own output name", {
+  # R lists allow repeated names, and `[[` returns the first. So a copied
+  # entry that kept its old name would hide one of the 2 with no error.
+  lookup_tables <- list(
+    selectivity_functions = FIMS:::selectivity_functions,
+    maturity_functions = FIMS:::maturity_functions,
+    recruitment_functions = FIMS:::recruitment_functions,
+    recruitment_process_functions = FIMS:::recruitment_process_functions,
+    growth_modules = FIMS:::growth_modules,
+    likelihood_families = FIMS:::likelihood_families,
+    process_structures = FIMS:::process_structures,
+    model_functions = FIMS:::model_functions
+  )
+  for (table_name in names(lookup_tables)) {
+    #' @description Test that each lookup table names each module type once.
+    expect_equal(
+      object = anyDuplicated(names(lookup_tables[[table_name]])),
+      expected = 0L,
+      label = paste(table_name, "repeated names")
+    )
+  }
+  # The distribution name is the only output name typed by hand in a table.
+  # A family copied from another that kept its name would label its rows
+  # with the other family's name in get_estimates().
+  distribution_names <- vapply(
+    FIMS:::likelihood_families, `[[`, character(1), "distribution"
+  )
+  #' @description Test that each likelihood family has its own distribution name for the output tables.
+  expect_equal(
+    object = anyDuplicated(distribution_names),
+    expected = 0L,
+    label = "repeated distribution names"
+  )
+})
+
 ## Edge handling ----
 # No edge cases to test.
 
