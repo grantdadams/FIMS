@@ -1387,6 +1387,63 @@ test_that("`initialize_fims()` returns correct error messages", {
   )
 })
 
+test_that("`initialize_fims()` errors when a selectivity or retention type does not match the model type", {
+  # LengthSpecific selectivity in a catch-at-age model, which would be given
+  # the 12 ages in place of the 23 length bins.
+  length_specific <- default_parameters |>
+    dplyr::filter(!(fleet %in% "survey1" & module_name == "Selectivity")) |>
+    dplyr::bind_rows(
+      setup_default_Selectivity(data, "survey1", "LengthSpecific")
+    )
+  #' @description Test that `initialize_fims()` errors for LengthSpecific selectivity in a catch-at-age model, rather than giving the ages as lengths.
+  expect_error(
+    object = initialize_fims(parameters = length_specific, data = data),
+    regexp = "survey1.*LengthSpecific.*1\\s+value\\s+per\\s+length\\s+bin.*CatchAtAge"
+  )
+
+  # AgeSpecific rows written by hand for a catch-at-length model, 1 per
+  # length bin. The counts match, so the model would run with values by age
+  # applied to length bins.
+  cal_frame <- FIMSFrame(cal_data)
+  cal_parameters <- setup_default_parameters(
+    cal_frame,
+    model_type = "CatchAtLength"
+  )
+  with_age_specific <- function(module_name, fleet) {
+    age_specific <- setup_default_Selectivity(
+      cal_frame, fleet, "LengthSpecific"
+    ) |>
+      dplyr::mutate(
+        module_name = .env[["module_name"]],
+        module_type = "AgeSpecific",
+        label = "logit_sel_at_age",
+        age = seq_along(cal_lengths),
+        length = NA_real_
+      )
+    cal_parameters |>
+      dplyr::filter(
+        !(fleet %in% .env[["fleet"]] & module_name == .env[["module_name"]])
+      ) |>
+      dplyr::bind_rows(age_specific)
+  }
+  #' @description Test that `initialize_fims()` errors for AgeSpecific selectivity in a catch-at-length model, rather than applying values by age to length bins.
+  expect_error(
+    object = initialize_fims(
+      parameters = with_age_specific("Selectivity", "survey_fleet"),
+      data = cal_frame
+    ),
+    regexp = "survey_fleet.*Selectivity.*AgeSpecific.*1\\s+value\\s+per\\s+age.*CatchAtLength"
+  )
+  #' @description Test that `initialize_fims()` errors for AgeSpecific retention in a catch-at-length model.
+  expect_error(
+    object = initialize_fims(
+      parameters = with_age_specific("Retention", "pot_fleet"),
+      data = cal_frame
+    ),
+    regexp = "pot_fleet.*Retention.*AgeSpecific.*CatchAtLength"
+  )
+})
+
 test_that("`initialize_fims()` returns correct error messages for the recruitment process", {
   missing_recruitment_distribution <- default_parameters |>
     dplyr::filter(module_name != "Recruitment") |>

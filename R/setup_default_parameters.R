@@ -700,6 +700,16 @@ setup_default_DoubleLogistic <- function() {
 setup_default_AgeSpecific <- function(
   data
 ) {
+  if (get_n_ages(data) == 0) {
+    cli::cli_abort(c(
+      "x" = "{.val AgeSpecific} selectivity needs ages, but {.var data} has
+      none.",
+      "i" = "Catch-at-length data have length bins and no ages. Use
+      {.val LengthSpecific}, {.val Logistic} or {.val DoubleLogistic}
+      selectivity.",
+      "i" = "Check the ages with {.code get_ages(data)}."
+    ))
+  }
   default <- setup_default_parameters_template(n_parameters = get_n_ages(data)) |>
     dplyr::mutate(
       module_type = "AgeSpecific",
