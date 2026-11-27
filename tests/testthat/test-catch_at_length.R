@@ -99,6 +99,41 @@ test_that("`process_steps()` counts steps by length in length bins, not bin widt
 })
 
 ## Edge handling ----
+test_that("`linear_gamma_increment_growth()` and `gamma_length_recruitment_distribution()` work from a length edge of 0", {
+  # The gamma CDF is 0 at 0, so each bin holds the gamma probability between
+  # its edges, divided by the probability over the bins that can be entered.
+  length_edges <- c(0, 50, 100, 150)
+  growth_out <- FIMS:::linear_gamma_increment_growth(
+    length_edges = length_edges,
+    length_midpoints = c(25, 75, 125),
+    observed_premolt_lengths = numeric(0),
+    growth_intercept = 15,
+    growth_slope = -0.05,
+    growth_scale = 0.75
+  )
+  # From the first bin, the mean postmolt length is 25 + 15 - 0.05 * 25.
+  first_bin_shape <- (25 + 15 - 0.05 * 25) / 0.75
+  first_bin_cdf <- stats::pgamma(length_edges, first_bin_shape, scale = 0.75)
+  #' @description Test that the growth transition from the first length bin, which starts at 0, is the gamma probability in each bin with shape (L + intercept + slope * L) / scale.
+  expect_equal(
+    object = growth_out[["growth_transition"]][1, ],
+    expected = diff(first_bin_cdf) / first_bin_cdf[4],
+    tolerance = 1e-12
+  )
+  recruit_cdf <- stats::pgamma(length_edges, 75 / 10, scale = 10)
+  #' @description Test that the recruitment length distribution from a first length edge of 0 is the gamma probability in each bin with shape mean / scale.
+  expect_equal(
+    object = FIMS:::gamma_length_recruitment_distribution(
+      length_edges = length_edges,
+      recruit_gamma_shape = 75,
+      recruit_gamma_scale = 10,
+      max_recruit_length_bin = 3L
+    ),
+    expected = diff(recruit_cdf) / recruit_cdf[4],
+    tolerance = 1e-12
+  )
+})
+
 test_that("`catch_at_length()` conserves total numbers when M = F = 0 and recruitment is 0", {
   zero_mortality_parameters <- cal_default_parameters |>
     dplyr::mutate(

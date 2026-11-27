@@ -306,12 +306,13 @@ test_that("every growth type in `growth_modules` runs, and its tape matches plai
   )
 
   # LinearGammaIncrement is growth by molting in a catch-at-length model. It
-  # gives the growth transition between length bins, not weight at age, so
-  # it gets the length bins and growth increments of cal_data, which is in
-  # helper-catch-at-length.R. Length bins that start at 0 give NaN gradients
-  # in this function and in GammaLength recruitment, from RTMB::pgamma() at
-  # 0. So the case uses the bins of cal_data, which start at 25, until that
-  # is fixed.
+  # gives the growth transition between length bins, not weight at age. The
+  # case named LinearGammaIncrement gets the length bins and growth
+  # increments of cal_data, which is in helper-catch-at-length.R. The other
+  # case gets the length bins of data_big, which start at 0, where the gamma
+  # CDF is 0.
+  growth_cases[["LinearGammaIncrement with length bins from 0"]] <-
+    growth_cases[["LinearGammaIncrement"]]
   cal_frame <- FIMSFrame(cal_data)
   population_edges <- FIMS:::length_bin_edges(get_lengths(data_4_model))
   for (growth_case in names(growth_cases)) {
@@ -319,7 +320,11 @@ test_that("every growth type in `growth_modules` runs, and its tape matches plai
     growth_type <- unique(rows[["module_type"]])
     growth_module <- FIMS:::growth_modules[[growth_type]]
     is_catch_at_length <- growth_type == "LinearGammaIncrement"
-    fims_frame <- if (is_catch_at_length) cal_frame else data_4_model
+    fims_frame <- if (growth_case == "LinearGammaIncrement") {
+      cal_frame
+    } else {
+      data_4_model
+    }
     parameters <- parameters_by_label(rows)
     inputs <- growth_module[["inputs"]](fims_frame, rows, population_edges)
     # population_biology() calls growth with do.call(), not call_module().
@@ -367,6 +372,28 @@ test_that("every growth type in `growth_modules` runs, and its tape matches plai
     }
     expect_tape_matches_r(evaluate, parameters, growth_case)
   }
+})
+
+test_that("GammaLength recruitment by length bin has a tape that matches plain R", {
+  # catch_at_length_dynamics() calls gamma_length_recruitment_distribution()
+  # directly, not through a table, with the exp() of its 2 parameters. The
+  # length bins of data_big start at 0, where the gamma CDF is 0. A mean of
+  # 75 and a scale of 10 put recruits in each of the first 3 bins of 50, so
+  # every bin recruits can enter has a derivative to check.
+  length_edges <- FIMS:::length_bin_edges(length_bins)
+  evaluate <- function(taped) {
+    FIMS:::gamma_length_recruitment_distribution(
+      length_edges,
+      recruit_gamma_shape = exp(taped[["log_recruit_alpha"]]),
+      recruit_gamma_scale = exp(taped[["log_recruit_beta"]]),
+      max_recruit_length_bin = 3
+    )
+  }
+  expect_tape_matches_r(
+    evaluate,
+    list(log_recruit_alpha = log(75), log_recruit_beta = log(10)),
+    "GammaLength recruitment"
+  )
 })
 
 test_that("every likelihood family and process structure has a tape that matches plain R", {

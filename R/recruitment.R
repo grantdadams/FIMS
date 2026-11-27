@@ -90,7 +90,17 @@ gamma_length_recruitment_distribution <- function(length_edges,
   n_lengths <- length(length_edges) - 1L
   max_bin <- as.integer(round(max_recruit_length_bin))
   shape <- recruit_gamma_shape / recruit_gamma_scale
-  bin_mass <- diff(RTMB::pgamma(length_edges / recruit_gamma_scale, shape = shape))
+  # The gamma CDF is 0 at an edge of 0. RTMB::pgamma() gives that value, but
+  # its derivative with respect to the shape is NaN there, which makes every
+  # gradient NaN. So it is called only at positive edges. The edges are data,
+  # so the tape is the same for any parameter values.
+  is_positive_edge <- length_edges > 0
+  cumulative <- numeric(n_lengths + 1L)
+  cumulative[is_positive_edge] <- RTMB::pgamma(
+    length_edges[is_positive_edge] / recruit_gamma_scale,
+    shape = shape
+  )
+  bin_mass <- diff(cumulative)
   if (max_bin < n_lengths) {
     bin_mass[(max_bin + 1L):n_lengths] <- 0
   }
