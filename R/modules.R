@@ -13,7 +13,8 @@
 #' @param module_type The module type, e.g., "Logistic".
 #' @param ... Inputs that are not parameters, e.g., `age`.
 #' @param parameters Named list of the module's parameters.
-#' @return What the module function returns.
+#' @return What the module function returns: 1 value per element of its
+#'   first input in `...`.
 #' @noRd
 call_module <- function(functions, module_type, ..., parameters = list()) {
   module_function <- functions[[module_type]]
@@ -42,7 +43,22 @@ call_module <- function(functions, module_type, ..., parameters = list()) {
       module_type == \"{module_type}\")}."
     ))
   }
-  do.call(module_function, c(list(...), parameters))
+  output <- do.call(module_function, c(list(...), parameters))
+  # A module returns 1 value per element of its first input: 1 per age or
+  # length bin for selectivity and maturity, and 1 for recruitment, whose
+  # first input is a single number. R would recycle a wrong number of values
+  # into the model without an error.
+  if (...length() > 0 && length(output) != length(..1)) {
+    n_output <- length(output)
+    n_needed <- length(..1)
+    first_input <- ...names()[1]
+    cli::cli_abort(c(
+      "x" = "Module type {.val {module_type}} returned {n_output}
+      value{?s}.",
+      "i" = "It needs {n_needed}, 1 for each value of {.arg {first_input}}."
+    ))
+  }
+  output
 }
 
 #' Evaluate an at-age module in every year
