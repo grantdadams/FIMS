@@ -367,6 +367,25 @@ test_that("`initialize_fims()` errors on parameter rows a surplus production mod
   )
 })
 
+test_that("`initialize_fims()` errors on a depletion parameter given by year", {
+  # The model reads the growth rate, carrying capacity, shape and initial
+  # depletion as 1 value. Only log_depletion and its log_sd vary by year.
+  years <- get_start_year(small_frame):get_end_year(small_frame)
+  growth_rate_by_year <- small_parameters |>
+    dplyr::filter(label != "log_growth_rate") |>
+    dplyr::bind_rows(
+      small_parameters |>
+        dplyr::filter(label == "log_growth_rate") |>
+        dplyr::slice(rep(1, length(years))) |>
+        dplyr::mutate(timing = years)
+    )
+  #' @description Test that `initialize_fims()` errors for log_growth_rate by year, which the model reads as 1 value.
+  expect_error(
+    object = initialize_fims(growth_rate_by_year, small_frame),
+    regexp = "does\\s+not\\s+read\\s+it\\s+by\\s+year"
+  )
+})
+
 test_that("`initialize_fims()` errors when log_depletion does not cover the 2nd model year to the last", {
   # Depletion in the first year is the initial depletion, so log_depletion
   # starts in the 2nd model year.

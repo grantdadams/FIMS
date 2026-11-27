@@ -115,9 +115,10 @@ per_year <- function(value, n_years) {
 #' Can the model take 1 value of this parameter per year?
 #'
 #' Module parameters evaluated with evaluate_by_year() or per_year() can.
-#' Growth and the stock-recruit parameters cannot, because the model reads
-#' them as 1 value. Initial numbers at age and proportion female cannot,
-#' because the model reads them by age only.
+#' Growth, the stock-recruit parameters, and the depletion model's growth
+#' rate, carrying capacity, shape and initial depletion cannot, because the
+#' model reads them as 1 value. Initial numbers at age and proportion female
+#' cannot, because the model reads them by age only.
 #'
 #' @param label The parameter labels.
 #' @param module_name The modules they belong to.
@@ -125,6 +126,7 @@ per_year <- function(value, n_years) {
 #' @noRd
 can_vary_by_year <- function(label, module_name) {
   module_name != "Growth" &
+    !(module_name == "Depletion" & !label %in% c("log_depletion", "log_sd")) &
     !label %in% c(
       "log_rzero", "logit_steep", "log_init_naa", "proportion_female"
     )
