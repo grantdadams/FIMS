@@ -73,7 +73,7 @@ logistic_selectivity <- function(age, inflection_point, slope) {
 - Inputs that are not parameters come first (`age`). Then come the parameters, named exactly as the `label` values in the parameter tibble.
 - Name each parameter for its scale. Plain names are on the natural scale. `log_*` and `logit_*` are transformed.
 - Use ordinary R arithmetic. Do not branch on a parameter's value with `if`, `ifelse()`, `pmax()` or `pmin()`. RTMB stops on these with "Comparison is generally unsafe for AD types". `max()` and `abs()` work on AD values, but their derivatives jump, so use the smooth `ad_max()` and `ad_fabs()` from `R/fims_math.R`, as the rest of the model does. Branching on data, such as `age`, is fine.
-- Write the function for 1 year: scalar parameters and a vector over ages. `evaluate_by_year()` calls it with each year's values when a parameter varies by year.
+- Write the function for 1 year: scalar parameters and a vector over ages. `evaluate_by_year()` calls it with each year's values when a parameter varies by year. It must return 1 value per age, and `call_module()` stops if it does not.
 - Values that depend on parameters are RTMB "AD" values. Some base R functions stop with an error on them, and a few give wrong results. Inside a package function:
   - add `"c" <- RTMB::ADoverload("c")` at the top of a function that combines numbers and AD values, e.g. `c(1, exp(-cumsum(M)))`
   - add `"[<-" <- RTMB::ADoverload("[<-")` when AD values are assigned into a vector or matrix that starts as numbers, e.g. `x <- numeric(n)` then `x[i] <- ...`

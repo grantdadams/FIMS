@@ -61,6 +61,21 @@ test_that("`call_module()` returns correct error messages", {
     ),
     regexp = "inflection_point_asc"
   )
+  # A logistic curve evaluated at the oldest age only, so it returns 1 value
+  # for 12 ages, which R would recycle across the ages.
+  wrong_length <- list(
+    Logistic = function(age, inflection_point, slope) {
+      FIMS:::logistic(inflection_point, slope, max(age))
+    }
+  )
+  #' @description Test that `call_module()` errors when a module returns 1 value for 12 ages, rather than letting R recycle it.
+  expect_error(
+    object = FIMS:::call_module(
+      wrong_length, "Logistic",
+      age = 1:12, parameters = logistic_parameters
+    ),
+    regexp = "returned 1 value"
+  )
 })
 
 # Module tables ----
