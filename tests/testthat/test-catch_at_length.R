@@ -380,6 +380,55 @@ test_that("`add_process()` by length and `add_priors()` with transform work in `
   )
 })
 
+test_that("`get_estimates()` reports catch-at-length expected composition counts as NA where there is no observation", {
+  # pot_fleet's retained length composition for 2002 has -999 at length 30,
+  # with the other bins rescaled to sum to 1. The robust normal skips that
+  # year. survey_fleet has no retained length composition.
+  missing_bin <- cal_data |>
+    dplyr::mutate(
+      is_2002_retained = type == "length_comp" & fleet == "pot_fleet" &
+        timing == 2002 &
+        grepl("lengthcomp_retained_proportion", uncertainty),
+      observed = dplyr::case_when(
+        is_2002_retained & length == 30 ~ -999,
+        is_2002_retained ~
+          observed / sum(observed[is_2002_retained & length != 30]),
+        .default = observed
+      )
+    ) |>
+    dplyr::select(-"is_2002_retained")
+  missing_bin_frame <- FIMSFrame(missing_bin)
+  counts <- setup_default_parameters(
+    missing_bin_frame,
+    model_type = "CatchAtLength"
+  ) |>
+    initialize_fims(data = missing_bin_frame) |>
+    fit_fims(optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(.data[["label"]] %in% c(
+      "lengthcomp_retained_expected", "lengthcomp_discarded_expected",
+      "lengthcomp_immature_expected", "lengthcomp_mature_expected"
+    ))
+  retained <- dplyr::filter(
+    counts,
+    .data[["label"]] == "lengthcomp_retained_expected"
+  )
+  pot_2002 <- dplyr::filter(
+    retained,
+    .data[["fleet"]] == "pot_fleet", .data[["year"]] == 2002
+  )
+  survey <- dplyr::filter(retained, .data[["fleet"]] == "survey_fleet")
+  #' @description Test that `get_estimates()` reports every bin of a skipped robust normal year of a catch-at-length composition as NA in `observed` and `estimated`.
+  expect_true(all(is.na(c(pot_2002[["observed"]], pot_2002[["estimated"]]))))
+  #' @description Test that `get_estimates()` reports the expected retained counts of a fleet without retained length compositions as NA.
+  expect_equal(
+    object = sum(is.na(survey[["estimated"]])),
+    expected = length(cal_years) * length(cal_lengths)
+  )
+  #' @description Test that `get_estimates()` keeps every catch-at-length expected composition count that has an observation.
+  expect_false(anyNA(counts[["estimated"]][!is.na(counts[["observed"]])]))
+})
+
 ## Error handling ----
 test_that("`initialize_fims()` refuses observed length compositions in a year with 0 catch", {
   zero_catch_data <- cal_data

@@ -497,8 +497,13 @@ fill_data_columns <- function(estimates, input, report, values) {
   # number observed, so they are NA where there is no observation, including
   # every year of a fleet without that data type. The proportions are kept
   # because they are predictions.
+  composition_counts <- c(
+    "agecomp_expected", "lengthcomp_expected", "lengthcomp_retained_expected",
+    "lengthcomp_discarded_expected", "lengthcomp_immature_expected",
+    "lengthcomp_mature_expected"
+  )
   is_count_without_data <- is.na(estimates[["observed"]]) &
-    estimates[["label"]] %in% c("agecomp_expected", "lengthcomp_expected")
+    estimates[["label"]] %in% composition_counts
   estimates[["estimated"]][is_count_without_data] <- NA
   estimates
 }
