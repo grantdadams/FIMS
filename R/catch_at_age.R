@@ -85,6 +85,7 @@ population_biology <- function(module_parameters, model_data, population_data) {
     growth_modules[[module_types[["growth"]]]][["evaluate"]],
     c(population_data[["growth_inputs"]], growth_parameters)
   )
+  check_growth_output(growth, module_types[["growth"]], length(ages), n_years)
   weight_at_age <- growth[["weight_at_age"]]
   if (!is.matrix(weight_at_age)) {
     # The same in every year, including the year after the last model year.

@@ -78,7 +78,7 @@ logistic_selectivity <- function(age, inflection_point, slope) {
   - add `"c" <- RTMB::ADoverload("c")` at the top of a function that combines numbers and AD values, e.g. `c(1, exp(-cumsum(M)))`
   - add `"[<-" <- RTMB::ADoverload("[<-")` when AD values are assigned into a vector or matrix that starts as numbers, e.g. `x <- numeric(n)` then `x[i] <- ...`
   - use `RTMB::matrix()` and `RTMB::rowSums()` on AD values
-  - do not use `which.max()` or `which.min()` on AD values. They return the wrong index with only a warning.
+  - do not use `approx()`, `var()`, `as.integer()`, `which.max()` or `which.min()` on AD values. They can give a wrong value with no error. `which.max()` and `which.min()` use the order in which values were added to the tape, not the values. The module-table test in `tests/testthat/test-call_module.R` catches a wrong value in a module function if it differs from plain R at the test values.
 
 The function works on ordinary numbers, so it can be checked at the console:
 
@@ -127,7 +127,7 @@ Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, 
 
 Growth needs inputs that are not parameters (weight data, ages, a length grid), so a growth type is 1 entry in `growth_modules` at the bottom of `R/growth.R`:
 
-- `evaluate`: the module function.
+- `evaluate`: the module function. It returns a list with `weight_at_age` (1 value per age, or a matrix with 1 row per year plus the year after the last model year). A type that models length also returns `mean_length_at_age` and `sd_length_at_age`, and with a length grid, `length_probability` (1 row per age), `length_weight_a` and `length_weight_b`. `check_growth_output()` stops the model if an output has the wrong size.
 - `inputs`: a function of the FIMSFrame, the parameter tibble and the population length grid that returns the module's other arguments.
 - `models_length`: `TRUE` if it gives length at age, so fleets' age-to-length keys come from growth.
 - `working_scale`: a function giving the scale each tibble row is estimated on (`"log"`, `"logit"`, `"log_difference"` or `NA`).
