@@ -520,3 +520,25 @@ test_that("`catch_at_length()` stops when growth returns a growth transition of 
     regexp = "growth_transition.*of size 4 x 3"
   )
 })
+
+test_that("the catch-at-length model stops when growth returns 1 expected increment for 2 observations", {
+  # Linear gamma growth that returns only the first expected increment.
+  # Without the check, it would be compared with both observed increments.
+  one_increment <- FIMS:::growth_modules
+  one_increment[["LinearGammaIncrement"]][["evaluate"]] <- function(...) {
+    growth <- FIMS:::linear_gamma_increment_growth(...)
+    growth[["growth_increment_expected"]] <-
+      growth[["growth_increment_expected"]][1]
+    growth[["log_growth_increment_expected"]] <-
+      growth[["log_growth_increment_expected"]][1]
+    growth
+  }
+  local_mocked_bindings(growth_modules = one_increment)
+  #' @description Test that the catch-at-length model stops when growth returns 1 expected growth increment for 2 observed increments.
+  expect_error(
+    object = cal_default_parameters |>
+      initialize_fims(data = cal_frame) |>
+      fit_fims(optimize = FALSE),
+    regexp = "expected.*has length.*1.*for.*2.*observations"
+  )
+})
