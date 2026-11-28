@@ -75,6 +75,23 @@ catch_at_length_biology <- function(module_parameters, model_data,
     growth_modules[[module_types[["growth"]]]][["evaluate"]],
     c(population_data[["growth_inputs"]], module_parameters[["Growth"]])
   )
+  # Each row of the growth transition is a population length bin before a
+  # molt, and each column a bin after it. R would recycle a transition with
+  # the wrong number of columns into numbers at length without an error.
+  growth_transition <- growth[["growth_transition"]]
+  transition_size <- c(NROW(growth_transition), NCOL(growth_transition))
+  if (any(transition_size != n_lengths)) {
+    growth_type <- module_types[["growth"]]
+    found_size <- paste(transition_size, collapse = " x ")
+    cli::cli_abort(c(
+      "x" = "Growth module type {.val {growth_type}} returned
+      {.code growth_transition} of size {found_size}.",
+      "i" = "It needs 1 row and 1 column per population length bin
+      ({.val {n_lengths}} x {.val {n_lengths}}).",
+      "i" = "Check what its {.code evaluate} function in
+      {.code growth_modules} in {.file R/growth.R} returns."
+    ))
+  }
   weight_at_length <- population_data[["weight_at_length"]]
   terminal_molt_probability <- population_data[["terminal_molt_probability"]]
 
