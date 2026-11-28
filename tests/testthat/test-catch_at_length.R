@@ -451,3 +451,23 @@ test_that("`FIMSFrame()` and `initialize_fims()` refuse inconsistent catch-at-le
     regexp = "discard_mortality.*must be.*constant"
   )
 })
+
+test_that("`catch_at_length()` stops when growth returns a growth transition of the wrong size", {
+  # Linear gamma growth that drops the last column of the transition, so
+  # fish cannot molt into the largest length bin. Without the check, the
+  # model recycles the 3 columns over the 4 bins with no error.
+  short_transition <- FIMS:::growth_modules
+  short_transition[["LinearGammaIncrement"]][["evaluate"]] <- function(...) {
+    growth <- FIMS:::linear_gamma_increment_growth(...)
+    growth[["growth_transition"]] <- growth[["growth_transition"]][, 1:3]
+    growth
+  }
+  local_mocked_bindings(growth_modules = short_transition)
+  #' @description Test that the catch-at-length model stops when the growth transition does not have 1 row and 1 column per population length bin.
+  expect_error(
+    object = cal_default_parameters |>
+      initialize_fims(data = cal_frame) |>
+      fit_fims(optimize = FALSE),
+    regexp = "growth_transition.*of size 4 x 3"
+  )
+})

@@ -128,7 +128,7 @@ Create a test file with `FIMS:::use_testthat_template("logistic_selectivity")`, 
 
 Growth needs inputs that are not parameters (weight data, ages, a length grid), so a growth type is 1 entry in `growth_modules` at the bottom of `R/growth.R`:
 
-- `evaluate`: the module function. It returns a list with `weight_at_age` (1 value per age, or a matrix with 1 row per year plus the year after the last model year). A type that models length also returns `mean_length_at_age` and `sd_length_at_age`, and with a length grid, `length_probability` (1 row per age), `length_weight_a` and `length_weight_b`. `check_growth_output()` stops the model if an output has the wrong size.
+- `evaluate`: the module function. It returns a list with `weight_at_age` (1 value per age, or a matrix with 1 row per year plus the year after the last model year). A type that models length also returns `mean_length_at_age` and `sd_length_at_age`, and with a length grid, `length_probability` (1 row per age), `length_weight_a` and `length_weight_b`. `check_growth_output()` stops the model if an output has the wrong size. A growth type for the catch-at-length model returns `growth_transition` instead, with 1 row and 1 column per population length bin. The catch-at-length model stops if it has the wrong size.
 - `inputs`: a function of the FIMSFrame, the parameter tibble and the population length grid that returns the module's other arguments.
 - `models_length`: `TRUE` if it gives length at age, so fleets' age-to-length keys come from growth.
 - `working_scale`: a function giving the scale each tibble row is estimated on (`"log"`, `"logit"`, `"log_difference"` or `NA`).
