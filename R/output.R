@@ -444,9 +444,12 @@ fill_data_columns <- function(estimates, input, report, values) {
   n_earlier_observations <- 0
   for (component in input[["model_data"]][["likelihoods"]]) {
     observed <- flatten_by_year(component[["observed"]])
-    # The multinomial skips a row (a year, or a year and length bin) with any
-    # missing bin (multinomial_lpmf()), so no bin of that row is data.
-    if (component[["family"]] == "dmultinom") {
+    # The multinomial and the robust normal skip a row (a year, or a year and
+    # length bin) with any missing bin (multinomial_lpmf() and
+    # robust_normal_multinomial_lpdf()), so no bin of that row is data.
+    skips_rows_with_missing_bin <- component[["family"]] %in%
+      c("dmultinom", "robust_normal_multinomial")
+    if (skips_rows_with_missing_bin) {
       is_skipped_row <- rowSums(is.na(component[["observed"]])) > 0
       observed[rep(is_skipped_row, each = ncol(component[["observed"]]))] <- NA
     }
