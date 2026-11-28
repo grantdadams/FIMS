@@ -12,6 +12,19 @@
 # Logistic selectivity over 12 ages, with its 2 parameters by label.
 logistic_parameters <- list(inflection_point = 4, slope = 1)
 
+# Every lookup table, for the tests that loop over all of them.
+lookup_tables <- list(
+  selectivity_functions = FIMS:::selectivity_functions,
+  maturity_functions = FIMS:::maturity_functions,
+  recruitment_functions = FIMS:::recruitment_functions,
+  recruitment_process_functions = FIMS:::recruitment_process_functions,
+  growth_modules = FIMS:::growth_modules,
+  likelihood_families = FIMS:::likelihood_families,
+  process_structures = FIMS:::process_structures,
+  recruitment_process_means = FIMS:::recruitment_process_means,
+  model_functions = FIMS:::model_functions
+)
+
 ## IO correctness ----
 test_that("`call_module()` works with correct inputs", {
   #' @description Test that `call_module()` calls the function for the module type with its parameters by label.
@@ -365,17 +378,6 @@ test_that("every likelihood family and process structure has a tape that matches
 test_that("every lookup table names each type once, and each likelihood family has its own output name", {
   # R lists allow repeated names, and `[[` returns the first. So a copied
   # entry that kept its old name would hide one of the 2 with no error.
-  lookup_tables <- list(
-    selectivity_functions = FIMS:::selectivity_functions,
-    maturity_functions = FIMS:::maturity_functions,
-    recruitment_functions = FIMS:::recruitment_functions,
-    recruitment_process_functions = FIMS:::recruitment_process_functions,
-    growth_modules = FIMS:::growth_modules,
-    likelihood_families = FIMS:::likelihood_families,
-    process_structures = FIMS:::process_structures,
-    recruitment_process_means = FIMS:::recruitment_process_means,
-    model_functions = FIMS:::model_functions
-  )
   for (table_name in names(lookup_tables)) {
     #' @description Test that each lookup table names each module type once.
     expect_equal(
@@ -396,6 +398,73 @@ test_that("every lookup table names each type once, and each likelihood family h
     expected = 0L,
     label = "repeated distribution names"
   )
+})
+
+test_that("no module function, or package function it calls, changes state outside itself", {
+  # R copies an argument that a function changes, so a module function
+  # cannot change the model's values in place. The names below, and an
+  # environment kept in the package, could still change state outside the
+  # function, so the same inputs could give a different result on a later
+  # call.
+  state_changers <- c(
+    "<<-", "assign", "list2env", "parent.frame", "parent.env", "sys.frame",
+    "sys.function", "globalenv", ".GlobalEnv", "environment", "options"
+  )
+  # The function each module type runs in the model: the table entry itself,
+  # or its `evaluate` (growth) or `lpdf` (likelihoods and processes).
+  module_function <- function(entry) {
+    if (is.function(entry)) {
+      entry
+    } else if (utils::hasName(entry, "evaluate")) {
+      entry[["evaluate"]]
+    } else {
+      entry[["lpdf"]]
+    }
+  }
+  # The means tables hold names, not functions. model_functions builds the
+  # whole model, and its report assigns values to local names.
+  is_module_table <- !vapply(lookup_tables, function(table) {
+    is.character(table[[1]])
+  }, logical(1)) & names(lookup_tables) != "model_functions"
+  module_functions <- lapply(lookup_tables[is_module_table], function(table) {
+    lapply(table, module_function)
+  })
+  package <- asNamespace("FIMS")
+  # The names a function uses, and the names used by every package function
+  # it calls, at any depth.
+  names_used <- function(module_function) {
+    to_check <- list(module_function)
+    checked <- character(0)
+    used <- character(0)
+    while (length(to_check) > 0) {
+      body_names <- all.names(body(to_check[[1]]))
+      to_check <- to_check[-1]
+      used <- union(used, body_names)
+      is_package_function <- vapply(body_names, function(name) {
+        is.function(get0(name, envir = package, inherits = FALSE))
+      }, logical(1))
+      helpers <- setdiff(body_names[is_package_function], checked)
+      checked <- c(checked, helpers)
+      to_check <- c(to_check, mget(helpers, envir = package))
+    }
+    used
+  }
+  for (table_name in names(module_functions)) {
+    for (module_type in names(module_functions[[table_name]])) {
+      used <- names_used(module_functions[[table_name]][[module_type]])
+      is_package_environment <- vapply(used, function(name) {
+        is.environment(get0(name, envir = package, inherits = FALSE))
+      }, logical(1))
+      #' @description Test that no module function, or package function it calls, uses `<<-`, `assign()`, environments or `options()`.
+      expect_equal(
+        object = c(
+          intersect(state_changers, used), used[is_package_environment]
+        ),
+        expected = character(0),
+        label = paste(table_name, module_type, "state changers")
+      )
+    }
+  }
 })
 
 ## Edge handling ----
