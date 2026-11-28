@@ -396,6 +396,57 @@ von_bertalanffy_schnute_working_scale <- function(rows) {
   working_scale
 }
 
+#' Stop when a growth module returns an output of the wrong size
+#'
+#' The model calls growth directly, not through call_module(), because growth
+#' returns a list. R would recycle an output of the wrong size into the model
+#' without an error.
+#'
+#' @param growth The list the growth module returned.
+#' @param module_type The growth module type, such as "EWAA".
+#' @param n_ages Number of ages.
+#' @param n_years Number of model years.
+#' @noRd
+check_growth_output <- function(growth, module_type, n_ages, n_years) {
+  # Size of each output: its number of values, or its rows and columns for a
+  # matrix. Weight at age by year has n_years + 1 rows (see the top of this
+  # file). The columns of length_probability are the population length bins.
+  # They are not checked here, because the product with a fleet's rebin
+  # weights stops if they do not match.
+  needed <- list(
+    weight_at_age = if (is.matrix(growth[["weight_at_age"]])) {
+      c(n_years + 1, n_ages)
+    } else {
+      n_ages
+    },
+    mean_length_at_age = n_ages,
+    sd_length_at_age = n_ages,
+    length_probability = c(n_ages, NCOL(growth[["length_probability"]])),
+    length_weight_a = 1,
+    length_weight_b = 1
+  )
+  for (output in intersect(names(needed), names(growth))) {
+    found <- if (is.matrix(growth[[output]])) {
+      dim(growth[[output]])
+    } else {
+      length(growth[[output]])
+    }
+    if (!identical(as.numeric(found), as.numeric(needed[[output]]))) {
+      found_size <- paste(found, collapse = " x ")
+      needed_size <- paste(needed[[output]], collapse = " x ")
+      cli::cli_abort(c(
+        "x" = "Growth module type {.val {module_type}} returned
+        {.code {output}} of size {found_size}.",
+        "i" = "It needs size {needed_size}. The model has {.val {n_ages}} ages
+        and {.val {n_years}} years.",
+        "i" = "Check what its {.code evaluate} function in
+        {.code growth_modules} in {.file R/growth.R} returns."
+      ))
+    }
+  }
+  invisible(TRUE)
+}
+
 # Module types ----------------------------------------------------------------
 #
 # 1 entry per growth type:
