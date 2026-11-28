@@ -26,13 +26,18 @@ test_that("`normal_lpdf()` works with correct inputs", {
     object = FIMS:::normal_lpdf(3, 3, log(1)),
     expected = -log(2 * pi) / 2
   )
+  #' @description Test that `normal_lpdf()` uses 1 sd for every observation when it is given 1 sd.
+  expect_equal(
+    object = FIMS:::normal_lpdf(observed, expected, log(0.5)),
+    expected = stats::dnorm(observed, expected, 0.5, log = TRUE)
+  )
 })
 
 ## Edge handling ----
 test_that("`normal_lpdf()` returns correct outputs for edge cases", {
   #' @description Test that `normal_lpdf()` returns 0 for a missing observation, so it adds nothing to the likelihood.
   expect_equal(
-    object = FIMS:::normal_lpdf(c(1.2, NA), 1, log(0.5)),
+    object = FIMS:::normal_lpdf(c(1.2, NA), c(1, 1), log(0.5)),
     expected = c(stats::dnorm(1.2, 1, 0.5, log = TRUE), 0)
   )
 })
@@ -42,7 +47,22 @@ test_that("`normal_lpdf()` returns correct error messages", {
   #' @description Test that `normal_lpdf()` errors when there are 2 expected values for 3 observations, rather than recycling them.
   expect_error(
     object = FIMS:::normal_lpdf(c(1, 2, 3), c(0, 1), log(1)),
-    regexp = "1 value, or 1 per observation"
+    regexp = "expected.*has length.*2.*for.*3.*observations"
+  )
+  #' @description Test that `normal_lpdf()` errors when there is 1 expected value for 3 observations, rather than comparing it with every observation.
+  expect_error(
+    object = FIMS:::normal_lpdf(c(1, 2, 3), 0, log(1)),
+    regexp = "expected.*has length.*1.*for.*3.*observations"
+  )
+  #' @description Test that `normal_lpdf()` errors when there are 2 sds for 3 observations, rather than recycling them.
+  expect_error(
+    object = FIMS:::normal_lpdf(c(1, 2, 3), c(0, 1, 2), log(c(1, 2))),
+    regexp = "log_sd.*has length.*2.*for.*3.*observations"
+  )
+  #' @description Test that `normal_lpdf()` names both inputs when there is 1 expected value and 2 sds for 3 observations.
+  expect_error(
+    object = FIMS:::normal_lpdf(c(1, 2, 3), 0, log(c(1, 2))),
+    regexp = "expected.*log_sd.*have lengths.*1.*2.*for.*3.*observations"
   )
 })
 
@@ -72,13 +92,18 @@ test_that("`lognormal_lpdf()` works with correct inputs", {
     object = FIMS:::lognormal_lpdf(exp(1), 1, log(1)),
     expected = -log(2 * pi) / 2 - 1
   )
+  #' @description Test that `lognormal_lpdf()` uses 1 sd for every observation when it is given 1 sd.
+  expect_equal(
+    object = FIMS:::lognormal_lpdf(observed_positive, log_expected, log(0.5)),
+    expected = stats::dlnorm(observed_positive, log_expected, 0.5, log = TRUE)
+  )
 })
 
 ## Edge handling ----
 test_that("`lognormal_lpdf()` returns correct outputs for edge cases", {
   #' @description Test that `lognormal_lpdf()` returns 0 for a missing observation, so it adds nothing to the likelihood.
   expect_equal(
-    object = FIMS:::lognormal_lpdf(c(2, NA), log(2.5), log(0.5)),
+    object = FIMS:::lognormal_lpdf(c(2, NA), rep(log(2.5), 2), log(0.5)),
     expected = c(stats::dlnorm(2, log(2.5), 0.5, log = TRUE), 0)
   )
   #' @description Test that `lognormal_lpdf()` returns -Inf for an observation of 0, which has no density on the log scale.
@@ -93,6 +118,16 @@ test_that("`lognormal_lpdf()` returns correct error messages", {
   #' @description Test that `lognormal_lpdf()` errors when there are 2 log expected values for 3 observations, rather than recycling them.
   expect_error(
     object = FIMS:::lognormal_lpdf(c(1, 2, 3), c(0, 1), log(1)),
-    regexp = "1 value, or 1 per observation"
+    regexp = "log_expected.*has length.*2.*for.*3.*observations"
+  )
+  #' @description Test that `lognormal_lpdf()` errors when there is 1 log expected value for 3 observations, rather than comparing it with every observation.
+  expect_error(
+    object = FIMS:::lognormal_lpdf(c(1, 2, 3), 0, log(1)),
+    regexp = "log_expected.*has length.*1.*for.*3.*observations"
+  )
+  #' @description Test that `lognormal_lpdf()` errors when there are 2 sds for 3 observations, rather than recycling them.
+  expect_error(
+    object = FIMS:::lognormal_lpdf(c(1, 2, 3), c(0, 1, 2), log(c(1, 2))),
+    regexp = "log_sd.*has length.*2.*for.*3.*observations"
   )
 })

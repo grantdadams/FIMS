@@ -37,6 +37,13 @@ test_that("`iid_process_lpdf()` returns correct error messages", {
     object = FIMS:::iid_process_lpdf(process_values, c(0, 0.1), log(0.4)),
     regexp = "1 per process value"
   )
+  #' @description Test that `iid_process_lpdf()` names both inputs when there are 2 means and 2 sds for 3 values.
+  expect_error(
+    object = FIMS:::iid_process_lpdf(
+      process_values, c(0, 0.1), log(c(0.4, 0.5))
+    ),
+    regexp = "have lengths.*2.*2.*for.*3.*process values"
+  )
 })
 
 # ar1_process_lpdf ----
