@@ -20,22 +20,38 @@
 # To add a family or structure, write its functions here and add 1 entry to
 # likelihood_families or process_structures at the bottom of this file.
 
-#' Stop unless expected values and sds have 1 value or 1 per observation
+#' Stop unless there is 1 expected value per observation, and each family
+#' parameter has 1 value or 1 per observation
 #'
 #' Recycling a vector of another length would compare observations with the
-#' wrong expected values, with no error.
+#' wrong expected values, with no error. Expected values come from the model,
+#' such as the expected growth increments from a growth module, so each
+#' observation needs its own. A family parameter, such as the sd, can be 1
+#' value shared by all observations.
+#'
+#' @param n_observations Number of observations.
+#' @param ... The expected values first, by the name the family uses (such
+#'   as `log_expected`), then the family's own parameters by name (such as
+#'   `log_sd`).
 #' @noRd
 check_density_lengths <- function(n_observations, ...) {
-  lengths <- vapply(list(...), length, integer(1))
-  is_wrong <- !lengths %in% c(1L, n_observations)
+  input_lengths <- vapply(list(...), length, integer(1))
+  # The first input is the expected values, which need 1 per observation.
+  is_wrong <- c(
+    input_lengths[1] != n_observations,
+    !input_lengths[-1] %in% c(1L, n_observations)
+  )
   if (any(is_wrong)) {
     cli::cli_abort(c(
-      "x" = "{.val {names(lengths)[is_wrong]}} {?has/have}
-      {.val {lengths[is_wrong]}} value{?s} for {.val {n_observations}}
+      "x" = "{.val {names(input_lengths)[is_wrong]}} {?has/have} length{?s}
+      {.val {input_lengths[is_wrong]}} for {.val {n_observations}}
       observation{?s}.",
-      "i" = "Expected values and sds need 1 value, or 1 per observation.",
-      "i" = "Count the data rows by fleet, type and year with
-      {.code dplyr::count(get_data(data), fleet, type, timing)}."
+      "i" = "Expected values need 1 value per observation. The family's
+      parameters, such as the standard deviation, need 1 value, or 1 per
+      observation.",
+      "i" = "Check that the model gives 1 expected value per data row. Count
+      the rows by fleet and type with
+      {.code dplyr::count(get_data(data), fleet, type)}."
     ))
   }
   invisible(n_observations)
@@ -44,7 +60,7 @@ check_density_lengths <- function(n_observations, ...) {
 #' Normal log density for data
 #'
 #' @param observed Observed values.
-#' @param expected Expected values, same length as `observed` or length 1.
+#' @param expected Expected values, same length as `observed`.
 #' @param log_sd Log standard deviation, same length as `observed` or length 1.
 #' @noRd
 normal_lpdf <- function(observed, expected, log_sd) {
@@ -52,7 +68,6 @@ normal_lpdf <- function(observed, expected, log_sd) {
   "[<-" <- RTMB::ADoverload("[<-")
   n_observations <- length(observed)
   check_density_lengths(n_observations, expected = expected, log_sd = log_sd)
-  expected <- rep_len(expected, n_observations)
   standard_deviation <- rep_len(exp(log_sd), n_observations)
   is_observed <- !is.na(observed)
   log_density <- numeric(n_observations)
@@ -84,8 +99,10 @@ lognormal_lpdf <- function(observed, log_expected, log_sd) {
   # RTMB: lets `x[i] <- value` store AD values in a plain vector.
   "[<-" <- RTMB::ADoverload("[<-")
   n_observations <- length(observed)
-  check_density_lengths(n_observations, log_expected = log_expected, log_sd = log_sd)
-  log_expected <- rep_len(log_expected, n_observations)
+  check_density_lengths(
+    n_observations,
+    log_expected = log_expected, log_sd = log_sd
+  )
   standard_deviation <- rep_len(exp(log_sd), n_observations)
   is_observed <- !is.na(observed)
   log_density <- numeric(n_observations)
@@ -193,12 +210,12 @@ multinomial_draw <- function(observed, prob) {
 #' sd of another year, with no error.
 #' @noRd
 check_process_lengths <- function(n_values, ...) {
-  lengths <- vapply(list(...), length, integer(1))
-  is_wrong <- !lengths %in% c(1L, n_values)
+  input_lengths <- vapply(list(...), length, integer(1))
+  is_wrong <- !input_lengths %in% c(1L, n_values)
   if (any(is_wrong)) {
     cli::cli_abort(c(
-      "x" = "{.val {names(lengths)[is_wrong]}} {?has/have}
-      {.val {lengths[is_wrong]}} value{?s} for {.val {n_values}} process
+      "x" = "{.val {names(input_lengths)[is_wrong]}} {?has/have} length{?s}
+      {.val {input_lengths[is_wrong]}} for {.val {n_values}} process
       value{?s}.",
       "i" = "A process mean or sd needs 1 value, or 1 per process value.",
       "i" = "Count the rows of each process and prior with
