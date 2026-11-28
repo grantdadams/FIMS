@@ -260,9 +260,10 @@ methods::setMethod("get_convergence", "FIMSFit", function(x) {
 #' uncertainties from a fitted model. The `year` column contains calendar
 #' years; the `age` and `length` columns are the ages and length bins
 #' from the data. `age` is `NA` if populations have different ages. `observed`
-#' is `NA` for missing observations. The multinomial skips a composition year
-#' with any missing bin, so `observed` and `estimated` are `NA` for every bin
-#' of that year, and for every year of a fleet without composition data. The
+#' is `NA` for missing observations. The multinomial and the robust normal
+#' skip a composition year with any missing bin, so `observed` and `estimated`
+#' are `NA` for every bin of that year, and for every year of a fleet without
+#' composition data. The
 #' proportions are reported as `agecomp_proportion` and
 #' `lengthcomp_proportion`.
 #' @export

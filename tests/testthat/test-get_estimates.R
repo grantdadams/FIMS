@@ -544,6 +544,45 @@ test_that("`get_estimates()` pairs a normal composition sd with its own cell", {
   )
 })
 
+test_that("`get_estimates()` reports every bin of a robust normal composition year with a missing bin as NA", {
+  # Like the multinomial, the robust normal skips a year with any missing
+  # bin, so no bin of that year is data.
+  robust_normal_comps <- data_big |>
+    dplyr::mutate(
+      year_4 = type == "age_comp" & fleet == "survey1" & timing == 4,
+      observed = dplyr::case_when(
+        year_4 & age == 3 ~ -999,
+        year_4 ~ observed / sum(observed[year_4 & age != 3]),
+        .default = observed
+      ),
+      uncertainty = dplyr::if_else(
+        type == "age_comp" & fleet == "survey1",
+        "~ robust_normal_multinomial(size = 200, prob = agecomp_proportion)",
+        uncertainty
+      )
+    ) |>
+    dplyr::select(-"year_4")
+  data_4_model <- FIMSFrame(robust_normal_comps)
+  survey_comps <- setup_default_parameters(data_4_model) |>
+    initialize_fims(data = data_4_model) |>
+    fit_fims(optimize = FALSE) |>
+    get_estimates() |>
+    dplyr::filter(
+      .data[["label"]] == "agecomp_expected",
+      .data[["fleet"]] == "survey1"
+    )
+  year_4 <- dplyr::filter(survey_comps, .data[["year"]] == 4)
+  #' @description Test that `get_estimates()` reports every bin of a robust normal composition year with 1 missing bin as NA in `observed` and `estimated`.
+  expect_true(all(is.na(c(year_4[["observed"]], year_4[["estimated"]]))))
+  #' @description Test that the robust normal skips a composition year with 1 missing bin.
+  expect_equal(
+    object = year_4[["likelihood"]],
+    expected = rep(0, get_n_ages(data_4_model))
+  )
+  #' @description Test that the other robust normal composition years keep their observations.
+  expect_false(anyNA(survey_comps[["observed"]][survey_comps[["year"]] != 4]))
+})
+
 test_that("`get_estimates()` keeps the other bins of a normal composition year with a missing bin", {
   # Unlike the multinomial, a normal likelihood scores each bin, so 1 missing
   # bin leaves the other bins of its year as data.

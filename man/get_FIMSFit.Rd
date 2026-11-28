@@ -119,9 +119,10 @@ and \code{message}. It has no rows when the model was not optimized.
 uncertainties from a fitted model. The \code{year} column contains calendar
 years; the \code{age} and \code{length} columns are the ages and length bins
 from the data. \code{age} is \code{NA} if populations have different ages. \code{observed}
-is \code{NA} for missing observations. The multinomial skips a composition year
-with any missing bin, so \code{observed} and \code{estimated} are \code{NA} for every bin
-of that year, and for every year of a fleet without composition data. The
+is \code{NA} for missing observations. The multinomial and the robust normal
+skip a composition year with any missing bin, so \code{observed} and \code{estimated}
+are \code{NA} for every bin of that year, and for every year of a fleet without
+composition data. The
 proportions are reported as \code{agecomp_proportion} and
 \code{lengthcomp_proportion}.
 
