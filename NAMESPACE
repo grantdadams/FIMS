@@ -70,6 +70,7 @@ export(tidy)
 exportMethods(plot)
 import(methods)
 import(stats)
+importClassesFrom(tibble,tbl_df)
 importFrom(RTMB,
   ADREPORT,
   REPORT
